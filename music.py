@@ -7,7 +7,13 @@ from playback import (
     make_layered_melody
 )
 
-from harmony import make_harmony
+from harmony import make_harmony, keys_containing
+
+from notes import split_note
+
+from compare import compare_sequence, summarise
+
+from tuning_plot import make_tuning_plot
 
 from pitch_detector import (
     detect_single_note,
@@ -23,6 +29,85 @@ from instrument_detector import (
 # mentioning. Around 15 cents is roughly where a listener
 # starts to notice on a sustained note.
 TUNING_TOLERANCE_CENTS = 15
+
+
+class MusicInputError(ValueError):
+    """
+    Something about the music the user typed does not work.
+
+    The message is written to be shown to them directly, so
+    it should say what is wrong and what would fix it.
+    """
+
+
+def check_note_names(pitches):
+    """
+    Make sure every pitch is a note name we understand.
+    """
+
+    for pitch in pitches:
+
+        if len(pitch) < 2 or not pitch[-1].isdigit():
+            raise MusicInputError(
+                f"'{pitch}' is not a note. Notes look like "
+                f"C4, F#4 or Bb3."
+            )
+
+        try:
+            split_note(pitch)
+
+        except ValueError:
+            raise MusicInputError(
+                f"'{pitch}' is not a note. Notes look like "
+                f"C4, F#4 or Bb3."
+            )
+
+
+def check_bpm(bpm):
+    """
+    Make sure the tempo is a usable number.
+    """
+
+    try:
+        bpm = float(bpm)
+
+    except (TypeError, ValueError):
+        raise MusicInputError(
+            "The tempo must be a number."
+        )
+
+    if bpm <= 0:
+        raise MusicInputError(
+            "The tempo must be greater than zero."
+        )
+
+    return bpm
+
+
+def check_key_fits(pitches, key):
+    """
+    Make sure a harmony can actually be built in this key.
+
+    When it cannot, suggest a key that would work.
+    """
+
+    workable = keys_containing(pitches)
+
+    if key in workable:
+        return
+
+    if len(workable) == 0:
+        raise MusicInputError(
+            "These notes do not fit any of the available "
+            "keys, so no harmony can be built."
+        )
+
+    suggestion = " or ".join(workable)
+
+    raise MusicInputError(
+        f"These notes do not all fit in {key} major. "
+        f"Try {suggestion}."
+    )
 
 
 def describe_tuning(pitch):
@@ -66,14 +151,37 @@ def read_music(pitch_text, duration_text):
     pitches = pitch_text.split()
     duration_strings = duration_text.split()
 
+    if len(pitches) == 0:
+        raise MusicInputError(
+            "Enter some notes first, such as C4 D4 E4."
+        )
+
+    check_note_names(pitches)
+
     durations = []
 
     for duration in duration_strings:
-        durations.append(float(duration))
+
+        try:
+            beats = float(duration)
+
+        except ValueError:
+            raise MusicInputError(
+                f"'{duration}' is not a number of beats."
+            )
+
+        if beats <= 0:
+            raise MusicInputError(
+                "Every note must last longer than zero beats."
+            )
+
+        durations.append(beats)
 
     if len(pitches) != len(durations):
-        raise ValueError(
-            "There must be one duration for every pitch."
+        raise MusicInputError(
+            f"There are {len(pitches)} notes but "
+            f"{len(durations)} durations. "
+            f"Each note needs one duration."
         )
 
     return pitches, durations
@@ -95,7 +203,7 @@ def play_music(
         duration_text
     )
 
-    bpm = float(bpm)
+    bpm = check_bpm(bpm)
 
     if playback_mode == "Melody":
 
@@ -106,6 +214,8 @@ def play_music(
         )
 
     elif playback_mode == "Harmony":
+
+        check_key_fits(pitches, key)
 
         harmony = make_harmony(
             pitches,
@@ -120,6 +230,8 @@ def play_music(
 
     elif playback_mode == "Melody + Harmony":
 
+        check_key_fits(pitches, key)
+
         harmony = make_harmony(
             pitches,
             key=key
@@ -133,7 +245,7 @@ def play_music(
         )
 
     else:
-        raise ValueError(
+        raise MusicInputError(
             f"Unknown playback mode: {playback_mode}"
         )
 
@@ -151,6 +263,14 @@ def show_harmony(pitch_text, key):
     """
 
     pitches = pitch_text.split()
+
+    if len(pitches) == 0:
+        raise MusicInputError(
+            "Enter some notes first, such as C4 D4 E4."
+        )
+
+    check_note_names(pitches)
+    check_key_fits(pitches, key)
 
     harmony = make_harmony(
         pitches,
@@ -234,6 +354,110 @@ def analyse_instrument(audio):
         )
 
     return "\n".join(lines)
+
+
+def describe_comparison(comparison):
+    """
+    Describe one compared note in words.
+
+    The wording follows what a listener would notice: small
+    errors are not worth mentioning, and a note that lands
+    nearer a different note is named as that note instead.
+    """
+
+    if not comparison.was_detected:
+        return f"{comparison.target}: nothing detected"
+
+    cents = comparison.cents_from_target
+    direction = "sharp" if cents > 0 else "flat"
+
+    if abs(cents) <= 10:
+        return f"{comparison.target}: in tune"
+
+    if not comparison.is_target_note:
+        return (
+            f"{comparison.target}: heard {comparison.heard}, "
+            f"{abs(round(cents))} cents {direction}"
+        )
+
+    if abs(cents) <= 25:
+        return (
+            f"{comparison.target}: slightly {direction} "
+            f"({round(cents):+d})"
+        )
+
+    return (
+        f"{comparison.target}: clearly {direction} "
+        f"({round(cents):+d})"
+    )
+
+
+def describe_summary(summary):
+    """
+    One line describing how the performance went overall.
+    """
+
+    if summary["detected"] == 0:
+        return "No notes were detected in that recording."
+
+    average = round(summary["average_cents_off"])
+
+    return (
+        f"{summary['on_target']} of {summary['total']} notes "
+        f"on the right pitch. "
+        f"Average {average} cents from target."
+    )
+
+
+def analyse_performance(
+    audio,
+    pitch_text,
+    duration_text,
+    bpm
+):
+    """
+    Compare a recording against the target music.
+
+    Returns a written summary and a tuning chart.
+    """
+
+    if audio is None:
+        raise MusicInputError(
+            "Record or upload a performance first."
+        )
+
+    pitches, durations = read_music(
+        pitch_text,
+        duration_text
+    )
+
+    bpm = check_bpm(bpm)
+
+    detected = detect_sequence(
+        audio,
+        durations,
+        bpm
+    )
+
+    comparisons = compare_sequence(
+        pitches,
+        detected
+    )
+
+    lines = [
+        describe_summary(summarise(comparisons)),
+        ""
+    ]
+
+    for comparison in comparisons:
+        lines.append(
+            describe_comparison(comparison)
+        )
+
+    return (
+        "\n".join(lines),
+        make_tuning_plot(comparisons)
+    )
 
 
 def load_twinkle_phrase():

@@ -3,13 +3,36 @@
 import gradio as gr
 
 from music import (
+    MusicInputError,
     play_music,
     show_harmony,
     analyse_single_note,
     analyse_sequence,
     analyse_instrument,
+    analyse_performance,
     load_twinkle_phrase
 )
+
+
+def guard(function):
+    """
+    Turn our own input errors into Gradio messages.
+
+    music.py raises MusicInputError with wording meant for
+    the person using the app. Gradio only shows a message
+    properly if it is a gr.Error, so it is converted here
+    rather than making music.py know about the interface.
+    """
+
+    def wrapped(*arguments):
+
+        try:
+            return function(*arguments)
+
+        except MusicInputError as problem:
+            raise gr.Error(str(problem))
+
+    return wrapped
 
 
 with gr.Blocks(
@@ -150,6 +173,33 @@ with gr.Blocks(
     )
 
     # -----------------------------------------------------
+    # COACHING
+    # -----------------------------------------------------
+
+    gr.Markdown(
+        "## Compare Your Performance"
+    )
+
+    gr.Markdown(
+        "Play the target music above, record yourself "
+        "playing it, then compare the two."
+    )
+
+    compare_button = gr.Button(
+        "Compare Performance",
+        variant="primary"
+    )
+
+    tuning_plot = gr.Plot(
+        label="Tuning"
+    )
+
+    feedback_output = gr.Textbox(
+        label="Feedback",
+        lines=10
+    )
+
+    # -----------------------------------------------------
     # EVENTS
     # -----------------------------------------------------
 
@@ -162,7 +212,7 @@ with gr.Blocks(
     )
 
     generate_button.click(
-        fn=play_music,
+        fn=guard(play_music),
         inputs=[
             pitch_input,
             duration_input,
@@ -174,7 +224,7 @@ with gr.Blocks(
     )
 
     harmony_button.click(
-        fn=show_harmony,
+        fn=guard(show_harmony),
         inputs=[
             pitch_input,
             key_input
@@ -183,13 +233,13 @@ with gr.Blocks(
     )
 
     detect_note_button.click(
-        fn=analyse_single_note,
+        fn=guard(analyse_single_note),
         inputs=recorded_audio,
         outputs=note_output
     )
 
     detect_sequence_button.click(
-        fn=analyse_sequence,
+        fn=guard(analyse_sequence),
         inputs=[
             recorded_audio,
             duration_input,
@@ -199,9 +249,23 @@ with gr.Blocks(
     )
 
     detect_instrument_button.click(
-        fn=analyse_instrument,
+        fn=guard(analyse_instrument),
         inputs=recorded_audio,
         outputs=instrument_output
+    )
+
+    compare_button.click(
+        fn=guard(analyse_performance),
+        inputs=[
+            recorded_audio,
+            pitch_input,
+            duration_input,
+            bpm_input
+        ],
+        outputs=[
+            feedback_output,
+            tuning_plot
+        ]
     )
 
 

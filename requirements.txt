@@ -1,6 +1,7 @@
 gradio
 numpy
 librosa
+matplotlib
 transformers
 torch
 pytest

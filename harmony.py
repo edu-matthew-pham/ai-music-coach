@@ -44,6 +44,37 @@ def build_scale_notes(key, lowest=24, highest=108):
     return notes
 
 
+def keys_containing(pitches):
+    """
+    Which of the supported keys contain every one of
+    these notes.
+
+    Used to suggest a workable key when the chosen one
+    does not fit the music.
+    """
+
+    workable = []
+
+    for key in MAJOR_SCALES:
+
+        scale_semitones = set()
+
+        for pitch in MAJOR_SCALES[key]:
+            scale_semitones.add(NOTE_SEMITONES[pitch])
+
+        fits = True
+
+        for pitch in pitches:
+            if note_to_midi(pitch) % 12 not in scale_semitones:
+                fits = False
+                break
+
+        if fits:
+            workable.append(key)
+
+    return workable
+
+
 def move_in_scale(note, key="C", steps=-2):
     """
     Move a note through a major scale.
