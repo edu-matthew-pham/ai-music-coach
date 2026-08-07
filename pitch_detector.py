@@ -12,6 +12,13 @@ from notes import (
 )
 
 
+# How finely pyin is allowed to measure, in semitones.
+# The default of 0.1 means readings can only ever land on
+# multiples of 10 cents, which is too coarse when we are
+# telling someone how far out of tune they are.
+PITCH_RESOLUTION = 0.05
+
+
 class Pitch(NamedTuple):
     """
     One detected pitch.
@@ -66,7 +73,8 @@ def detect_pitch(sound, sample_rate):
         sound,
         fmin=librosa.note_to_hz("C3"),
         fmax=librosa.note_to_hz("C6"),
-        sr=sample_rate
+        sr=sample_rate,
+        resolution=PITCH_RESOLUTION
     )
 
     detected_frequencies = frequencies[voiced]
