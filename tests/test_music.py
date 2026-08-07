@@ -5,6 +5,7 @@ import pytest
 
 from pitch_detector import Pitch
 from music import (
+    MusicInputError,
     read_music,
     play_music,
     show_harmony,
@@ -54,9 +55,9 @@ def test_play_music_returns_gradio_audio():
     assert sample_rate == 8000
     assert isinstance(audio, np.ndarray)
 
-    # Two beats of music plus the four beat count-in makes
-    # six beats. At 120 BPM that is three seconds.
-    assert len(audio) == 24000
+    # Two beats at 120 BPM = one second. Listening modes
+    # start straight away, with no count-in.
+    assert len(audio) == 8000
 
 
 def test_play_music_rejects_unknown_mode():
@@ -193,3 +194,101 @@ def test_analyse_instrument(monkeypatch):
         "flute: 11.0%\n"
         "keyboard: 7.0%"
     )
+
+def test_guide_only_marks_time_without_notes():
+    """
+    Guide only is for recording without the melody playing
+    in the background: clicks and count-in, nothing else.
+    """
+
+    sample_rate, audio = play_music(
+        "C4 C4 G4",
+        "1 1 2",
+        "C",
+        "Guide only",
+        120
+    )
+
+    # Four count-in beats plus four beats of music.
+    assert len(audio) == 8 * 4000
+
+    # There is sound in the music section: the clicks.
+    music_section = audio[4 * 4000:]
+
+    assert float(np.max(np.abs(music_section))) > 0.1
+
+
+def test_guide_only_ignores_the_metronome_toggle():
+    """
+    A guide with the clicks turned off would be silence,
+    so the toggle does not apply to it.
+    """
+
+    sample_rate, audio = play_music(
+        "C4 C4 G4",
+        "1 1 2",
+        "C",
+        "Guide only",
+        120,
+        metronome=False
+    )
+
+    music_section = audio[4 * 4000:]
+
+    assert float(np.max(np.abs(music_section))) > 0.1
+
+
+def test_practice_guide_counts_in_then_clicks():
+    from music import make_practice_guide
+
+    result = make_practice_guide(
+        "C4 C4",
+        "1 1",
+        120,
+        "Clicks"
+    )
+
+    sample_rate, audio = result
+
+    # Four count-in beats plus two beats of music.
+    assert len(audio) == 6 * 4000
+
+
+def test_practice_guide_can_include_the_melody():
+    from music import make_practice_guide
+
+    sample_rate, audio = make_practice_guide(
+        "C4 C4",
+        "1 1",
+        120,
+        "Melody"
+    )
+
+    assert len(audio) == 6 * 4000
+
+    # The music section carries more than clicks: notes are
+    # long sounds, so the section is loud for most of its
+    # length rather than only at the beats.
+    music_section = np.abs(audio[4 * 4000:])
+
+    loud_share = float(np.mean(music_section > 0.1))
+
+    assert loud_share > 0.5
+
+
+def test_practice_guide_can_be_turned_off():
+    from music import make_practice_guide
+
+    assert make_practice_guide(
+        "C4 C4",
+        "1 1",
+        120,
+        "No guide"
+    ) is None
+
+
+def test_practice_guide_validates_its_input():
+    from music import make_practice_guide
+
+    with pytest.raises(MusicInputError):
+        make_practice_guide("C4 banana", "1 1", 120, "Clicks")

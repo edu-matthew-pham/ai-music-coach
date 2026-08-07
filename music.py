@@ -252,12 +252,32 @@ def play_music(
             bpm
         )
 
+    elif playback_mode == "Guide only":
+
+        # No notes at all: just the length of the music,
+        # so the count-in and metronome mark time while
+        # the player performs from memory. This keeps the
+        # recording free of any reference melody from the
+        # speakers.
+        sample_rate = 8000
+
+        total_seconds = (
+            sum(durations) * 60 / bpm
+        )
+
+        sound = [0.0] * int(
+            total_seconds * sample_rate
+        )
+
     else:
         raise MusicInputError(
             f"Unknown playback mode: {playback_mode}"
         )
 
-    if metronome:
+    # A guide with no clicks and no notes would be pure
+    # silence, which reads as the app having failed. The
+    # guide keeps its clicks regardless of the toggle.
+    if metronome or playback_mode == "Guide only":
         sound = add_metronome(
             sound,
             sum(durations),
@@ -265,10 +285,12 @@ def play_music(
             sample_rate
         )
 
-    # The count-in always plays. It is how the player knows
-    # when to come in, which matters whether or not they
-    # want clicks under the music itself.
-    sound = make_count_in(bpm, sample_rate) + list(sound)
+    # The count-in belongs to performing, not listening,
+    # which is how every recording app works: play starts
+    # the music at once, record counts you in. Guide only
+    # is this app's performing mode.
+    if playback_mode == "Guide only":
+        sound = make_count_in(bpm, sample_rate) + list(sound)
 
     audio_data = np.array(
         sound,
@@ -566,6 +588,66 @@ def analyse_performance(
         "\n".join(lines),
         make_tuning_plot(comparisons)
     )
+
+
+def make_practice_guide(
+    pitch_text,
+    duration_text,
+    bpm,
+    guide_choice
+):
+    """
+    The audio that plays while a performance is recorded.
+
+    Starts with the count-in, so however long the app takes
+    to begin playing after recording starts, the player
+    still gets a clear run of clicks before beat one. That
+    delay lands harmlessly inside the count-in.
+    """
+
+    if guide_choice == "No guide":
+        return None
+
+    pitches, durations = read_music(
+        pitch_text,
+        duration_text
+    )
+
+    bpm = check_bpm(bpm)
+
+    if guide_choice == "Clicks":
+
+        sample_rate = 8000
+
+        total_seconds = sum(durations) * 60 / bpm
+
+        sound = [0.0] * int(total_seconds * sample_rate)
+
+        sound = add_metronome(
+            sound,
+            sum(durations),
+            bpm,
+            sample_rate
+        )
+
+    else:
+
+        sample_rate, sound = make_melody(
+            pitches,
+            durations,
+            bpm
+        )
+
+        sound = add_metronome(
+            sound,
+            sum(durations),
+            bpm,
+            sample_rate
+        )
+
+    sound = make_count_in(bpm, sample_rate) + list(sound)
+
+    return sample_rate, np.array(sound, dtype=np.float32)
 
 
 def load_twinkle_phrase():

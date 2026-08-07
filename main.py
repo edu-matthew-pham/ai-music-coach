@@ -5,6 +5,7 @@ import gradio as gr
 from music import (
     MusicInputError,
     OCTAVE_CHOICES,
+    make_practice_guide,
     play_music,
     show_harmony,
     analyse_single_note,
@@ -96,12 +97,15 @@ with gr.Blocks(
         [
             "Melody",
             "Harmony",
-            "Melody + Harmony"
+            "Melody + Harmony",
+            "Guide only"
         ],
         value="Melody",
         label="Playback Mode",
         info="Choose a mode, then generate the audio below. "
-             "Playback starts with a four beat count-in."
+             "Guide only counts you in and clicks through "
+             "the music without playing the notes, for "
+             "recording a clean performance."
     )
 
     metronome_input = gr.Checkbox(
@@ -135,6 +139,31 @@ with gr.Blocks(
 
     gr.Markdown(
         "## Record a Performance"
+    )
+
+    gr.Markdown(
+        "Press record and the guide starts by itself: "
+        "four count-in clicks, then come in on the beat. "
+        "Wear headphones to keep the guide out of the "
+        "recording."
+    )
+
+    guide_choice = gr.Radio(
+        [
+            "Clicks",
+            "Melody",
+            "No guide"
+        ],
+        value="Clicks",
+        label="Guide while recording",
+        info="Clicks keeps the recording clean. Melody "
+             "plays the tune to sing along with."
+    )
+
+    guide_audio = gr.Audio(
+        label="Guide",
+        autoplay=True,
+        interactive=False
     )
 
     recorded_audio = gr.Audio(
@@ -249,6 +278,17 @@ with gr.Blocks(
             key_input
         ],
         outputs=harmony_output
+    )
+
+    recorded_audio.start_recording(
+        fn=guard(make_practice_guide),
+        inputs=[
+            pitch_input,
+            duration_input,
+            bpm_input,
+            guide_choice
+        ],
+        outputs=guide_audio
     )
 
     detect_note_button.click(
