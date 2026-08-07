@@ -12,6 +12,11 @@ from notes import (
 )
 
 
+# How much quieter than the loudest part of a recording
+# something has to be before we treat it as silence.
+SILENCE_THRESHOLD_DB = 30
+
+
 # How finely pyin is allowed to measure, in semitones.
 # The default of 0.1 means readings can only ever land on
 # multiples of 10 cents, which is too coarse when we are
@@ -117,6 +122,32 @@ def detect_single_note(audio):
     )
 
 
+def trim_leading_silence(sound):
+    """
+    Remove quiet audio from the start of a recording.
+
+    A performance rarely begins the instant recording does.
+    Without this, every note window is shifted by however
+    long the player waited, and the later notes drift out of
+    their slots completely.
+
+    Only the start is trimmed. Trailing silence is harmless,
+    and cutting it could shorten the final note.
+    """
+
+    trimmed, interval = librosa.effects.trim(
+        sound,
+        top_db=SILENCE_THRESHOLD_DB
+    )
+
+    if len(trimmed) == 0:
+        return sound
+
+    start = interval[0]
+
+    return sound[start:]
+
+
 def get_middle(
     sound,
     start_sample,
@@ -167,6 +198,10 @@ def detect_sequence(
     sample_rate, sound = audio
 
     sound = prepare_audio(sound)
+
+    # Line the recording up with the first thing played,
+    # rather than with the moment recording started.
+    sound = trim_leading_silence(sound)
 
     detected_notes = []
 

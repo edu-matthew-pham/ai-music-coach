@@ -11,7 +11,11 @@ from harmony import make_harmony, keys_containing
 
 from notes import split_note
 
-from compare import compare_sequence, summarise
+from compare import (
+    compare_sequence,
+    summarise,
+    suggest_transpose
+)
 
 from tuning_plot import make_tuning_plot
 
@@ -368,26 +372,31 @@ def describe_comparison(comparison):
     if not comparison.was_detected:
         return f"{comparison.target}: nothing detected"
 
+    label = comparison.target
+
+    if comparison.expected != comparison.target:
+        label = f"{comparison.target} (as {comparison.expected})"
+
     cents = comparison.cents_from_target
     direction = "sharp" if cents > 0 else "flat"
 
     if abs(cents) <= 10:
-        return f"{comparison.target}: in tune"
+        return f"{label}: in tune"
 
     if not comparison.is_target_note:
         return (
-            f"{comparison.target}: heard {comparison.heard}, "
+            f"{label}: heard {comparison.heard}, "
             f"{abs(round(cents))} cents {direction}"
         )
 
     if abs(cents) <= 25:
         return (
-            f"{comparison.target}: slightly {direction} "
+            f"{label}: slightly {direction} "
             f"({round(cents):+d})"
         )
 
     return (
-        f"{comparison.target}: clearly {direction} "
+        f"{label}: clearly {direction} "
         f"({round(cents):+d})"
     )
 
@@ -409,11 +418,53 @@ def describe_summary(summary):
     )
 
 
+def describe_shift(semitones):
+    """
+    Say what a shift means in words a musician would use.
+    """
+
+    if semitones % 12 == 0:
+
+        octaves = abs(semitones) // 12
+        direction = "below" if semitones < 0 else "above"
+
+        if octaves == 1:
+            return f"an octave {direction}"
+
+        return f"{octaves} octaves {direction}"
+
+    direction = "below" if semitones < 0 else "above"
+
+    return f"{abs(semitones)} semitones {direction}"
+
+
+def check_transpose(transpose):
+    """
+    Make sure the shift is a sensible number of semitones.
+    """
+
+    try:
+        transpose = int(transpose)
+
+    except (TypeError, ValueError):
+        raise MusicInputError(
+            "The shift must be a whole number of semitones."
+        )
+
+    if abs(transpose) > 36:
+        raise MusicInputError(
+            "The shift must be within three octaves."
+        )
+
+    return transpose
+
+
 def analyse_performance(
     audio,
     pitch_text,
     duration_text,
-    bpm
+    bpm,
+    transpose=0
 ):
     """
     Compare a recording against the target music.
@@ -432,6 +483,7 @@ def analyse_performance(
     )
 
     bpm = check_bpm(bpm)
+    transpose = check_transpose(transpose)
 
     detected = detect_sequence(
         audio,
@@ -441,13 +493,34 @@ def analyse_performance(
 
     comparisons = compare_sequence(
         pitches,
-        detected
+        detected,
+        transpose
     )
 
     lines = [
-        describe_summary(summarise(comparisons)),
-        ""
+        describe_summary(summarise(comparisons))
     ]
+
+    # If the whole performance sits at the same distance
+    # from the music, the player is probably in a different
+    # range rather than playing every note wrongly.
+    suggestion = suggest_transpose(comparisons)
+
+    if suggestion is not None:
+
+        lines.append(
+            f"That was all {describe_shift(suggestion)} "
+            f"the written music. Set the shift to "
+            f"{transpose + suggestion} to score it there."
+        )
+
+    if transpose != 0:
+        lines.append(
+            f"Scored {describe_shift(transpose)} "
+            f"the written music."
+        )
+
+    lines.append("")
 
     for comparison in comparisons:
         lines.append(

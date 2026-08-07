@@ -167,3 +167,81 @@ def test_summarise_with_nothing_detected():
     assert summary["detected"] == 0
     assert summary["on_target"] == 0
     assert summary["average_cents_off"] is None
+
+
+def test_transpose_shifts_the_target():
+    """
+    Someone singing an octave below is playing the right
+    note in their own range, once the music is shifted.
+    """
+
+    result = compare_note("C4", played("C3"), transpose=-12)
+
+    assert result.target == "C4"
+    assert result.expected == "C3"
+    assert result.cents_from_target == pytest.approx(0)
+    assert result.is_target_note
+
+
+def test_transpose_of_zero_changes_nothing():
+    result = compare_note("C4", played("C4"), transpose=0)
+
+    assert result.expected == "C4"
+    assert result.is_target_note
+
+
+def test_suggests_an_octave_when_everything_is_low():
+    targets = ["C4", "E4", "G4"]
+
+    performance = [
+        played("C3", 10),
+        played("E3", -20),
+        played("G3", 5)
+    ]
+
+    from compare import suggest_transpose
+
+    assert suggest_transpose(
+        compare_sequence(targets, performance)
+    ) == -12
+
+
+def test_suggests_nothing_when_the_notes_are_right():
+    from compare import suggest_transpose
+
+    targets = ["C4", "E4"]
+
+    performance = [played("C4", 8), played("E4", -12)]
+
+    assert suggest_transpose(
+        compare_sequence(targets, performance)
+    ) is None
+
+
+def test_suggests_nothing_when_mistakes_disagree():
+    """
+    A performance that is wrong in different ways each time
+    is not shifted, it is just wrong.
+    """
+
+    from compare import suggest_transpose
+
+    targets = ["C4", "E4", "G4"]
+
+    performance = [
+        played("C3"),
+        played("E4"),
+        played("G5")
+    ]
+
+    assert suggest_transpose(
+        compare_sequence(targets, performance)
+    ) is None
+
+
+def test_suggests_nothing_from_a_single_note():
+    from compare import suggest_transpose
+
+    assert suggest_transpose(
+        compare_sequence(["C4"], [played("C3")])
+    ) is None

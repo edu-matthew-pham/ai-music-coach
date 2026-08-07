@@ -110,3 +110,68 @@ def test_round_trip_with_short_notes():
     durations = [0.25, 0.25, 0.25]
 
     assert round_trip(pitches, durations) == as_midi(pitches)
+
+
+def round_trip_with_delay(
+    pitches,
+    durations,
+    delay_seconds,
+    bpm=120,
+    sample_rate=8000
+):
+    """
+    Synthesise a melody with silence in front of it.
+
+    This is what a real recording looks like: the player
+    does not start the instant recording begins.
+    """
+
+    rate, melody = make_melody(
+        pitches,
+        durations,
+        bpm,
+        sample_rate
+    )
+
+    silence = np.zeros(
+        int(delay_seconds * sample_rate)
+    )
+
+    delayed = np.concatenate([
+        silence,
+        np.array(melody)
+    ])
+
+    detected = detect_sequence(
+        (rate, delayed),
+        durations,
+        bpm
+    )
+
+    return [
+        None if pitch is None else round(pitch.midi)
+        for pitch in detected
+    ]
+
+
+@pytest.mark.parametrize(
+    "delay_seconds",
+    [0.3, 1.0, 2.5]
+)
+def test_round_trip_survives_a_late_start(delay_seconds):
+    """
+    Waiting before playing must not shift every note out of
+    its window. Without trimming, a delay of a second at
+    120 BPM pushes the whole performance two notes along.
+    """
+
+    pitches = ["C4", "E4", "G4", "C4"]
+    durations = [1.0, 1.0, 1.0, 1.0]
+
+    detected = round_trip_with_delay(
+        pitches,
+        durations,
+        delay_seconds
+    )
+
+    assert detected == as_midi(pitches)

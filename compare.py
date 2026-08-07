@@ -13,7 +13,7 @@ left to whatever is displaying the result.
 
 from typing import NamedTuple, Optional
 
-from notes import note_to_midi
+from notes import note_to_midi, midi_to_note
 
 
 class NoteComparison(NamedTuple):
@@ -35,6 +35,17 @@ class NoteComparison(NamedTuple):
     heard: Optional[str]
     heard_cents: Optional[float]
     cents_from_target: Optional[float]
+
+    @property
+    def expected(self):
+        """
+        The note actually being judged against.
+
+        This is the target note unless the music has been
+        shifted, in which case it is the shifted note.
+        """
+
+        return midi_to_note(self.target_midi)
 
     @property
     def was_detected(self):
@@ -64,14 +75,18 @@ class NoteComparison(NamedTuple):
         return abs(self.cents_from_target) < 50
 
 
-def compare_note(target, pitch):
+def compare_note(target, pitch, transpose=0):
     """
     Compare one target note against one detected pitch.
 
     pitch may be None when nothing could be detected.
+
+    transpose shifts the target by a number of semitones,
+    for a player whose comfortable range is not the one the
+    music was written in. Shifting down an octave is -12.
     """
 
-    target_midi = note_to_midi(target)
+    target_midi = note_to_midi(target) + transpose
 
     if pitch is None:
         return NoteComparison(
@@ -97,7 +112,7 @@ def compare_note(target, pitch):
     )
 
 
-def compare_sequence(targets, pitches):
+def compare_sequence(targets, pitches, transpose=0):
     """
     Compare a whole performance against the target music.
 
@@ -117,10 +132,54 @@ def compare_sequence(targets, pitches):
             pitch = None
 
         comparisons.append(
-            compare_note(targets[position], pitch)
+            compare_note(
+                targets[position],
+                pitch,
+                transpose
+            )
         )
 
     return comparisons
+
+
+def suggest_transpose(comparisons):
+    """
+    Work out whether the whole performance was shifted.
+
+    Someone singing along an octave below is not playing the
+    wrong notes, they are playing the right notes in their
+    own range. If every detected note is out by the same
+    whole number of semitones, that is worth noticing.
+
+    Returns the shift in semitones, or None when the
+    performance does not look shifted.
+    """
+
+    offsets = []
+
+    for comparison in comparisons:
+
+        if not comparison.was_detected:
+            continue
+
+        offsets.append(
+            round(comparison.cents_from_target / 100)
+        )
+
+    # One note agreeing with itself proves nothing.
+    if len(offsets) < 2:
+        return None
+
+    shift = offsets[0]
+
+    if shift == 0:
+        return None
+
+    for offset in offsets:
+        if offset != shift:
+            return None
+
+    return shift
 
 
 def summarise(comparisons):

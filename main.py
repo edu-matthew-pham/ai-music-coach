@@ -185,6 +185,14 @@ with gr.Blocks(
         "playing it, then compare the two."
     )
 
+    transpose_input = gr.Number(
+        value=0,
+        precision=0,
+        label="Shift (semitones)",
+        info="Use -12 if you play or sing an octave below "
+             "the written music."
+    )
+
     compare_button = gr.Button(
         "Compare Performance",
         variant="primary"
@@ -260,7 +268,8 @@ with gr.Blocks(
             recorded_audio,
             pitch_input,
             duration_input,
-            bpm_input
+            bpm_input,
+            transpose_input
         ],
         outputs=[
             feedback_output,
