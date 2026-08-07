@@ -2,46 +2,7 @@
 
 import math
 
-
-NOTE_SEMITONES = {
-    "C": 0,
-    "C#": 1,
-    "Db": 1,
-    "D": 2,
-    "D#": 3,
-    "Eb": 3,
-    "E": 4,
-    "F": 5,
-    "F#": 6,
-    "Gb": 6,
-    "G": 7,
-    "G#": 8,
-    "Ab": 8,
-    "A": 9,
-    "A#": 10,
-    "Bb": 10,
-    "B": 11
-}
-
-
-def note_to_frequency(note):
-    """
-    Convert a note such as C4, F#4 or Bb3 into a frequency.
-
-    A4 is MIDI note 69 and has a frequency of 440 Hz.
-    Each semitone changes frequency by the twelfth root of 2.
-    """
-
-    octave = int(note[-1])
-    pitch = note[:-1]
-
-    semitone = NOTE_SEMITONES[pitch]
-
-    midi_number = (octave + 1) * 12 + semitone
-
-    frequency = 440 * (2 ** ((midi_number - 69) / 12))
-
-    return frequency
+from notes import note_to_frequency
 
 
 def make_note(pitch, beats, bpm=120, sample_rate=8000):

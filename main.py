@@ -75,13 +75,14 @@ with gr.Blocks(
             "Melody + Harmony"
         ],
         value="Melody",
-        label="Playback"
+        label="Playback Mode",
+        info="Choose a mode, then generate the audio below."
     )
 
     with gr.Row():
 
-        play_button = gr.Button(
-            "Play"
+        generate_button = gr.Button(
+            "Generate Playback"
         )
 
         harmony_button = gr.Button(
@@ -160,7 +161,7 @@ with gr.Blocks(
         ]
     )
 
-    play_button.click(
+    generate_button.click(
         fn=play_music,
         inputs=[
             pitch_input,

@@ -47,19 +47,17 @@ def play_music(
     playback_mode,
     bpm
 ):
-    """
-    Generate melody, harmony, or both.
-    """
-
     pitches, durations = read_music(
         pitch_text,
         duration_text
     )
 
+    print("MODE:", playback_mode)
+    print("MELODY:", pitches)
+
     bpm = float(bpm)
 
     if playback_mode == "Melody":
-
         sample_rate, sound = make_melody(
             pitches,
             durations,
@@ -67,11 +65,12 @@ def play_music(
         )
 
     elif playback_mode == "Harmony":
-
         harmony = make_harmony(
             pitches,
             key=key
         )
+
+        print("HARMONY:", harmony)
 
         sample_rate, sound = make_melody(
             harmony,
@@ -80,11 +79,12 @@ def play_music(
         )
 
     elif playback_mode == "Melody + Harmony":
-
         harmony = make_harmony(
             pitches,
             key=key
         )
+
+        print("HARMONY:", harmony)
 
         sample_rate, sound = make_layered_melody(
             pitches,
