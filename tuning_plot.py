@@ -37,7 +37,8 @@ def make_performance_plot(
     durations,
     bpm,
     trace,
-    transpose=0
+    transpose=0,
+    lyrics=None
 ):
     """
     Draw what was sung over what was written.
@@ -84,6 +85,30 @@ def make_performance_plot(
             fontsize=8,
             color="#2e7d32"
         )
+
+        # The syllable sung on this note, under its box.
+        # An underscore is a held syllable and shows as a
+        # continuation line rather than text, following
+        # engraving convention.
+        if lyrics is not None:
+
+            syllable = lyrics[position]
+
+            if syllable == "_":
+                shown = "—"
+
+            else:
+                shown = syllable
+
+            axes.text(
+                start_time + length / 2,
+                midi - 0.95,
+                shown,
+                ha="center",
+                va="top",
+                fontsize=9,
+                color="#555555"
+            )
 
         start_time += length
 

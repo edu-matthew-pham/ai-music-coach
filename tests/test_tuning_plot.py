@@ -138,3 +138,38 @@ def test_performance_plot_copes_with_no_trace():
     )
 
     assert len(figure.axes[0].lines) == 0
+
+
+def test_performance_plot_shows_syllables_under_notes():
+    from tuning_plot import make_performance_plot
+
+    figure = make_performance_plot(
+        ["C4", "C4"],
+        [1.0, 1.0],
+        120,
+        None,
+        lyrics=["Twin-", "kle"]
+    )
+
+    texts = [t.get_text() for t in figure.axes[0].texts]
+
+    assert "Twin-" in texts
+    assert "kle" in texts
+
+
+def test_melisma_is_drawn_as_a_line_not_an_underscore():
+    from tuning_plot import make_performance_plot
+
+    figure = make_performance_plot(
+        ["C4", "E4"],
+        [1.0, 1.0],
+        120,
+        None,
+        lyrics=["star", "_"]
+    )
+
+    texts = [t.get_text() for t in figure.axes[0].texts]
+
+    assert "star" in texts
+    assert "_" not in texts
+    assert "\u2014" in texts

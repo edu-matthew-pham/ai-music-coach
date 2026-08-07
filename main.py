@@ -68,6 +68,14 @@ with gr.Blocks(
         value="1 1 1 1 1 1 2"
     )
 
+    lyric_input = gr.Textbox(
+        label="Lyrics (optional)",
+        value="Twin- kle twin- kle lit- tle star",
+        info="One syllable per note. A trailing hyphen "
+             "joins a word across notes, _ holds a "
+             "syllable through another note."
+    )
+
     with gr.Row():
 
         key_input = gr.Dropdown(
@@ -258,7 +266,8 @@ with gr.Blocks(
         fn=load_twinkle_phrase,
         outputs=[
             pitch_input,
-            duration_input
+            duration_input,
+            lyric_input
         ]
     )
 
@@ -324,7 +333,8 @@ with gr.Blocks(
             pitch_input,
             duration_input,
             bpm_input,
-            octave_input
+            octave_input,
+            lyric_input
         ],
         outputs=[
             feedback_output,

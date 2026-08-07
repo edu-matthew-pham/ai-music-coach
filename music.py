@@ -150,6 +150,37 @@ def describe_pitch(pitch):
     return f"{pitch.note}({round(pitch.cents):+d})"
 
 
+def read_lyrics(lyric_text, note_count):
+    """
+    Turn a lyrics textbox into one syllable per note.
+
+    The notation follows engraving convention, as used by
+    MuseScore and printed music:
+
+        Twin- kle twin- kle lit- tle star
+
+    A trailing hyphen means the word continues on the next
+    note. An underscore means the previous syllable is held
+    through this note (a melisma), and is shown as nothing.
+
+    An empty box means no lyrics, which is always allowed.
+    """
+
+    if lyric_text is None or lyric_text.split() == []:
+        return None
+
+    syllables = lyric_text.split()
+
+    if len(syllables) != note_count:
+        raise MusicInputError(
+            f"There are {note_count} notes but "
+            f"{len(syllables)} syllables. Each note needs "
+            f"one syllable, or _ to hold the previous one."
+        )
+
+    return syllables
+
+
 def read_music(pitch_text, duration_text):
     """
     Turn textbox input into Python lists.
@@ -534,7 +565,8 @@ def analyse_performance(
     pitch_text,
     duration_text,
     bpm,
-    transpose=0
+    transpose=0,
+    lyric_text=""
 ):
     """
     Compare a recording against the target music.
@@ -588,6 +620,11 @@ def analyse_performance(
             describe_comparison(comparison)
         )
 
+    lyrics = read_lyrics(
+        lyric_text,
+        len(pitches)
+    )
+
     trace = trace_performance(audio)
 
     performance_plot = make_performance_plot(
@@ -595,7 +632,8 @@ def analyse_performance(
         durations,
         bpm,
         trace,
-        transpose
+        transpose,
+        lyrics
     )
 
     return (
@@ -678,4 +716,8 @@ def load_twinkle_phrase():
         "1 1 1 1 1 1 2"
     )
 
-    return pitches, durations
+    lyrics = (
+        "Twin- kle twin- kle lit- tle star"
+    )
+
+    return pitches, durations, lyrics

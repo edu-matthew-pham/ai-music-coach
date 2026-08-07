@@ -255,3 +255,34 @@ def test_octave_choice_defaults_to_no_shift():
     from music import read_octave_choice
 
     assert read_octave_choice(None) == 0
+
+
+def test_lyrics_are_optional():
+    from music import read_lyrics
+
+    assert read_lyrics("", 7) is None
+    assert read_lyrics(None, 7) is None
+
+
+def test_lyrics_must_match_the_notes():
+    from music import read_lyrics
+
+    with pytest.raises(MusicInputError, match="7 notes but 2"):
+        read_lyrics("some words", 7)
+
+
+def test_melisma_counts_as_a_syllable_slot():
+    """
+    An underscore holds the previous syllable through a
+    note, so it fills that note's slot in the count.
+    """
+
+    from music import read_lyrics
+
+    assert read_lyrics("star _ _", 3) == ["star", "_", "_"]
+
+
+def test_hyphens_pass_through_untouched():
+    from music import read_lyrics
+
+    assert read_lyrics("Twin- kle", 2) == ["Twin-", "kle"]

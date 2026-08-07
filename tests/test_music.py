@@ -72,10 +72,11 @@ def test_play_music_rejects_unknown_mode():
 
 
 def test_load_twinkle_phrase():
-    pitches, durations = load_twinkle_phrase()
+    pitches, durations, lyrics = load_twinkle_phrase()
 
     assert pitches == "C4 C4 G4 G4 A4 A4 G4"
     assert durations == "1 1 1 1 1 1 2"
+    assert lyrics == "Twin- kle twin- kle lit- tle star"
 
 
 def test_analyse_single_note_no_pitch(monkeypatch):
