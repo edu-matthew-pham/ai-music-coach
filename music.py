@@ -232,7 +232,8 @@ def play_music(
     melody_on=True,
     harmony_on=False,
     bpm=120,
-    metronome=True
+    metronome=True,
+    harmony_choice="Third below"
 ):
     """
     Build the playback from independent layers.
@@ -273,7 +274,8 @@ def play_music(
 
         harmony = make_harmony(
             pitches,
-            key=key
+            key=key,
+            steps=read_harmony_choice(harmony_choice)
         )
 
         sample_rate, harmony_track = make_melody(
@@ -541,6 +543,31 @@ def check_transpose(transpose):
 PART_CHOICES = ["Melody", "Harmony"]
 
 
+# The intervals a harmony line can be built at, as scale
+# positions relative to the melody. More will join these:
+# sixths, octaves, and anything else a step count reaches.
+HARMONY_CHOICES = {
+    "Third below": -2,
+    "Third above": 2
+}
+
+
+def read_harmony_choice(choice):
+    """
+    Turn the chosen harmony interval into scale steps.
+    """
+
+    if choice is None:
+        return -2
+
+    if choice not in HARMONY_CHOICES:
+        raise MusicInputError(
+            f"'{choice}' is not one of the harmony options."
+        )
+
+    return HARMONY_CHOICES[choice]
+
+
 def analyse_performance(
     audio,
     pitch_text,
@@ -549,7 +576,8 @@ def analyse_performance(
     transpose=0,
     lyric_text="",
     part="Melody",
-    key="C"
+    key="C",
+    harmony_choice="Third below"
 ):
     """
     Compare a recording against the target music.
@@ -574,7 +602,11 @@ def analyse_performance(
 
     if part == "Harmony":
         check_key_fits(pitches, key)
-        pitches = make_harmony(pitches, key=key)
+        pitches = make_harmony(
+            pitches,
+            key=key,
+            steps=read_harmony_choice(harmony_choice)
+        )
 
     elif part != "Melody":
         raise MusicInputError(
@@ -653,14 +685,18 @@ GUIDE_CHOICES = [
 ]
 
 
-def part_notes(pitches, part, key):
+def part_notes(pitches, part, key, harmony_steps=-2):
     """
     The notes belonging to a part of the music.
     """
 
     if part == "Harmony":
         check_key_fits(pitches, key)
-        return make_harmony(pitches, key=key)
+        return make_harmony(
+            pitches,
+            key=key,
+            steps=harmony_steps
+        )
 
     return pitches
 
@@ -671,7 +707,8 @@ def make_practice_guide(
     bpm,
     guide_choice,
     part="Melody",
-    key="C"
+    key="C",
+    harmony_choice="Third below"
 ):
     """
     The audio that plays while a performance is recorded.
@@ -708,7 +745,10 @@ def make_practice_guide(
     elif guide_choice == "Your part":
 
         sample_rate, sound = make_melody(
-            part_notes(pitches, part, key),
+            part_notes(
+                pitches, part, key,
+                read_harmony_choice(harmony_choice)
+            ),
             durations,
             bpm
         )
@@ -718,7 +758,10 @@ def make_practice_guide(
         other = "Harmony" if part == "Melody" else "Melody"
 
         sample_rate, sound = make_melody(
-            part_notes(pitches, other, key),
+            part_notes(
+                pitches, other, key,
+                read_harmony_choice(harmony_choice)
+            ),
             durations,
             bpm
         )
@@ -746,7 +789,8 @@ def show_target_music(
     bpm,
     lyric_text="",
     key="C",
-    harmony_on=False
+    harmony_on=False,
+    harmony_choice="Third below"
 ):
     """
     Draw the target music as a score-like picture.
@@ -773,7 +817,11 @@ def show_target_music(
 
     if harmony_on:
         check_key_fits(pitches, key)
-        harmony = make_harmony(pitches, key=key)
+        harmony = make_harmony(
+            pitches,
+            key=key,
+            steps=read_harmony_choice(harmony_choice)
+        )
 
     return make_performance_plot(
         pitches,

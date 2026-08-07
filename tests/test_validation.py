@@ -421,3 +421,43 @@ def test_guide_rejects_unknown_choice():
         make_practice_guide(
             "C4", "1", 120, "Interpretive dance", "Melody", "C"
         )
+
+
+def test_harmony_interval_choices():
+    from music import read_harmony_choice
+
+    assert read_harmony_choice("Third below") == -2
+    assert read_harmony_choice("Third above") == 2
+    assert read_harmony_choice(None) == -2
+
+
+def test_unknown_harmony_interval_is_rejected():
+    from music import read_harmony_choice
+
+    with pytest.raises(MusicInputError, match="harmony options"):
+        read_harmony_choice("Eleventh sideways")
+
+
+def test_harmony_part_can_be_judged_above():
+    """
+    A performance of the third above is judged against the
+    third above.
+    """
+
+    from music import analyse_performance, part_notes
+
+    above = part_notes(["C4", "E4", "G4"], "Harmony", "C", 2)
+
+    audio = fake_audio_for(above, [1.0, 1.0, 1.0])
+
+    text, performance, tuning = analyse_performance(
+        audio,
+        "C4 E4 G4",
+        "1 1 1",
+        120,
+        part="Harmony",
+        key="C",
+        harmony_choice="Third above"
+    )
+
+    assert "3 of 3 notes" in text

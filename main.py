@@ -7,6 +7,7 @@ from music import (
     OCTAVE_CHOICES,
     PART_CHOICES,
     GUIDE_CHOICES,
+    HARMONY_CHOICES,
     make_practice_guide,
     show_target_music,
     play_music,
@@ -113,8 +114,13 @@ with gr.Blocks(
 
         harmony_input = gr.Checkbox(
             value=False,
-            label="Harmony",
-            info="A third below, in the chosen key."
+            label="Harmony"
+        )
+
+        harmony_choice_input = gr.Dropdown(
+            list(HARMONY_CHOICES),
+            value="Third below",
+            label="Harmony interval"
         )
 
         metronome_input = gr.Checkbox(
@@ -290,7 +296,8 @@ with gr.Blocks(
             melody_input,
             harmony_input,
             bpm_input,
-            metronome_input
+            metronome_input,
+            harmony_choice_input
         ],
         outputs=generated_audio
     ).then(
@@ -301,7 +308,8 @@ with gr.Blocks(
             bpm_input,
             lyric_input,
             key_input,
-            harmony_input
+            harmony_input,
+            harmony_choice_input
         ],
         outputs=target_plot
     )
@@ -329,7 +337,8 @@ with gr.Blocks(
             bpm_input,
             guide_choice,
             part_input,
-            key_input
+            key_input,
+            harmony_choice_input
         ],
         outputs=guide_audio
     )
@@ -366,7 +375,8 @@ with gr.Blocks(
             octave_input,
             lyric_input,
             part_input,
-            key_input
+            key_input,
+            harmony_choice_input
         ],
         outputs=[
             feedback_output,
