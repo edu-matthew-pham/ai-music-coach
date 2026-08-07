@@ -262,7 +262,7 @@ def test_practice_guide_can_include_the_melody():
         "C4 C4",
         "1 1",
         120,
-        "Melody"
+        "Your part"
     )
 
     assert len(audio) == 6 * 4000

@@ -645,11 +645,33 @@ def analyse_performance(
     )
 
 
+GUIDE_CHOICES = [
+    "Clicks",
+    "Your part",
+    "The other part",
+    "No guide"
+]
+
+
+def part_notes(pitches, part, key):
+    """
+    The notes belonging to a part of the music.
+    """
+
+    if part == "Harmony":
+        check_key_fits(pitches, key)
+        return make_harmony(pitches, key=key)
+
+    return pitches
+
+
 def make_practice_guide(
     pitch_text,
     duration_text,
     bpm,
-    guide_choice
+    guide_choice,
+    part="Melody",
+    key="C"
 ):
     """
     The audio that plays while a performance is recorded.
@@ -658,6 +680,11 @@ def make_practice_guide(
     to begin playing after recording starts, the player
     still gets a clear run of clicks before beat one. That
     delay lands harmlessly inside the count-in.
+
+    The guide knows which part is being performed. Your
+    part plays the line being sung, for learning it. The
+    other part plays the opposite line, the way harmony is
+    usually practised: singing against the melody.
     """
 
     if guide_choice == "No guide":
@@ -678,27 +705,35 @@ def make_practice_guide(
 
         sound = [0.0] * int(total_seconds * sample_rate)
 
-        sound = add_metronome(
-            sound,
-            sum(durations),
-            bpm,
-            sample_rate
-        )
-
-    else:
+    elif guide_choice == "Your part":
 
         sample_rate, sound = make_melody(
-            pitches,
+            part_notes(pitches, part, key),
             durations,
             bpm
         )
 
-        sound = add_metronome(
-            sound,
-            sum(durations),
-            bpm,
-            sample_rate
+    elif guide_choice == "The other part":
+
+        other = "Harmony" if part == "Melody" else "Melody"
+
+        sample_rate, sound = make_melody(
+            part_notes(pitches, other, key),
+            durations,
+            bpm
         )
+
+    else:
+        raise MusicInputError(
+            f"'{guide_choice}' is not a guide option."
+        )
+
+    sound = add_metronome(
+        sound,
+        sum(durations),
+        bpm,
+        sample_rate
+    )
 
     sound = make_count_in(bpm, sample_rate) + list(sound)
 

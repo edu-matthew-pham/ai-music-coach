@@ -6,6 +6,7 @@ from music import (
     MusicInputError,
     OCTAVE_CHOICES,
     PART_CHOICES,
+    GUIDE_CHOICES,
     make_practice_guide,
     show_target_music,
     play_music,
@@ -160,16 +161,21 @@ with gr.Blocks(
         "recording."
     )
 
+    part_input = gr.Radio(
+        PART_CHOICES,
+        value="Melody",
+        label="Part you are performing",
+        info="Sets what the guide plays and what your "
+             "recording is judged against."
+    )
+
     guide_choice = gr.Radio(
-        [
-            "Clicks",
-            "Melody",
-            "No guide"
-        ],
+        GUIDE_CHOICES,
         value="Clicks",
         label="Guide while recording",
-        info="Clicks keeps the recording clean. Melody "
-             "plays the tune to sing along with."
+        info="Clicks keeps the recording clean. The other "
+             "part plays the opposite line, for practising "
+             "harmony against the melody."
     )
 
     guide_audio = gr.Audio(
@@ -233,14 +239,6 @@ with gr.Blocks(
     gr.Markdown(
         "Play the target music above, record yourself "
         "playing it, then compare the two."
-    )
-
-    part_input = gr.Radio(
-        PART_CHOICES,
-        value="Melody",
-        label="Part performed",
-        info="Which line you sang or played. Harmony "
-             "judges you against the harmony notes."
     )
 
     octave_input = gr.Dropdown(
@@ -317,13 +315,21 @@ with gr.Blocks(
         outputs=harmony_output
     )
 
+    # Clearing before setting forces a fresh change on the
+    # guide player every time, so recording again replays
+    # the guide rather than sitting silent on old audio.
     recorded_audio.start_recording(
+        fn=lambda: None,
+        outputs=guide_audio
+    ).then(
         fn=guard(make_practice_guide),
         inputs=[
             pitch_input,
             duration_input,
             bpm_input,
-            guide_choice
+            guide_choice,
+            part_input,
+            key_input
         ],
         outputs=guide_audio
     )

@@ -370,3 +370,54 @@ def test_harmony_part_checks_the_key():
             part="Harmony",
             key="D"
         )
+
+
+def test_guide_plays_your_part():
+    """
+    Practising the harmony with Your part selected plays
+    the harmony line, not the melody.
+    """
+
+    from music import make_practice_guide
+
+    sample_rate, your_part = make_practice_guide(
+        "C4 E4", "1 1", 120, "Your part", "Harmony", "C"
+    )
+
+    sample_rate, melody = make_practice_guide(
+        "C4 E4", "1 1", 120, "Your part", "Melody", "C"
+    )
+
+    import numpy as np
+
+    assert not np.allclose(your_part, melody)
+
+
+def test_guide_other_part_flips_the_selection():
+    """
+    Singing the harmony against the melody, and singing
+    the melody against the harmony, hear each other's line.
+    """
+
+    from music import make_practice_guide
+
+    import numpy as np
+
+    sample_rate, heard_by_harmonist = make_practice_guide(
+        "C4 E4", "1 1", 120, "The other part", "Harmony", "C"
+    )
+
+    sample_rate, own_melody = make_practice_guide(
+        "C4 E4", "1 1", 120, "Your part", "Melody", "C"
+    )
+
+    assert np.allclose(heard_by_harmonist, own_melody)
+
+
+def test_guide_rejects_unknown_choice():
+    from music import make_practice_guide
+
+    with pytest.raises(MusicInputError, match="guide option"):
+        make_practice_guide(
+            "C4", "1", 120, "Interpretive dance", "Melody", "C"
+        )
