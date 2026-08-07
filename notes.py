@@ -6,7 +6,13 @@ Shared musical note conversions.
 Every other module gets its note names, MIDI numbers and
 frequencies from here, so there is only one place where
 the twelve semitones are ever written down.
+
+MIDI numbers are the common language. A decimal MIDI number
+carries tuning information that a note name cannot: 60.0 is
+middle C exactly, while 60.4 is middle C played sharp.
 """
+
+import math
 
 
 NOTE_SEMITONES = {
@@ -28,6 +34,16 @@ NOTE_SEMITONES = {
     "Bb": 10,
     "B": 11
 }
+
+
+# The twelve pitch names used when a MIDI number has to be
+# turned back into text. Sharps are chosen because that is
+# what most detectors report, but this is only a spelling
+# decision: comparison always happens on MIDI numbers.
+SHARP_NAMES = [
+    "C", "C#", "D", "D#", "E", "F",
+    "F#", "G", "G#", "A", "A#", "B"
+]
 
 
 def split_note(note):
@@ -61,6 +77,21 @@ def note_to_midi(note):
     return (octave + 1) * 12 + semitone
 
 
+def midi_to_note(midi_number):
+    """
+    Convert a MIDI number into a note name such as C4.
+
+    Decimal MIDI numbers are rounded to the nearest note.
+    """
+
+    midi_number = int(round(midi_number))
+
+    pitch = SHARP_NAMES[midi_number % 12]
+    octave = (midi_number // 12) - 1
+
+    return pitch + str(octave)
+
+
 def midi_to_frequency(midi_number):
     """
     Convert a MIDI number into a frequency in hertz.
@@ -72,6 +103,17 @@ def midi_to_frequency(midi_number):
     return 440 * (2 ** ((midi_number - 69) / 12))
 
 
+def frequency_to_midi(frequency):
+    """
+    Convert a frequency in hertz into a MIDI number.
+
+    The result is a decimal, so 60.4 means slightly
+    sharper than middle C.
+    """
+
+    return 69 + 12 * math.log2(frequency / 440)
+
+
 def note_to_frequency(note):
     """
     Convert a note such as C4, F#4 or Bb3 into a frequency.
@@ -80,3 +122,16 @@ def note_to_frequency(note):
     return midi_to_frequency(
         note_to_midi(note)
     )
+
+
+def cents_from_nearest_note(midi_number):
+    """
+    How far a decimal MIDI number sits from the nearest note.
+
+    One semitone is 100 cents, so the result is always
+    between -50 and +50. Positive means sharp.
+    """
+
+    difference = midi_number - round(midi_number)
+
+    return difference * 100

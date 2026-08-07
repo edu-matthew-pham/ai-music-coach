@@ -19,6 +19,45 @@ from instrument_detector import (
 )
 
 
+# How far out of tune a note may be before it is worth
+# mentioning. Around 15 cents is roughly where a listener
+# starts to notice on a sustained note.
+TUNING_TOLERANCE_CENTS = 15
+
+
+def describe_tuning(pitch):
+    """
+    Turn a Pitch into a short readable tuning comment.
+    """
+
+    if pitch.is_in_tune(TUNING_TOLERANCE_CENTS):
+        return "in tune"
+
+    cents = round(pitch.cents)
+
+    if cents > 0:
+        return f"{cents} cents sharp"
+
+    return f"{abs(cents)} cents flat"
+
+
+def describe_pitch(pitch):
+    """
+    Format one detected pitch for display.
+
+    Notes that are close enough are shown as just a name,
+    so that only the notes worth attention are annotated.
+    """
+
+    if pitch is None:
+        return "?"
+
+    if pitch.is_in_tune(TUNING_TOLERANCE_CENTS):
+        return pitch.note
+
+    return f"{pitch.note}({round(pitch.cents):+d})"
+
+
 def read_music(pitch_text, duration_text):
     """
     Turn textbox input into Python lists.
@@ -47,17 +86,19 @@ def play_music(
     playback_mode,
     bpm
 ):
+    """
+    Generate melody, harmony, or both.
+    """
+
     pitches, durations = read_music(
         pitch_text,
         duration_text
     )
 
-    print("MODE:", playback_mode)
-    print("MELODY:", pitches)
-
     bpm = float(bpm)
 
     if playback_mode == "Melody":
+
         sample_rate, sound = make_melody(
             pitches,
             durations,
@@ -65,12 +106,11 @@ def play_music(
         )
 
     elif playback_mode == "Harmony":
+
         harmony = make_harmony(
             pitches,
             key=key
         )
-
-        print("HARMONY:", harmony)
 
         sample_rate, sound = make_melody(
             harmony,
@@ -79,12 +119,11 @@ def play_music(
         )
 
     elif playback_mode == "Melody + Harmony":
+
         harmony = make_harmony(
             pitches,
             key=key
         )
-
-        print("HARMONY:", harmony)
 
         sample_rate, sound = make_layered_melody(
             pitches,
@@ -126,12 +165,15 @@ def analyse_single_note(audio):
     Detect the main pitch in a recording.
     """
 
-    note = detect_single_note(audio)
+    pitch = detect_single_note(audio)
 
-    if note is None:
+    if pitch is None:
         return "No clear pitch detected."
 
-    return f"Detected note: {note}"
+    return (
+        f"Detected note: {pitch.note} "
+        f"({describe_tuning(pitch)})"
+    )
 
 
 def analyse_sequence(
@@ -150,7 +192,7 @@ def analyse_sequence(
     for duration in duration_strings:
         durations.append(float(duration))
 
-    notes = detect_sequence(
+    pitches = detect_sequence(
         audio,
         durations,
         float(bpm)
@@ -158,13 +200,10 @@ def analyse_sequence(
 
     display_notes = []
 
-    for note in notes:
-
-        if note is None:
-            display_notes.append("?")
-
-        else:
-            display_notes.append(note)
+    for pitch in pitches:
+        display_notes.append(
+            describe_pitch(pitch)
+        )
 
     return " ".join(display_notes)
 

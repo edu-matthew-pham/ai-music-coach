@@ -1,7 +1,38 @@
 # pitch_detector.py
 
+from typing import NamedTuple
+
 import numpy as np
 import librosa
+
+from notes import (
+    frequency_to_midi,
+    midi_to_note,
+    cents_from_nearest_note
+)
+
+
+class Pitch(NamedTuple):
+    """
+    One detected pitch.
+
+    frequency  the measured frequency in hertz
+    midi       the measured pitch as a decimal MIDI number
+    note       the nearest note name, such as C4
+    cents      how far from that note, between -50 and +50
+    """
+
+    frequency: float
+    midi: float
+    note: str
+    cents: float
+
+    def is_in_tune(self, tolerance=15):
+        """
+        Whether the pitch is close enough to count as correct.
+        """
+
+        return abs(self.cents) <= tolerance
 
 
 def prepare_audio(sound):
@@ -27,6 +58,8 @@ def prepare_audio(sound):
 def detect_pitch(sound, sample_rate):
     """
     Detect the main musical pitch in one chunk of audio.
+
+    Returns a Pitch, or None when nothing musical is found.
     """
 
     frequencies, voiced, probabilities = librosa.pyin(
@@ -42,21 +75,20 @@ def detect_pitch(sound, sample_rate):
         return None
 
     # Median reduces the effect of occasional incorrect frames.
-    frequency = np.median(
-        detected_frequencies
+    frequency = float(
+        np.median(detected_frequencies)
     )
 
-    # Convert frequency to the nearest musical note.
-    midi_number = round(
-        float(librosa.hz_to_midi(frequency))
-    )
+    # Keep the decimal MIDI number. Rounding it away here
+    # would throw out the tuning information.
+    midi = frequency_to_midi(frequency)
 
-    note = librosa.midi_to_note(
-        midi_number,
-        unicode=False
+    return Pitch(
+        frequency=frequency,
+        midi=midi,
+        note=midi_to_note(midi),
+        cents=cents_from_nearest_note(midi)
     )
-
-    return note
 
 
 def detect_single_note(audio):
@@ -117,6 +149,8 @@ def detect_sequence(
     Detect several notes from a completed recording.
 
     Expected durations tell us where each note should occur.
+    Returns a list of Pitch objects, using None for any
+    window where no pitch could be found.
     """
 
     if audio is None:
@@ -171,12 +205,12 @@ def detect_sequence(
             detected_notes.append(None)
 
         else:
-            note = detect_pitch(
+            pitch = detect_pitch(
                 middle_sound,
                 sample_rate
             )
 
-            detected_notes.append(note)
+            detected_notes.append(pitch)
 
         current_time = end_time
 

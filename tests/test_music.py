@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from pitch_detector import Pitch
 from music import (
     read_music,
     play_music,
@@ -88,25 +89,64 @@ def test_analyse_single_note_no_pitch(monkeypatch):
     assert result == "No clear pitch detected."
 
 
-def test_analyse_single_note(monkeypatch):
+def fake_pitch(note, cents=0.0):
+    """
+    Build a Pitch without going near any audio.
+    """
+
+    return Pitch(
+        frequency=440.0,
+        midi=69.0,
+        note=note,
+        cents=cents
+    )
+
+
+def test_analyse_single_note_in_tune(monkeypatch):
     monkeypatch.setattr(
         "music.detect_single_note",
-        lambda audio: "A4"
+        lambda audio: fake_pitch("A4")
     )
 
     result = analyse_single_note(
         "fake audio"
     )
 
-    assert result == "Detected note: A4"
+    assert result == "Detected note: A4 (in tune)"
+
+
+def test_analyse_single_note_sharp(monkeypatch):
+    monkeypatch.setattr(
+        "music.detect_single_note",
+        lambda audio: fake_pitch("A4", cents=32.0)
+    )
+
+    result = analyse_single_note(
+        "fake audio"
+    )
+
+    assert result == "Detected note: A4 (32 cents sharp)"
+
+
+def test_analyse_single_note_flat(monkeypatch):
+    monkeypatch.setattr(
+        "music.detect_single_note",
+        lambda audio: fake_pitch("A4", cents=-27.0)
+    )
+
+    result = analyse_single_note(
+        "fake audio"
+    )
+
+    assert result == "Detected note: A4 (27 cents flat)"
 
 
 def test_analyse_sequence(monkeypatch):
     monkeypatch.setattr(
         "music.detect_sequence",
         lambda audio, durations, bpm: [
-            "C4",
-            "G4",
+            fake_pitch("C4"),
+            fake_pitch("G4", cents=38.0),
             None
         ]
     )
@@ -117,7 +157,9 @@ def test_analyse_sequence(monkeypatch):
         120
     )
 
-    assert result == "C4 G4 ?"
+    # In-tune notes stay plain, so only the notes worth
+    # attention carry an annotation.
+    assert result == "C4 G4(+38) ?"
 
 
 def test_analyse_instrument(monkeypatch):

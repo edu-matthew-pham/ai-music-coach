@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from notes import note_to_midi
 from playback import make_melody
 from pitch_detector import detect_sequence
 
@@ -22,25 +23,40 @@ def round_trip(pitches, durations, bpm=120, sample_rate=8000):
 
     audio = (rate, np.array(melody))
 
-    return detect_sequence(
+    detected = detect_sequence(
         audio,
         durations,
         bpm
     )
+
+    # Compare on MIDI numbers rather than names, so that
+    # a different spelling of the same pitch still matches.
+    return [
+        None if pitch is None else round(pitch.midi)
+        for pitch in detected
+    ]
+
+
+def as_midi(pitches):
+    """
+    The MIDI numbers we expect a melody to come back as.
+    """
+
+    return [note_to_midi(pitch) for pitch in pitches]
 
 
 def test_round_trip_simple_triad():
     pitches = ["C4", "E4", "G4"]
     durations = [1.0, 1.0, 1.0]
 
-    assert round_trip(pitches, durations) == pitches
+    assert round_trip(pitches, durations) == as_midi(pitches)
 
 
 def test_round_trip_twinkle_phrase():
     pitches = ["C4", "C4", "G4", "G4", "A4", "A4", "G4"]
     durations = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0]
 
-    assert round_trip(pitches, durations) == pitches
+    assert round_trip(pitches, durations) == as_midi(pitches)
 
 
 def test_round_trip_mixed_durations():
@@ -52,7 +68,7 @@ def test_round_trip_mixed_durations():
     pitches = ["C4", "E4", "G4"]
     durations = [2.0, 0.5, 1.0]
 
-    assert round_trip(pitches, durations) == pitches
+    assert round_trip(pitches, durations) == as_midi(pitches)
 
 
 @pytest.mark.parametrize("bpm", [60, 120, 180])
@@ -60,7 +76,7 @@ def test_round_trip_survives_tempo_changes(bpm):
     pitches = ["C4", "E4", "G4"]
     durations = [1.0, 1.0, 1.0]
 
-    assert round_trip(pitches, durations, bpm=bpm) == pitches
+    assert round_trip(pitches, durations, bpm=bpm) == as_midi(pitches)
 
 
 @pytest.mark.parametrize(
@@ -79,7 +95,7 @@ def test_round_trip_across_the_register(pitches):
 
     durations = [1.0, 1.0, 1.0]
 
-    assert round_trip(pitches, durations) == pitches
+    assert round_trip(pitches, durations) == as_midi(pitches)
 
 
 def test_round_trip_with_short_notes():
@@ -93,4 +109,4 @@ def test_round_trip_with_short_notes():
     pitches = ["C4", "E4", "G4"]
     durations = [0.25, 0.25, 0.25]
 
-    assert round_trip(pitches, durations) == pitches
+    assert round_trip(pitches, durations) == as_midi(pitches)
