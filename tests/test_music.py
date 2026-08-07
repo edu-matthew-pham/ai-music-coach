@@ -54,8 +54,9 @@ def test_play_music_returns_gradio_audio():
     assert sample_rate == 8000
     assert isinstance(audio, np.ndarray)
 
-    # Two beats at 120 BPM = one second.
-    assert len(audio) == 8000
+    # Two beats of music plus the four beat count-in makes
+    # six beats. At 120 BPM that is three seconds.
+    assert len(audio) == 24000
 
 
 def test_play_music_rejects_unknown_mode():

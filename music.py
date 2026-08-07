@@ -4,7 +4,10 @@ import numpy as np
 
 from playback import (
     make_melody,
-    make_layered_melody
+    make_layered_melody,
+    make_count_in,
+    add_metronome,
+    COUNT_IN_BEATS
 )
 
 from harmony import make_harmony, keys_containing
@@ -192,10 +195,15 @@ def play_music(
     duration_text,
     key,
     playback_mode,
-    bpm
+    bpm,
+    metronome=True
 ):
     """
     Generate melody, harmony, or both.
+
+    Every playback starts with a count-in, so a player
+    knows exactly when the music begins. The metronome
+    continues clicking under the music unless turned off.
     """
 
     pitches, durations = read_music(
@@ -248,6 +256,19 @@ def play_music(
         raise MusicInputError(
             f"Unknown playback mode: {playback_mode}"
         )
+
+    if metronome:
+        sound = add_metronome(
+            sound,
+            sum(durations),
+            bpm,
+            sample_rate
+        )
+
+    # The count-in always plays. It is how the player knows
+    # when to come in, which matters whether or not they
+    # want clicks under the music itself.
+    sound = make_count_in(bpm, sample_rate) + list(sound)
 
     audio_data = np.array(
         sound,

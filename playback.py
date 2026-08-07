@@ -5,6 +5,109 @@ import math
 from notes import note_to_frequency
 
 
+# How many beats of clicks are played before the music, so
+# a player knows when to come in. Written as beats rather
+# than clicks so that time signatures can change it later.
+COUNT_IN_BEATS = 4
+
+# The click itself: a short, high tick. High enough not to
+# be mistaken for a note, short enough not to cover one.
+# At extreme tempos a fixed length would outgrow the beat,
+# so it is capped at a tenth of a beat.
+CLICK_FREQUENCY = 1500
+CLICK_SECONDS = 0.03
+CLICK_SHARE_OF_BEAT = 0.1
+
+
+def make_click(bpm=120, sample_rate=8000, loud=1.0):
+    """
+    One metronome click filling one beat.
+
+    The click sounds at the start, and the rest of the beat
+    is silence.
+    """
+
+    seconds_per_beat = 60 / bpm
+
+    click_seconds = min(
+        CLICK_SECONDS,
+        seconds_per_beat * CLICK_SHARE_OF_BEAT
+    )
+
+    click_samples = int(click_seconds * sample_rate)
+    beat_samples = int(seconds_per_beat * sample_rate)
+
+    sound = []
+
+    for sample_number in range(click_samples):
+        time = sample_number / sample_rate
+
+        # Fade the click out so it ticks rather than beeps.
+        fade = 1 - (sample_number / click_samples)
+
+        value = math.sin(
+            2 * math.pi * CLICK_FREQUENCY * time
+        )
+
+        sound.append(value * fade * loud)
+
+    for sample_number in range(beat_samples - click_samples):
+        sound.append(0)
+
+    return sound
+
+
+def make_count_in(bpm=120, sample_rate=8000):
+    """
+    The clicks played before the music starts.
+    """
+
+    sound = []
+
+    for beat in range(COUNT_IN_BEATS):
+        sound.extend(
+            make_click(bpm, sample_rate)
+        )
+
+    return sound
+
+
+def add_metronome(sound, total_beats, bpm=120, sample_rate=8000):
+    """
+    Lay quiet clicks under an existing piece of music.
+
+    The clicks are softer than the count-in, so they keep
+    time without competing with the notes.
+    """
+
+    combined = list(sound)
+
+    seconds_per_beat = 60 / bpm
+
+    for beat in range(int(total_beats)):
+
+        start = int(
+            beat * seconds_per_beat * sample_rate
+        )
+
+        click = make_click(
+            bpm,
+            sample_rate,
+            loud=0.3
+        )
+
+        for offset in range(len(click)):
+
+            position = start + offset
+
+            if position >= len(combined):
+                break
+
+            combined[position] += click[offset]
+
+    return combined
+
+
 def make_note(pitch, beats, bpm=120, sample_rate=8000):
     """
     Turn one musical note into a list of sound values.

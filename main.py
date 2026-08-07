@@ -100,7 +100,15 @@ with gr.Blocks(
         ],
         value="Melody",
         label="Playback Mode",
-        info="Choose a mode, then generate the audio below."
+        info="Choose a mode, then generate the audio below. "
+             "Playback starts with a four beat count-in."
+    )
+
+    metronome_input = gr.Checkbox(
+        value=True,
+        label="Metronome",
+        info="Quiet clicks under the music to keep time. "
+             "The count-in always plays."
     )
 
     with gr.Row():
@@ -228,7 +236,8 @@ with gr.Blocks(
             duration_input,
             key_input,
             playback_mode,
-            bpm_input
+            bpm_input,
+            metronome_input
         ],
         outputs=generated_audio
     )
