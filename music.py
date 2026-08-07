@@ -703,6 +703,41 @@ def make_practice_guide(
     return sample_rate, np.array(sound, dtype=np.float32)
 
 
+def show_target_music(
+    pitch_text,
+    duration_text,
+    bpm,
+    lyric_text=""
+):
+    """
+    Draw the target music as a score-like picture.
+
+    The same picture the comparison draws, without a
+    performance on it: something to study before singing.
+    """
+
+    pitches, durations = read_music(
+        pitch_text,
+        duration_text
+    )
+
+    bpm = check_bpm(bpm)
+
+    lyrics = read_lyrics(
+        lyric_text,
+        len(pitches)
+    )
+
+    return make_performance_plot(
+        pitches,
+        durations,
+        bpm,
+        trace=None,
+        lyrics=lyrics,
+        title="The target music"
+    )
+
+
 def load_twinkle_phrase():
     """
     Return the opening phrase of Twinkle Twinkle Little Star.

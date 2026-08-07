@@ -38,7 +38,8 @@ def make_performance_plot(
     bpm,
     trace,
     transpose=0,
-    lyrics=None
+    lyrics=None,
+    title="What you sang, over what was written"
 ):
     """
     Draw what was sung over what was written.
@@ -153,7 +154,7 @@ def make_performance_plot(
     )
 
     axes.set_xlabel("seconds")
-    axes.set_title("What you sang, over what was written")
+    axes.set_title(title)
 
     axes.spines["top"].set_visible(False)
     axes.spines["right"].set_visible(False)

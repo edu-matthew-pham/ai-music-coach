@@ -293,3 +293,36 @@ def test_practice_guide_validates_its_input():
 
     with pytest.raises(MusicInputError):
         make_practice_guide("C4 banana", "1 1", 120, "Clicks")
+
+
+def test_show_target_music_draws_without_a_performance():
+    from music import show_target_music
+
+    figure = show_target_music(
+        "C4 E4",
+        "1 1",
+        120,
+        "la la"
+    )
+
+    axes = figure.axes[0]
+
+    assert len(axes.collections) == 2
+    assert len(axes.lines) == 0
+
+    texts = [t.get_text() for t in axes.texts]
+
+    assert "la" in texts
+
+
+def test_show_target_music_works_without_lyrics():
+    from music import show_target_music
+
+    figure = show_target_music(
+        "C4 E4",
+        "1 1",
+        120,
+        ""
+    )
+
+    assert len(figure.axes[0].collections) == 2

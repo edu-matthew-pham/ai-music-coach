@@ -6,6 +6,7 @@ from music import (
     MusicInputError,
     OCTAVE_CHOICES,
     make_practice_guide,
+    show_target_music,
     play_music,
     show_harmony,
     analyse_single_note,
@@ -135,6 +136,10 @@ with gr.Blocks(
 
     generated_audio = gr.Audio(
         label="Generated Music"
+    )
+
+    target_plot = gr.Plot(
+        label="Target Music"
     )
 
     harmony_output = gr.Textbox(
@@ -282,6 +287,15 @@ with gr.Blocks(
             metronome_input
         ],
         outputs=generated_audio
+    ).then(
+        fn=guard(show_target_music),
+        inputs=[
+            pitch_input,
+            duration_input,
+            bpm_input,
+            lyric_input
+        ],
+        outputs=target_plot
     )
 
     harmony_button.click(
