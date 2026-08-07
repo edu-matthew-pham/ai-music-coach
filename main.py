@@ -5,6 +5,7 @@ import gradio as gr
 from music import (
     MusicInputError,
     OCTAVE_CHOICES,
+    PART_CHOICES,
     make_practice_guide,
     show_target_music,
     play_music,
@@ -234,6 +235,14 @@ with gr.Blocks(
         "playing it, then compare the two."
     )
 
+    part_input = gr.Radio(
+        PART_CHOICES,
+        value="Melody",
+        label="Part performed",
+        info="Which line you sang or played. Harmony "
+             "judges you against the harmony notes."
+    )
+
     octave_input = gr.Dropdown(
         list(OCTAVE_CHOICES),
         value="Same octave",
@@ -349,7 +358,9 @@ with gr.Blocks(
             duration_input,
             bpm_input,
             octave_input,
-            lyric_input
+            lyric_input,
+            part_input,
+            key_input
         ],
         outputs=[
             feedback_output,

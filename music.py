@@ -537,18 +537,29 @@ def check_transpose(transpose):
     return transpose
 
 
+# Which line of the music a performance is judged against.
+PART_CHOICES = ["Melody", "Harmony"]
+
+
 def analyse_performance(
     audio,
     pitch_text,
     duration_text,
     bpm,
     transpose=0,
-    lyric_text=""
+    lyric_text="",
+    part="Melody",
+    key="C"
 ):
     """
     Compare a recording against the target music.
 
-    Returns a written summary and a tuning chart.
+    part decides which line is being performed: the melody
+    as written, or the harmony built from it. Someone
+    singing the harmony part is judged against the harmony
+    notes, not marked wrong against the melody.
+
+    Returns a written summary and two charts.
     """
 
     if audio is None:
@@ -560,6 +571,15 @@ def analyse_performance(
         pitch_text,
         duration_text
     )
+
+    if part == "Harmony":
+        check_key_fits(pitches, key)
+        pitches = make_harmony(pitches, key=key)
+
+    elif part != "Melody":
+        raise MusicInputError(
+            f"'{part}' is not a part that can be performed."
+        )
 
     bpm = check_bpm(bpm)
 
@@ -583,6 +603,11 @@ def analyse_performance(
     lines = [
         describe_summary(summarise(comparisons))
     ]
+
+    if part == "Harmony":
+        lines.append(
+            "Judged against the harmony part."
+        )
 
     if transpose != 0:
         lines.append(

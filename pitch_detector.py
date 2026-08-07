@@ -19,6 +19,16 @@ import debug
 SILENCE_THRESHOLD_DB = 30
 
 
+# The range of pitches the detector searches. The floor
+# sits at E2 so that bass and baritone voices, and low
+# harmony parts, are inside it. Below the floor a pitch
+# cannot be reported at all: the detector clamps to the
+# boundary instead, which shows up as a note pinned at
+# the very bottom of the range.
+PITCH_FLOOR = "E2"
+PITCH_CEILING = "C6"
+
+
 # How finely pyin is allowed to measure, in semitones.
 # The default of 0.1 means readings can only ever land on
 # multiples of 10 cents, which is too coarse when we are
@@ -81,8 +91,8 @@ def measure_pitch(sound, sample_rate):
 
     frequencies, voiced, probabilities = librosa.pyin(
         sound,
-        fmin=librosa.note_to_hz("C3"),
-        fmax=librosa.note_to_hz("C6"),
+        fmin=librosa.note_to_hz(PITCH_FLOOR),
+        fmax=librosa.note_to_hz(PITCH_CEILING),
         sr=sample_rate,
         resolution=PITCH_RESOLUTION
     )
@@ -152,8 +162,8 @@ def trace_pitch(sound, sample_rate):
 
     frequencies, voiced, probabilities = librosa.pyin(
         sound,
-        fmin=librosa.note_to_hz("C3"),
-        fmax=librosa.note_to_hz("C6"),
+        fmin=librosa.note_to_hz(PITCH_FLOOR),
+        fmax=librosa.note_to_hz(PITCH_CEILING),
         sr=sample_rate,
         resolution=PITCH_RESOLUTION
     )

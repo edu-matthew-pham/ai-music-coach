@@ -290,3 +290,83 @@ def test_hyphens_pass_through_untouched():
     from music import read_lyrics
 
     assert read_lyrics("Twin- kle", 2) == ["Twin-", "kle"]
+
+
+def test_harmony_part_is_judged_against_harmony_notes():
+    """
+    Someone singing the harmony line sang the right notes,
+    and must not be marked wrong against the melody.
+    """
+
+    from music import analyse_performance
+    from harmony import make_harmony
+
+    targets = "C4 E4 G4"
+
+    harmony_line = make_harmony(
+        targets.split(),
+        key="C"
+    )
+
+    audio = fake_audio_for(
+        harmony_line,
+        [1.0, 1.0, 1.0]
+    )
+
+    text, performance, tuning = analyse_performance(
+        audio,
+        targets,
+        "1 1 1",
+        120,
+        part="Harmony",
+        key="C"
+    )
+
+    assert "3 of 3 notes" in text
+    assert "harmony part" in text
+
+
+def test_melody_part_stays_the_default():
+    from music import analyse_performance
+
+    audio = fake_audio_for(
+        ["C4", "E4", "G4"],
+        [1.0, 1.0, 1.0]
+    )
+
+    text, performance, tuning = analyse_performance(
+        audio,
+        "C4 E4 G4",
+        "1 1 1",
+        120
+    )
+
+    assert "3 of 3 notes" in text
+    assert "harmony part" not in text
+
+
+def test_unknown_part_is_rejected():
+    from music import analyse_performance
+
+    with pytest.raises(MusicInputError, match="not a part"):
+        analyse_performance(
+            fake_audio_for(["C4"], [1.0]),
+            "C4",
+            "1",
+            120,
+            part="Percussion"
+        )
+
+
+def test_harmony_part_checks_the_key():
+    from music import analyse_performance
+
+    with pytest.raises(MusicInputError, match="do not all fit"):
+        analyse_performance(
+            fake_audio_for(["C4"], [1.0]),
+            "C4",
+            "1",
+            120,
+            part="Harmony",
+            key="D"
+        )

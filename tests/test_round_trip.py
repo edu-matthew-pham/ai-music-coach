@@ -175,3 +175,24 @@ def test_round_trip_survives_a_late_start(delay_seconds):
     )
 
     assert detected == as_midi(pitches)
+
+
+def test_round_trip_reaches_the_bass_register():
+    """
+    The floor sits at E2 so bass and baritone voices, and
+    harmony parts sung an octave down, can be detected.
+    This is the exact line that used to come back as
+    nothing detected and clamped notes.
+    """
+
+    pitches = ["A2", "A2", "E3", "E3", "F3", "F3", "E3"]
+    durations = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0]
+
+    assert round_trip(pitches, durations) == as_midi(pitches)
+
+
+def test_round_trip_at_the_very_bottom():
+    pitches = ["E2", "G2", "B2"]
+    durations = [1.0, 1.0, 1.0]
+
+    assert round_trip(pitches, durations) == as_midi(pitches)
