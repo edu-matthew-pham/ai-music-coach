@@ -76,7 +76,8 @@ def test_playback_checks_the_key_only_when_harmonising():
     """
 
     sample_rate, audio = play_music(
-        "C4 C4", "1 1", "D", "Melody", 120
+        "C4 C4", "1 1", "D",
+        melody_on=True, harmony_on=False, bpm=120
     )
 
     assert len(audio) > 0
@@ -84,7 +85,10 @@ def test_playback_checks_the_key_only_when_harmonising():
 
 def test_harmony_playback_rejects_an_impossible_key():
     with pytest.raises(MusicInputError, match="do not all fit"):
-        play_music("C4 C4", "1 1", "D", "Harmony", 120)
+        play_music(
+            "C4 C4", "1 1", "D",
+            melody_on=False, harmony_on=True, bpm=120
+        )
 
 
 def described(target, cents):

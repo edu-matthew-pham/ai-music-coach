@@ -173,3 +173,25 @@ def test_melisma_is_drawn_as_a_line_not_an_underscore():
     assert "star" in texts
     assert "_" not in texts
     assert "\u2014" in texts
+
+
+def test_harmony_appears_as_a_second_voice():
+    from tuning_plot import make_performance_plot
+
+    figure = make_performance_plot(
+        ["C4", "G4"],
+        [1.0, 1.0],
+        120,
+        None,
+        harmony=["A3", "E4"]
+    )
+
+    axes = figure.axes[0]
+
+    # Two melody boxes and two harmony boxes.
+    assert len(axes.collections) == 4
+
+    labels = [t.get_text() for t in axes.texts]
+
+    assert "A3" in labels
+    assert "E4" in labels

@@ -4,7 +4,7 @@ import numpy as np
 
 from playback import (
     make_melody,
-    make_layered_melody,
+    mix_tracks,
     make_count_in,
     add_metronome,
     COUNT_IN_BEATS
@@ -229,16 +229,18 @@ def play_music(
     pitch_text,
     duration_text,
     key,
-    playback_mode,
-    bpm,
+    melody_on=True,
+    harmony_on=False,
+    bpm=120,
     metronome=True
 ):
     """
-    Generate melody, harmony, or both.
+    Build the playback from independent layers.
 
-    Every playback starts with a count-in, so a player
-    knows exactly when the music begins. The metronome
-    continues clicking under the music unless turned off.
+    Melody, harmony and metronome are separate tracks,
+    each switched on or off, mixed together at the end.
+    Everything off still clicks, so the result is never
+    silence that looks like a failure.
     """
 
     pitches, durations = read_music(
@@ -248,15 +250,24 @@ def play_music(
 
     bpm = check_bpm(bpm)
 
-    if playback_mode == "Melody":
+    sample_rate = 8000
 
-        sample_rate, sound = make_melody(
+    total_seconds = sum(durations) * 60 / bpm
+    total_samples = int(total_seconds * sample_rate)
+
+    layers = []
+
+    if melody_on:
+
+        sample_rate, melody_track = make_melody(
             pitches,
             durations,
             bpm
         )
 
-    elif playback_mode == "Harmony":
+        layers.append(melody_track)
+
+    if harmony_on:
 
         check_key_fits(pitches, key)
 
@@ -265,67 +276,33 @@ def play_music(
             key=key
         )
 
-        sample_rate, sound = make_melody(
+        sample_rate, harmony_track = make_melody(
             harmony,
             durations,
             bpm
         )
 
-    elif playback_mode == "Melody + Harmony":
+        layers.append(harmony_track)
 
-        check_key_fits(pitches, key)
+    if len(layers) == 0:
+        sound = [0.0] * total_samples
 
-        harmony = make_harmony(
-            pitches,
-            key=key
-        )
-
-        sample_rate, sound = make_layered_melody(
-            pitches,
-            harmony,
-            durations,
-            bpm
-        )
-
-    elif playback_mode == "Guide only":
-
-        # No notes at all: just the length of the music,
-        # so the count-in and metronome mark time while
-        # the player performs from memory. This keeps the
-        # recording free of any reference melody from the
-        # speakers.
-        sample_rate = 8000
-
-        total_seconds = (
-            sum(durations) * 60 / bpm
-        )
-
-        sound = [0.0] * int(
-            total_seconds * sample_rate
-        )
+    elif len(layers) == 1:
+        sound = layers[0]
 
     else:
-        raise MusicInputError(
-            f"Unknown playback mode: {playback_mode}"
-        )
+        sound = mix_tracks(layers[0], layers[1])
 
-    # A guide with no clicks and no notes would be pure
-    # silence, which reads as the app having failed. The
-    # guide keeps its clicks regardless of the toggle.
-    if metronome or playback_mode == "Guide only":
+    # The metronome always clicks when there are no notes,
+    # so switching everything off gives a click track for
+    # practising to rather than silence.
+    if metronome or len(layers) == 0:
         sound = add_metronome(
             sound,
             sum(durations),
             bpm,
             sample_rate
         )
-
-    # The count-in belongs to performing, not listening,
-    # which is how every recording app works: play starts
-    # the music at once, record counts you in. Guide only
-    # is this app's performing mode.
-    if playback_mode == "Guide only":
-        sound = make_count_in(bpm, sample_rate) + list(sound)
 
     audio_data = np.array(
         sound,
@@ -707,13 +684,17 @@ def show_target_music(
     pitch_text,
     duration_text,
     bpm,
-    lyric_text=""
+    lyric_text="",
+    key="C",
+    harmony_on=False
 ):
     """
     Draw the target music as a score-like picture.
 
     The same picture the comparison draws, without a
     performance on it: something to study before singing.
+    When the harmony is switched on it appears as a second
+    voice, the way a duet is printed.
     """
 
     pitches, durations = read_music(
@@ -728,13 +709,20 @@ def show_target_music(
         len(pitches)
     )
 
+    harmony = None
+
+    if harmony_on:
+        check_key_fits(pitches, key)
+        harmony = make_harmony(pitches, key=key)
+
     return make_performance_plot(
         pitches,
         durations,
         bpm,
         trace=None,
         lyrics=lyrics,
-        title="The target music"
+        title="The target music",
+        harmony=harmony
     )
 
 

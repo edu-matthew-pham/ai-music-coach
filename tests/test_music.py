@@ -48,8 +48,9 @@ def test_play_music_returns_gradio_audio():
         "C4 C4",
         "1 1",
         "C",
-        "Melody",
-        120
+        melody_on=True,
+        harmony_on=False,
+        bpm=120
     )
 
     assert sample_rate == 8000
@@ -60,15 +61,54 @@ def test_play_music_returns_gradio_audio():
     assert len(audio) == 8000
 
 
-def test_play_music_rejects_unknown_mode():
-    with pytest.raises(ValueError):
-        play_music(
-            "C4",
-            "1",
-            "C",
-            "Unknown",
-            120
-        )
+def test_everything_off_still_clicks():
+    """
+    Melody and harmony both off gives a click track, not
+    silence that looks like the app failed.
+    """
+
+    sample_rate, audio = play_music(
+        "C4 C4",
+        "1 1",
+        "C",
+        melody_on=False,
+        harmony_on=False,
+        bpm=120,
+        metronome=False
+    )
+
+    assert float(np.max(np.abs(audio))) > 0.1
+
+
+def test_melody_and_harmony_mix_together():
+    sample_rate, together = play_music(
+        "C4 C4",
+        "1 1",
+        "C",
+        melody_on=True,
+        harmony_on=True,
+        bpm=120,
+        metronome=False
+    )
+
+    sample_rate, alone = play_music(
+        "C4 C4",
+        "1 1",
+        "C",
+        melody_on=True,
+        harmony_on=False,
+        bpm=120,
+        metronome=False
+    )
+
+    # The mixed track is a different signal, not just the
+    # melody again.
+    shared = min(len(together), len(alone))
+
+    assert not np.allclose(
+        together[:shared],
+        alone[:shared]
+    )
 
 
 def test_load_twinkle_phrase():
@@ -196,47 +236,7 @@ def test_analyse_instrument(monkeypatch):
         "keyboard: 7.0%"
     )
 
-def test_guide_only_marks_time_without_notes():
-    """
-    Guide only is for recording without the melody playing
-    in the background: clicks and count-in, nothing else.
-    """
 
-    sample_rate, audio = play_music(
-        "C4 C4 G4",
-        "1 1 2",
-        "C",
-        "Guide only",
-        120
-    )
-
-    # Four count-in beats plus four beats of music.
-    assert len(audio) == 8 * 4000
-
-    # There is sound in the music section: the clicks.
-    music_section = audio[4 * 4000:]
-
-    assert float(np.max(np.abs(music_section))) > 0.1
-
-
-def test_guide_only_ignores_the_metronome_toggle():
-    """
-    A guide with the clicks turned off would be silence,
-    so the toggle does not apply to it.
-    """
-
-    sample_rate, audio = play_music(
-        "C4 C4 G4",
-        "1 1 2",
-        "C",
-        "Guide only",
-        120,
-        metronome=False
-    )
-
-    music_section = audio[4 * 4000:]
-
-    assert float(np.max(np.abs(music_section))) > 0.1
 
 
 def test_practice_guide_counts_in_then_clicks():

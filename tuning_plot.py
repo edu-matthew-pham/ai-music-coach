@@ -39,7 +39,8 @@ def make_performance_plot(
     trace,
     transpose=0,
     lyrics=None,
-    title="What you sang, over what was written"
+    title="What you sang, over what was written",
+    harmony=None
 ):
     """
     Draw what was sung over what was written.
@@ -49,6 +50,10 @@ def make_performance_plot(
     running through them, one point per moment, so a late
     entry, a slide between notes, or a wobble is simply
     visible rather than inferred.
+
+    When a harmony line is given, it appears as a second
+    voice in its own colour, sharing the same time axis so
+    the two parts read together the way a duet is printed.
     """
 
     seconds_per_beat = 60 / bpm
@@ -118,6 +123,44 @@ def make_performance_plot(
 
         if highest is None or midi > highest:
             highest = midi
+
+    # The harmony, as a second voice under the melody.
+    if harmony is not None:
+
+        harmony_start = 0.0
+
+        for position in range(len(harmony)):
+
+            midi = note_to_midi(harmony[position]) + transpose
+
+            length = durations[position] * seconds_per_beat
+
+            axes.broken_barh(
+                [(harmony_start, length)],
+                (midi - 0.5, 1.0),
+                facecolors="#6a1b9a",
+                alpha=0.12,
+                edgecolor="#6a1b9a",
+                linewidth=1
+            )
+
+            axes.text(
+                harmony_start + length / 2,
+                midi,
+                midi_to_note(midi),
+                ha="center",
+                va="center",
+                fontsize=8,
+                color="#6a1b9a"
+            )
+
+            harmony_start += length
+
+            if midi < lowest:
+                lowest = midi
+
+            if midi > highest:
+                highest = midi
 
     # The performance itself.
     if trace is not None:

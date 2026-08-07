@@ -102,27 +102,25 @@ with gr.Blocks(
         "## Playback and Harmony"
     )
 
-    playback_mode = gr.Radio(
-        [
-            "Melody",
-            "Harmony",
-            "Melody + Harmony",
-            "Guide only"
-        ],
-        value="Melody",
-        label="Playback Mode",
-        info="Choose a mode, then generate the audio below. "
-             "Guide only counts you in and clicks through "
-             "the music without playing the notes, for "
-             "recording a clean performance."
-    )
+    with gr.Row():
 
-    metronome_input = gr.Checkbox(
-        value=True,
-        label="Metronome",
-        info="Quiet clicks under the music to keep time. "
-             "The count-in always plays."
-    )
+        melody_input = gr.Checkbox(
+            value=True,
+            label="Melody"
+        )
+
+        harmony_input = gr.Checkbox(
+            value=False,
+            label="Harmony",
+            info="A third below, in the chosen key."
+        )
+
+        metronome_input = gr.Checkbox(
+            value=True,
+            label="Metronome",
+            info="Clicks under the music. Always on when "
+                 "no notes are playing."
+        )
 
     with gr.Row():
 
@@ -282,7 +280,8 @@ with gr.Blocks(
             pitch_input,
             duration_input,
             key_input,
-            playback_mode,
+            melody_input,
+            harmony_input,
             bpm_input,
             metronome_input
         ],
@@ -293,7 +292,9 @@ with gr.Blocks(
             pitch_input,
             duration_input,
             bpm_input,
-            lyric_input
+            lyric_input,
+            key_input,
+            harmony_input
         ],
         outputs=target_plot
     )
