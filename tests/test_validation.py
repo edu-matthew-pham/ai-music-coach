@@ -190,7 +190,7 @@ def test_wrong_octave_scores_badly_by_default():
         [1.0, 1.0, 1.0]
     )
 
-    text, figure = analyse_performance(
+    text, performance, tuning = analyse_performance(
         audio,
         "C4 E4 G4",
         "1 1 1",
@@ -210,7 +210,7 @@ def test_analyse_performance_with_the_shift_applied():
         [1.0, 1.0, 1.0]
     )
 
-    text, figure = analyse_performance(
+    text, performance, tuning = analyse_performance(
         audio,
         "C4 E4 G4",
         "1 1 1",

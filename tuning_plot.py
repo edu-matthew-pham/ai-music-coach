@@ -19,6 +19,10 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 
+import numpy as np
+
+from notes import note_to_midi, midi_to_note
+
 
 # Anything inside this is close enough that a listener would
 # not comment on it.
@@ -26,6 +30,112 @@ COMFORTABLE_CENTS = 15
 
 # Past this the note is nearer a neighbouring semitone.
 SEMITONE_EDGE = 50
+
+
+def make_performance_plot(
+    targets,
+    durations,
+    bpm,
+    trace,
+    transpose=0
+):
+    """
+    Draw what was sung over what was written.
+
+    The written music appears as boxes: each note occupies
+    its time slot at its pitch. The performance is the line
+    running through them, one point per moment, so a late
+    entry, a slide between notes, or a wobble is simply
+    visible rather than inferred.
+    """
+
+    seconds_per_beat = 60 / bpm
+
+    figure, axes = plt.subplots(figsize=(8, 4))
+
+    # The written notes, shifted into the octave actually
+    # being sung in, so the line lands on the boxes.
+    lowest = None
+    highest = None
+
+    start_time = 0.0
+
+    for position in range(len(targets)):
+
+        midi = note_to_midi(targets[position]) + transpose
+
+        length = durations[position] * seconds_per_beat
+
+        axes.broken_barh(
+            [(start_time, length)],
+            (midi - 0.5, 1.0),
+            facecolors="#2e7d32",
+            alpha=0.15,
+            edgecolor="#2e7d32",
+            linewidth=1
+        )
+
+        axes.text(
+            start_time + length / 2,
+            midi,
+            midi_to_note(midi),
+            ha="center",
+            va="center",
+            fontsize=8,
+            color="#2e7d32"
+        )
+
+        start_time += length
+
+        if lowest is None or midi < lowest:
+            lowest = midi
+
+        if highest is None or midi > highest:
+            highest = midi
+
+    # The performance itself.
+    if trace is not None:
+
+        times, midi_line = trace
+
+        axes.plot(
+            times,
+            midi_line,
+            color="#1565c0",
+            linewidth=2
+        )
+
+        sung = midi_line[~np.isnan(midi_line)]
+
+        if len(sung) > 0:
+            lowest = min(lowest, float(np.min(sung)))
+            highest = max(highest, float(np.max(sung)))
+
+    axes.set_xlim(0, start_time)
+    axes.set_ylim(lowest - 2, highest + 2)
+
+    # Label the pitch axis with note names rather than
+    # MIDI numbers, since players think in notes.
+    tick_values = range(
+        int(lowest) - 1,
+        int(highest) + 2
+    )
+
+    axes.set_yticks(list(tick_values))
+    axes.set_yticklabels(
+        [midi_to_note(value) for value in tick_values],
+        fontsize=8
+    )
+
+    axes.set_xlabel("seconds")
+    axes.set_title("What you sang, over what was written")
+
+    axes.spines["top"].set_visible(False)
+    axes.spines["right"].set_visible(False)
+
+    figure.tight_layout()
+
+    return figure
 
 
 def make_tuning_plot(comparisons):

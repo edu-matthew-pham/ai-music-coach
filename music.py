@@ -16,11 +16,15 @@ from notes import split_note
 
 from compare import compare_sequence, summarise
 
-from tuning_plot import make_tuning_plot
+from tuning_plot import (
+    make_tuning_plot,
+    make_performance_plot
+)
 
 from pitch_detector import (
     detect_single_note,
-    detect_sequence
+    detect_sequence,
+    trace_performance
 )
 
 from instrument_detector import (
@@ -584,8 +588,19 @@ def analyse_performance(
             describe_comparison(comparison)
         )
 
+    trace = trace_performance(audio)
+
+    performance_plot = make_performance_plot(
+        pitches,
+        durations,
+        bpm,
+        trace,
+        transpose
+    )
+
     return (
         "\n".join(lines),
+        performance_plot,
         make_tuning_plot(comparisons)
     )
 

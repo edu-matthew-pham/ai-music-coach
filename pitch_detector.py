@@ -11,6 +11,8 @@ from notes import (
     cents_from_nearest_note
 )
 
+import debug
+
 
 # How much quieter than the loudest part of a recording
 # something has to be before we treat it as silence.
@@ -67,11 +69,14 @@ def prepare_audio(sound):
     return sound
 
 
-def detect_pitch(sound, sample_rate):
+def measure_pitch(sound, sample_rate):
     """
-    Detect the main musical pitch in one chunk of audio.
+    Detect a pitch and report how the detection went.
 
-    Returns a Pitch, or None when nothing musical is found.
+    Returns the Pitch along with the number of frames that
+    held a steady pitch, the number examined, and the
+    average confidence in those frames. The extra numbers
+    are only used for debug output.
     """
 
     frequencies, voiced, probabilities = librosa.pyin(
@@ -82,10 +87,21 @@ def detect_pitch(sound, sample_rate):
         resolution=PITCH_RESOLUTION
     )
 
+    total_frames = len(frequencies)
     detected_frequencies = frequencies[voiced]
 
-    if len(detected_frequencies) == 0:
-        return None
+    voiced_frames = len(detected_frequencies)
+
+    if voiced_frames == 0:
+        confidence = 0.0
+
+    else:
+        confidence = float(
+            np.mean(probabilities[voiced])
+        )
+
+    if voiced_frames == 0:
+        return None, 0, total_frames, 0.0
 
     # Median reduces the effect of occasional incorrect frames.
     frequency = float(
@@ -96,12 +112,84 @@ def detect_pitch(sound, sample_rate):
     # would throw out the tuning information.
     midi = frequency_to_midi(frequency)
 
-    return Pitch(
+    pitch = Pitch(
         frequency=frequency,
         midi=midi,
         note=midi_to_note(midi),
         cents=cents_from_nearest_note(midi)
     )
+
+    return pitch, voiced_frames, total_frames, confidence
+
+
+def detect_pitch(sound, sample_rate):
+    """
+    Detect the main musical pitch in one chunk of audio.
+
+    Returns a Pitch, or None when nothing musical is found.
+    """
+
+    pitch, voiced, total, confidence = measure_pitch(
+        sound,
+        sample_rate
+    )
+
+    return pitch
+
+
+def trace_pitch(sound, sample_rate):
+    """
+    Follow the pitch through a whole recording.
+
+    Where detect_pitch answers "what note was this", this
+    answers "what happened over time": one measurement per
+    frame, with gaps where nothing was sounding. It is what
+    a drawn pitch line is made of.
+
+    Returns two arrays of equal length: times in seconds,
+    and MIDI numbers, with NaN where no pitch was found.
+    """
+
+    frequencies, voiced, probabilities = librosa.pyin(
+        sound,
+        fmin=librosa.note_to_hz("C3"),
+        fmax=librosa.note_to_hz("C6"),
+        sr=sample_rate,
+        resolution=PITCH_RESOLUTION
+    )
+
+    times = librosa.times_like(
+        frequencies,
+        sr=sample_rate
+    )
+
+    midi = np.full(len(frequencies), np.nan)
+
+    for frame in range(len(frequencies)):
+
+        if voiced[frame]:
+            midi[frame] = frequency_to_midi(
+                frequencies[frame]
+            )
+
+    return times, midi
+
+
+def trace_performance(audio):
+    """
+    Trace the pitch of a Gradio recording, trimmed the same
+    way detect_sequence trims it, so the two line up.
+    """
+
+    if audio is None:
+        return None
+
+    sample_rate, sound = audio
+
+    sound = prepare_audio(sound)
+    sound = trim_leading_silence(sound)
+
+    return trace_pitch(sound, sample_rate)
 
 
 def detect_single_note(audio):
@@ -199,16 +287,26 @@ def detect_sequence(
 
     sound = prepare_audio(sound)
 
+    recorded_samples = len(sound)
+
     # Line the recording up with the first thing played,
     # rather than with the moment recording started.
     sound = trim_leading_silence(sound)
 
+    seconds_per_beat = 60 / bpm
+
+    debug.describe_recording(
+        total_samples=recorded_samples,
+        sample_rate=sample_rate,
+        trimmed_samples=len(sound),
+        expected_seconds=sum(durations) * seconds_per_beat
+    )
+
     detected_notes = []
 
-    seconds_per_beat = 60 / bpm
     current_time = 0
 
-    for beats in durations:
+    for position, beats in enumerate(durations):
 
         duration_seconds = (
             beats * seconds_per_beat
@@ -234,7 +332,15 @@ def detect_sequence(
         )
 
         if start_sample >= len(sound):
+
             detected_notes.append(None)
+
+            debug.say(
+                f"  note {position + 1:>2}  "
+                f"window {start_time:5.2f}s to {end_time:5.2f}s  "
+                f"past the end of the recording"
+            )
+
             current_time = end_time
             continue
 
@@ -245,15 +351,34 @@ def detect_sequence(
         )
 
         if len(middle_sound) == 0:
+
             detected_notes.append(None)
 
+            debug.say(
+                f"  note {position + 1:>2}  "
+                f"window {start_time:5.2f}s to {end_time:5.2f}s  "
+                f"nothing left to listen to"
+            )
+
         else:
-            pitch = detect_pitch(
+            pitch, voiced, total, confidence = measure_pitch(
                 middle_sound,
                 sample_rate
             )
 
             detected_notes.append(pitch)
+
+            debug.describe_window(
+                position=position,
+                start_time=start_time,
+                end_time=end_time,
+                listened_samples=len(middle_sound),
+                sample_rate=sample_rate,
+                voiced_frames=voiced,
+                total_frames=total,
+                frequency=None if pitch is None else pitch.frequency,
+                confidence=confidence
+            )
 
         current_time = end_time
 

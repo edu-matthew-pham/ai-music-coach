@@ -237,6 +237,10 @@ with gr.Blocks(
         variant="primary"
     )
 
+    performance_plot = gr.Plot(
+        label="Performance"
+    )
+
     tuning_plot = gr.Plot(
         label="Tuning"
     )
@@ -324,6 +328,7 @@ with gr.Blocks(
         ],
         outputs=[
             feedback_output,
+            performance_plot,
             tuning_plot
         ]
     )

@@ -75,3 +75,66 @@ def test_plot_is_not_cut_short_by_a_bad_note():
     left, right = figure.axes[0].get_xlim()
 
     assert right >= 300
+
+
+def test_performance_plot_draws_written_notes_and_the_line():
+    import numpy as np
+    from tuning_plot import make_performance_plot
+
+    times = np.array([0.0, 0.25, 0.5, 0.75])
+    midi = np.array([60.0, 60.2, 64.0, np.nan])
+
+    figure = make_performance_plot(
+        ["C4", "E4"],
+        [1.0, 1.0],
+        120,
+        (times, midi)
+    )
+
+    axes = figure.axes[0]
+
+    # One box per written note, one line for the singing.
+    assert len(axes.collections) == 2
+    assert len(axes.lines) == 1
+
+    # The picture spans the written music: two beats at
+    # 120 BPM is one second.
+    assert axes.get_xlim()[1] == 1.0
+
+
+def test_performance_plot_shifts_boxes_with_the_octave():
+    """
+    When scoring an octave down, the boxes move to where
+    the singer actually is, so the line lands on them.
+    """
+
+    import numpy as np
+    from tuning_plot import make_performance_plot
+    from notes import note_to_midi
+
+    figure = make_performance_plot(
+        ["C4"],
+        [1.0],
+        120,
+        None,
+        transpose=-12
+    )
+
+    axes = figure.axes[0]
+
+    labels = [t.get_text() for t in axes.texts]
+
+    assert labels == ["C3"]
+
+
+def test_performance_plot_copes_with_no_trace():
+    from tuning_plot import make_performance_plot
+
+    figure = make_performance_plot(
+        ["C4", "E4"],
+        [1.0, 1.0],
+        120,
+        None
+    )
+
+    assert len(figure.axes[0].lines) == 0
