@@ -158,3 +158,100 @@ def test_summary_when_nothing_was_heard():
     assert describe_summary(summary) == (
         "No notes were detected in that recording."
     )
+
+
+def fake_audio_for(pitches, durations, bpm=120, sample_rate=8000):
+    """
+    Build a recording of these notes, as a Gradio audio pair.
+    """
+
+    import numpy as np
+    from playback import make_melody
+
+    rate, melody = make_melody(
+        pitches,
+        durations,
+        bpm,
+        sample_rate
+    )
+
+    return rate, np.array(melody)
+
+
+def test_wrong_octave_scores_badly_by_default():
+    """
+    The app does not guess which octave was meant.
+    """
+
+    from music import analyse_performance
+
+    audio = fake_audio_for(
+        ["C3", "E3", "G3"],
+        [1.0, 1.0, 1.0]
+    )
+
+    text, figure = analyse_performance(
+        audio,
+        "C4 E4 G4",
+        "1 1 1",
+        120
+    )
+
+    # Without saying which octave was played, singing an
+    # octave low simply scores badly.
+    assert "0 of 3 notes" in text
+
+
+def test_analyse_performance_with_the_shift_applied():
+    from music import analyse_performance
+
+    audio = fake_audio_for(
+        ["C3", "E3", "G3"],
+        [1.0, 1.0, 1.0]
+    )
+
+    text, figure = analyse_performance(
+        audio,
+        "C4 E4 G4",
+        "1 1 1",
+        120,
+        "One octave down"
+    )
+
+    assert "3 of 3 notes" in text
+    assert "octave below" in text
+
+
+def test_analyse_performance_needs_a_recording():
+    from music import analyse_performance
+
+    with pytest.raises(MusicInputError, match="Record or upload"):
+        analyse_performance(None, "C4", "1", 120)
+
+
+def test_shift_must_be_sensible():
+    from music import check_transpose
+
+    with pytest.raises(MusicInputError, match="three octaves"):
+        check_transpose(40)
+
+
+def test_octave_choices_map_to_semitones():
+    from music import read_octave_choice
+
+    assert read_octave_choice("Same octave") == 0
+    assert read_octave_choice("One octave down") == -12
+    assert read_octave_choice("One octave up") == 12
+
+
+def test_unknown_octave_choice_is_rejected():
+    from music import read_octave_choice
+
+    with pytest.raises(MusicInputError, match="octave options"):
+        read_octave_choice("Sideways")
+
+
+def test_octave_choice_defaults_to_no_shift():
+    from music import read_octave_choice
+
+    assert read_octave_choice(None) == 0

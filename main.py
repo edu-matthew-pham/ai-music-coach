@@ -4,6 +4,7 @@ import gradio as gr
 
 from music import (
     MusicInputError,
+    OCTAVE_CHOICES,
     play_music,
     show_harmony,
     analyse_single_note,
@@ -185,12 +186,13 @@ with gr.Blocks(
         "playing it, then compare the two."
     )
 
-    transpose_input = gr.Number(
-        value=0,
-        precision=0,
-        label="Shift (semitones)",
-        info="Use -12 if you play or sing an octave below "
-             "the written music."
+    octave_input = gr.Dropdown(
+        list(OCTAVE_CHOICES),
+        value="Same octave",
+        label="Octave",
+        info="Pick the octave you actually played in. "
+             "Singers often sit an octave below the "
+             "written music."
     )
 
     compare_button = gr.Button(
@@ -269,7 +271,7 @@ with gr.Blocks(
             pitch_input,
             duration_input,
             bpm_input,
-            transpose_input
+            octave_input
         ],
         outputs=[
             feedback_output,

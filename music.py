@@ -11,11 +11,7 @@ from harmony import make_harmony, keys_containing
 
 from notes import split_note
 
-from compare import (
-    compare_sequence,
-    summarise,
-    suggest_transpose
-)
+from compare import compare_sequence, summarise
 
 from tuning_plot import make_tuning_plot
 
@@ -418,6 +414,33 @@ def describe_summary(summary):
     )
 
 
+# The shift options offered in the interface, and the number
+# of semitones each one means. A shift is stored in semitones
+# so that other intervals can be added later without changing
+# anything that uses it.
+OCTAVE_CHOICES = {
+    "Same octave": 0,
+    "One octave down": -12,
+    "One octave up": 12
+}
+
+
+def read_octave_choice(choice):
+    """
+    Turn the chosen option into a number of semitones.
+    """
+
+    if choice is None:
+        return 0
+
+    if choice not in OCTAVE_CHOICES:
+        raise MusicInputError(
+            f"'{choice}' is not one of the octave options."
+        )
+
+    return OCTAVE_CHOICES[choice]
+
+
 def describe_shift(semitones):
     """
     Say what a shift means in words a musician would use.
@@ -483,6 +506,10 @@ def analyse_performance(
     )
 
     bpm = check_bpm(bpm)
+
+    if isinstance(transpose, str):
+        transpose = read_octave_choice(transpose)
+
     transpose = check_transpose(transpose)
 
     detected = detect_sequence(
@@ -500,19 +527,6 @@ def analyse_performance(
     lines = [
         describe_summary(summarise(comparisons))
     ]
-
-    # If the whole performance sits at the same distance
-    # from the music, the player is probably in a different
-    # range rather than playing every note wrongly.
-    suggestion = suggest_transpose(comparisons)
-
-    if suggestion is not None:
-
-        lines.append(
-            f"That was all {describe_shift(suggestion)} "
-            f"the written music. Set the shift to "
-            f"{transpose + suggestion} to score it there."
-        )
 
     if transpose != 0:
         lines.append(
