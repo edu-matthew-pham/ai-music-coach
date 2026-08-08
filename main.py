@@ -1,6 +1,7 @@
 # main.py
 
 import gradio as gr
+import os
 
 from harmony import MAJOR_SCALES
 from music import (
@@ -586,6 +587,10 @@ with gr.Blocks(
         ]
     )
 
-
 if __name__ == "__main__":
-    demo.launch()
+    port = int(os.environ.get("PORT", 7860))
+
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=port
+    )
