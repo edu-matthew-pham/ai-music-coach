@@ -836,7 +836,7 @@ def show_target_music(
 
 def load_twinkle_phrase():
     """
-    Return the opening phrase of Twinkle Twinkle Little Star.
+    The opening phrase of Twinkle Twinkle Little Star.
     """
 
     pitches = (
@@ -851,4 +851,32 @@ def load_twinkle_phrase():
         "Twin- kle twin- kle lit- tle star"
     )
 
-    return pitches, durations, lyrics
+    return pitches, durations, lyrics, "C"
+
+
+def load_wellerman_phrase():
+    """
+    The opening phrase of the Wellerman, a traditional sea
+    shanty in the public domain.
+
+    The tune sits in D minor, which shares its notes with
+    F major, so the harmony machinery works in key F.
+    """
+
+    # Pitches follow the traditional verse: pickup on the
+    # dominant, repeated tonics, the third on "ship", then
+    # the dominant above. Durations carry the shanty's
+    # dotted swing: long-short pairs from "once" onward.
+    pitches = (
+        "A3 D4 D4 D4 F4 A4 A4 A4 A4"
+    )
+
+    durations = (
+        "0.5 0.75 0.25 0.75 0.25 0.75 0.25 0.75 2"
+    )
+
+    lyrics = (
+        "There once was a ship that put to sea"
+    )
+
+    return pitches, durations, lyrics, "F"

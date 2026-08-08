@@ -112,11 +112,39 @@ def test_melody_and_harmony_mix_together():
 
 
 def test_load_twinkle_phrase():
-    pitches, durations, lyrics = load_twinkle_phrase()
+    pitches, durations, lyrics, key = load_twinkle_phrase()
 
     assert pitches == "C4 C4 G4 G4 A4 A4 G4"
     assert durations == "1 1 1 1 1 1 2"
     assert lyrics == "Twin- kle twin- kle lit- tle star"
+    assert key == "C"
+
+
+def test_load_wellerman_phrase_is_playable_and_harmonisable():
+    """
+    The loaded example must work with every feature: the
+    counts agree, the notes read, and the harmony can be
+    built in the key it loads with.
+    """
+
+    from music import (
+        load_wellerman_phrase,
+        read_music,
+        read_lyrics
+    )
+    from harmony import make_harmony
+
+    pitches, durations, lyrics, key = load_wellerman_phrase()
+
+    pitch_list, duration_list = read_music(pitches, durations)
+
+    syllables = read_lyrics(lyrics, len(pitch_list))
+
+    assert len(syllables) == len(pitch_list)
+
+    harmony = make_harmony(pitch_list, key=key)
+
+    assert len(harmony) == len(pitch_list)
 
 
 def test_analyse_single_note_no_pitch(monkeypatch):

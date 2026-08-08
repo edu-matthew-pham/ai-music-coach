@@ -10,6 +10,7 @@ from music import (
     HARMONY_CHOICES,
     make_practice_guide,
     show_target_music,
+    load_wellerman_phrase,
     play_music,
     show_harmony,
     analyse_single_note,
@@ -93,9 +94,15 @@ with gr.Blocks(
             label="BPM"
         )
 
-    example_button = gr.Button(
-        "Load Twinkle Phrase"
-    )
+    with gr.Row():
+
+        example_button = gr.Button(
+            "Load Twinkle Phrase"
+        )
+
+        wellerman_button = gr.Button(
+            "Load Wellerman Phrase"
+        )
 
     # -----------------------------------------------------
     # PLAYBACK
@@ -283,7 +290,18 @@ with gr.Blocks(
         outputs=[
             pitch_input,
             duration_input,
-            lyric_input
+            lyric_input,
+            key_input
+        ]
+    )
+
+    wellerman_button.click(
+        fn=load_wellerman_phrase,
+        outputs=[
+            pitch_input,
+            duration_input,
+            lyric_input,
+            key_input
         ]
     )
 

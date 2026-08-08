@@ -2,6 +2,7 @@ gradio
 numpy
 librosa
 matplotlib
+mido
 transformers
 torch
 pytest
