@@ -914,6 +914,55 @@ def list_midi_tracks(file_path):
     return [label for _, label in described]
 
 
+def list_midi_phrases(file_path, track_label=None):
+    """
+    Describe the phrases in a track, for a dropdown.
+
+    The whole track comes first, so a short piece can be
+    practised in one go.
+    """
+
+    from midi_import import describe_phrases, MidiImportError
+
+    if file_path is None:
+        raise MusicInputError(
+            "Choose a MIDI file first."
+        )
+
+    try:
+        described = describe_phrases(
+            file_path,
+            track_number_from(track_label)
+        )
+
+    except MidiImportError as problem:
+        raise MusicInputError(str(problem))
+
+    return [WHOLE_TRACK] + [label for _, label in described]
+
+
+# The dropdown entry meaning no phrase in particular.
+WHOLE_TRACK = "Whole track"
+
+
+def phrase_number_from(label):
+    """
+    Read the phrase number back out of a dropdown label.
+
+    Phrases are numbered from one in the interface and
+    from zero in the code.
+    """
+
+    if label is None or label == WHOLE_TRACK:
+        return None
+
+    try:
+        return int(label.split()[1]) - 1
+
+    except (IndexError, ValueError):
+        return None
+
+
 def track_number_from(label):
     """
     Read the track number back out of a dropdown label.
@@ -929,7 +978,11 @@ def track_number_from(label):
         return None
 
 
-def import_midi_file(file_path, track_label=None):
+def import_midi_file(
+    file_path,
+    track_label=None,
+    phrase_label=None
+):
     """
     Fill the music boxes from an uploaded MIDI file.
 
@@ -954,7 +1007,8 @@ def import_midi_file(file_path, track_label=None):
         pitch_text, duration_text, lyric_text, bpm = (
             import_midi(
                 file_path,
-                track_number=track_number_from(track_label)
+                track_number=track_number_from(track_label),
+                phrase_number=phrase_number_from(phrase_label)
             )
         )
 
@@ -968,6 +1022,11 @@ def import_midi_file(file_path, track_label=None):
 
     else:
         source = f"track {track_number_from(track_label)}"
+
+    phrase_number = phrase_number_from(phrase_label)
+
+    if phrase_number is not None:
+        source += f", phrase {phrase_number + 1}"
 
     lines = [
         f"Imported {note_count} notes from {source} "

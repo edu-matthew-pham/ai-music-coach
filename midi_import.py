@@ -34,6 +34,19 @@ class MidiImportError(ValueError):
 SHORTEST_REST = 0.2
 
 
+# Where a piece is divided into phrases to practise.
+#
+# A singer's phrase ends where they breathe, so a rest is
+# the honest place to break. Music with no rests still has
+# to be divided somehow, hence the cap: a stretch longer
+# than this breaks at a bar line instead. Very short
+# phrases are folded into the next, since two notes are
+# not worth practising alone.
+PHRASE_REST = 0.7
+LONGEST_PHRASE_BEATS = 32
+SHORTEST_PHRASE_NOTES = 4
+
+
 # The note lengths the app works in, as fractions of a
 # beat, taking a beat as a quarter note. Real files land
 # between the cracks, so an imported length snaps to the
@@ -261,7 +274,140 @@ def describe_tracks(path):
     return described
 
 
-def import_midi(path, maximum_notes=64, track_number=None):
+def split_into_phrases(
+    melody,
+    beats_per_bar=4
+):
+    """
+    Divide a line of music into phrases worth practising.
+
+    Breaks fall where the music rests. A stretch that runs
+    on without resting is broken at a bar line so that no
+    phrase is unusably long, and a phrase too short to be
+    worth singing is joined to the one after it.
+
+    Returns a list of lists of notes.
+    """
+
+    if len(melody) == 0:
+        return []
+
+    phrases = []
+    current = [melody[0]]
+
+    phrase_start = melody[0][0]
+    previous_end = melody[0][0] + melody[0][1]
+
+    for start, length, midi_number in melody[1:]:
+
+        gap = start - previous_end
+        so_far = start - phrase_start
+
+        breaks_here = gap >= PHRASE_REST
+
+        # Nothing has rested for a long time, so break at
+        # the next bar line rather than run on forever.
+        if not breaks_here and so_far >= LONGEST_PHRASE_BEATS:
+            breaks_here = (
+                abs(start % beats_per_bar) < 0.01
+            )
+
+        if breaks_here:
+            phrases.append(current)
+            current = []
+            phrase_start = start
+
+        current.append((start, length, midi_number))
+        previous_end = start + length
+
+    if current:
+        phrases.append(current)
+
+    # Fold anything too short into the phrase after it.
+    joined = []
+
+    for phrase in phrases:
+
+        if joined and len(joined[-1]) < SHORTEST_PHRASE_NOTES:
+            joined[-1] = joined[-1] + phrase
+
+        else:
+            joined.append(phrase)
+
+    return joined
+
+
+def notes_to_text(melody):
+    """
+    Turn a list of notes into pitch and duration text.
+
+    Silence between notes becomes a rest, so the timing
+    survives. Silence before the first note is dropped:
+    music begins where it begins.
+    """
+
+    pitches = []
+    durations = []
+
+    previous_end = melody[0][0]
+
+    for start, length, midi_number in melody:
+
+        gap = start - previous_end
+
+        if gap >= SHORTEST_REST:
+            pitches.append(REST)
+            durations.append(snap_to_beat(gap))
+
+        pitches.append(midi_to_note(midi_number))
+        durations.append(snap_to_beat(length))
+
+        previous_end = start + length
+
+    def show(value):
+        """
+        Write a length the way a musician would read it.
+
+        Triplets are written as fractions, because thirds
+        of a beat have no exact decimal and 0.3333 is both
+        uglier and slightly wrong.
+        """
+
+        if value == int(value):
+            return str(int(value))
+
+        thirds = value * 3
+
+        if abs(thirds - round(thirds)) < 0.001:
+            return f"{round(thirds)}/3"
+
+        return str(round(value, 4))
+
+    return (
+        " ".join(pitches),
+        " ".join(show(value) for value in durations)
+    )
+
+
+def read_time_signature(midi_file):
+    """
+    How many beats are in a bar, taking a beat as a quarter
+    note. Files without a time signature are treated as
+    four four, which is the common case.
+    """
+
+    for track in midi_file.tracks:
+        for message in track:
+            if message.type == "time_signature":
+                return (
+                    message.numerator * 4 / message.denominator
+                )
+
+    return 4
+
+
+def import_midi(path, maximum_notes=None, track_number=None,
+                phrase_number=None):
     """
     Turn a MIDI file into pitch, duration and lyric text.
 
@@ -287,65 +433,82 @@ def import_midi(path, maximum_notes=64, track_number=None):
 
     melody = keep_melody(notes)
 
-    if len(melody) > maximum_notes:
+    if phrase_number is not None:
+
+        phrases = split_into_phrases(
+            melody,
+            read_time_signature(midi_file)
+        )
+
+        if phrase_number < 0 or phrase_number >= len(phrases):
+            raise MidiImportError(
+                "That phrase is not in this music."
+            )
+
+        melody = phrases[phrase_number]
+
+    if maximum_notes is not None:
         melody = melody[:maximum_notes]
 
-    pitches = []
-    durations = []
-
-    # Music begins where its first note does, so silence
-    # before the opening note is dropped rather than kept
-    # as a rest. Silence between notes is kept: it is part
-    # of the phrasing and of when a singer breathes.
-    previous_end = melody[0][0]
-
-    for start, length, midi_number in melody:
-
-        gap = start - previous_end
-
-        if gap >= SHORTEST_REST:
-
-            pitches.append(REST)
-            durations.append(snap_to_beat(gap))
-
-        pitches.append(
-            midi_to_note(midi_number)
-        )
-
-        durations.append(
-            snap_to_beat(length)
-        )
-
-        previous_end = start + length
-
-    def show(value):
-        """
-        Write a length the way a musician would read it.
-
-        Triplets are written as fractions, because thirds
-        of a beat have no exact decimal and 0.3333 is both
-        uglier and slightly wrong.
-        """
-
-        if value == int(value):
-            return str(int(value))
-
-        thirds = value * 3
-
-        if abs(thirds - round(thirds)) < 0.001:
-            return f"{round(thirds)}/3"
-
-        return str(round(value, 4))
-
-    pitch_text = " ".join(pitches)
-
-    duration_text = " ".join(
-        show(value) for value in durations
-    )
+    pitch_text, duration_text = notes_to_text(melody)
 
     lyric_text = read_lyric_text(midi_file, len(melody))
 
     return pitch_text, duration_text, lyric_text, bpm
+
+
+def describe_phrases(path, track_number=None):
+    """
+    Summarise the phrases a track divides into.
+
+    Returns a list of (phrase_number, description).
+    """
+
+    try:
+        midi_file = mido.MidiFile(path)
+
+    except Exception:
+        raise MidiImportError(
+            "That file could not be read as MIDI."
+        )
+
+    notes, bpm = read_notes(midi_file, track_number)
+
+    if len(notes) == 0:
+        raise MidiImportError(
+            "No notes were found in that track."
+        )
+
+    melody = keep_melody(notes)
+
+    beats_per_bar = read_time_signature(midi_file)
+
+    phrases = split_into_phrases(melody, beats_per_bar)
+
+    described = []
+
+    for position, phrase in enumerate(phrases):
+
+        first_bar = int(phrase[0][0] / beats_per_bar) + 1
+
+        last = phrase[-1]
+        last_bar = int(
+            (last[0] + last[1] - 0.01) / beats_per_bar
+        ) + 1
+
+        opening = " ".join(
+            midi_to_note(number)
+            for _, _, number in phrase[:5]
+        )
+
+        described.append((
+            position,
+            f"Phrase {position + 1} "
+            f"(bars {first_bar} to {last_bar}, "
+            f"{len(phrase)} notes): {opening}"
+        ))
+
+    return described
 
 
 def read_lyric_text(midi_file, note_count):

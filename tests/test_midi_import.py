@@ -273,3 +273,142 @@ def test_plain_lengths_still_win_when_they_are_nearest():
     assert snap_to_beat(0.98) == 1.0
     assert snap_to_beat(0.51) == 0.5
     assert snap_to_beat(2.02) == 2.0
+
+
+def make_gapped_file(path, groups, gap_beats=1.0):
+    """
+    Build a file whose notes fall into groups separated by
+    rests, the way phrases are separated in real music.
+    """
+
+    ticks = 480
+
+    midi_file = mido.MidiFile(ticks_per_beat=ticks)
+    track = mido.MidiTrack()
+    midi_file.tracks.append(track)
+
+    waiting = 0
+
+    for group in groups:
+
+        for number in group:
+
+            track.append(
+                mido.Message(
+                    "note_on",
+                    note=number,
+                    velocity=80,
+                    time=waiting
+                )
+            )
+            track.append(
+                mido.Message(
+                    "note_off", note=number, velocity=0, time=ticks
+                )
+            )
+
+            waiting = 0
+
+        waiting = int(gap_beats * ticks)
+
+    midi_file.save(path)
+
+    return path
+
+
+def test_phrases_break_where_the_music_rests(tmp_path):
+    from midi_import import describe_phrases
+
+    path = make_gapped_file(
+        str(tmp_path / "phrased.mid"),
+        [
+            [60, 62, 64, 65, 67],
+            [67, 65, 64, 62, 60]
+        ]
+    )
+
+    described = describe_phrases(path)
+
+    assert len(described) == 2
+    assert "Phrase 1" in described[0][1]
+    assert "5 notes" in described[0][1]
+
+
+def test_a_phrase_imports_on_its_own(tmp_path):
+    path = make_gapped_file(
+        str(tmp_path / "two_phrases.mid"),
+        [
+            [60, 62, 64, 65],
+            [72, 74, 76, 77]
+        ]
+    )
+
+    pitches, durations, lyrics, bpm = import_midi(
+        path,
+        phrase_number=1
+    )
+
+    assert pitches == "C5 D5 E5 F5"
+
+
+def test_short_phrases_are_joined_to_the_next(tmp_path):
+    """
+    Two notes alone are not worth practising, so they
+    belong with what follows.
+    """
+
+    from midi_import import describe_phrases
+
+    path = make_gapped_file(
+        str(tmp_path / "short.mid"),
+        [
+            [60, 62],
+            [64, 65, 67, 69, 71]
+        ]
+    )
+
+    described = describe_phrases(path)
+
+    assert len(described) == 1
+    assert "7 notes" in described[0][1]
+
+
+def test_asking_for_a_phrase_that_is_not_there(tmp_path):
+    path = make_gapped_file(
+        str(tmp_path / "one.mid"),
+        [[60, 62, 64, 65]]
+    )
+
+    with pytest.raises(MidiImportError, match="not in this music"):
+        import_midi(path, phrase_number=9)
+
+
+def test_nothing_is_lost_when_a_track_is_split(tmp_path):
+    """
+    Every note of the track must appear in some phrase.
+    """
+
+    from midi_import import (
+        read_notes,
+        keep_melody,
+        split_into_phrases
+    )
+
+    path = make_gapped_file(
+        str(tmp_path / "whole.mid"),
+        [
+            [60, 62, 64, 65],
+            [67, 69, 71, 72],
+            [72, 71, 69, 67]
+        ]
+    )
+
+    midi_file = mido.MidiFile(path)
+    notes, bpm = read_notes(midi_file)
+    melody = keep_melody(notes)
+
+    phrases = split_into_phrases(melody)
+
+    counted = sum(len(phrase) for phrase in phrases)
+
+    assert counted == len(melody)

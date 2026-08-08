@@ -13,6 +13,7 @@ from music import (
     load_wellerman_phrase,
     import_midi_file,
     list_midi_tracks,
+    list_midi_phrases,
     play_music,
     show_harmony,
     analyse_single_note,
@@ -121,6 +122,15 @@ with gr.Blocks(
         label="Which track to import",
         info="Choral and band files hold one track per "
              "part. Pick the line you want to practise.",
+        visible=False
+    )
+
+    phrase_input = gr.Dropdown(
+        [],
+        label="Which phrase to practise",
+        info="A long piece is divided where the music "
+             "rests. Pick a phrase, or take the whole "
+             "track at once.",
         visible=False
     )
 
@@ -331,20 +341,24 @@ with gr.Blocks(
         ]
     )
 
-    def import_and_show(file_path):
+    def import_track(file_path, track_label):
         """
-        Import a file and offer its tracks.
+        Import a track, and offer the phrases it holds.
 
-        The first track with notes is imported to begin
-        with. For a file holding a single line that is the
-        whole music; for a choral file it is a starting
-        point, and the dropdown lists the other parts.
+        A whole piece is more than anyone practises at
+        once, so it arrives divided where the music rests,
+        with the first phrase loaded.
         """
 
-        labels = list_midi_tracks(file_path)
+        phrases = list_midi_phrases(file_path, track_label)
+
+        # Take the whole track when it is short enough to
+        # be one phrase anyway, otherwise start with the
+        # first phrase.
+        chosen = phrases[0] if len(phrases) == 2 else phrases[1]
 
         pitches, durations, lyrics, bpm, feedback = (
-            import_midi_file(file_path, labels[0])
+            import_midi_file(file_path, track_label, chosen)
         )
 
         return (
@@ -354,15 +368,34 @@ with gr.Blocks(
             bpm,
             gr.update(value=feedback, visible=True),
             gr.update(
-                choices=labels,
-                value=labels[0],
-                visible=len(labels) > 1
+                choices=phrases,
+                value=chosen,
+                visible=len(phrases) > 2
             )
         )
 
-    def reimport_track(file_path, track_label):
+    def import_and_show(file_path):
+        """
+        Import a file, offering its tracks and phrases.
+        """
+
+        tracks = list_midi_tracks(file_path)
+
+        results = import_track(file_path, tracks[0])
+
+        return results + (
+            gr.update(
+                choices=tracks,
+                value=tracks[0],
+                visible=len(tracks) > 1
+            ),
+        )
+
+    def reimport_phrase(file_path, track_label, phrase_label):
         pitches, durations, lyrics, bpm, feedback = (
-            import_midi_file(file_path, track_label)
+            import_midi_file(
+                file_path, track_label, phrase_label
+            )
         )
 
         return (
@@ -373,32 +406,30 @@ with gr.Blocks(
             gr.update(value=feedback, visible=True)
         )
 
+    music_outputs = [
+        pitch_input,
+        duration_input,
+        lyric_input,
+        bpm_input,
+        import_feedback
+    ]
+
     midi_upload.upload(
         fn=guard(import_and_show),
         inputs=midi_upload,
-        outputs=[
-            pitch_input,
-            duration_input,
-            lyric_input,
-            bpm_input,
-            import_feedback,
-            track_input
-        ]
+        outputs=music_outputs + [phrase_input, track_input]
     )
 
     track_input.change(
-        fn=guard(reimport_track),
-        inputs=[
-            midi_upload,
-            track_input
-        ],
-        outputs=[
-            pitch_input,
-            duration_input,
-            lyric_input,
-            bpm_input,
-            import_feedback
-        ]
+        fn=guard(import_track),
+        inputs=[midi_upload, track_input],
+        outputs=music_outputs + [phrase_input]
+    )
+
+    phrase_input.change(
+        fn=guard(reimport_phrase),
+        inputs=[midi_upload, track_input, phrase_input],
+        outputs=music_outputs
     )
 
     generate_button.click(

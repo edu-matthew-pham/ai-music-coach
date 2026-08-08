@@ -22,7 +22,12 @@ from midi_import import (
     import_midi,
     BEAT_FRACTIONS
 )
-from music import import_midi_file, list_midi_tracks, read_beats
+from music import (
+    import_midi_file,
+    list_midi_tracks,
+    list_midi_phrases,
+    read_beats
+)
 
 
 FIXTURE_DIRECTORY = os.path.join(
@@ -119,6 +124,67 @@ def test_every_track_of_a_real_file_imports(path):
         assert len(pitches.split()) == len(durations.split())
 
 
+@pytest.mark.skipif(
+    len(MIDI_FILES) == 0,
+    reason="no midi files in tests/fixtures/midi"
+)
+@pytest.mark.parametrize(
+    "path",
+    MIDI_FILES,
+    ids=[os.path.basename(p) for p in MIDI_FILES]
+)
+def test_every_phrase_of_a_real_file_imports(path):
+    """
+    A real piece divides into phrases, each of which must
+    stand on its own as music the app can use.
+    """
+
+    tracks = list_midi_tracks(path)
+
+    phrases = list_midi_phrases(path, tracks[0])
+
+    # The whole track, plus at least one phrase.
+    assert len(phrases) >= 2
+
+    for label in phrases:
+
+        pitches, durations, lyrics, bpm, feedback = (
+            import_midi_file(path, tracks[0], label)
+        )
+
+        pitch_list = pitches.split()
+
+        assert len(pitch_list) > 0
+        assert len(pitch_list) == len(durations.split())
+
+
+def test_o_holy_night_divides_into_singable_phrases():
+    """
+    The soprano line runs to 129 notes, which is far more
+    than anyone practises at once. It should arrive in
+    phrases of a sensible length, broken where the music
+    rests rather than at an arbitrary count.
+    """
+
+    path = os.path.join(
+        FIXTURE_DIRECTORY,
+        "o-holy-night-satb.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("o holy night fixture not present")
+
+    from midi_import import describe_phrases
+
+    described = describe_phrases(path, track_number=1)
+
+    assert len(described) > 3
+
+    for number, label in described:
+        assert "Phrase" in label
+        assert "bars" in label
+
+
 def test_the_soprano_line_of_o_holy_night():
     """
     The melody sits on track 1. Track 0 is a piano
@@ -142,3 +208,6 @@ def test_the_soprano_line_of_o_holy_night():
     opening = " ".join(pitches.split()[:6])
 
     assert opening == "F#4 F#4 F#4 A4 A4 B4"
+
+    # The whole line, not a truncated part of it.
+    assert len(pitches.split()) > 120
