@@ -54,19 +54,19 @@ def test_tempo_must_be_a_number():
         check_bpm("fast")
 
 
-def test_out_of_key_harmony_suggests_a_key():
+def test_out_of_key_notes_are_reported_not_refused():
     """
-    C4 is not in D major, so the message should point at a
-    key that would actually work.
+    The key is the player's to choose. Notes outside it
+    are harmonised at the nearest scale note, and named so
+    the interval is no surprise.
     """
 
-    with pytest.raises(MusicInputError) as problem:
-        show_harmony("C4 G4 A4", "D")
+    from music import describe_key_fit
 
-    message = str(problem.value)
+    sentence = describe_key_fit(["C4", "C4"], "D")
 
-    assert "D major" in message
-    assert "C" in message
+    assert "C4" in sentence
+    assert "nearest note" in sentence
 
 
 def test_playback_checks_the_key_only_when_harmonising():
@@ -83,12 +83,19 @@ def test_playback_checks_the_key_only_when_harmonising():
     assert len(audio) > 0
 
 
-def test_harmony_playback_rejects_an_impossible_key():
-    with pytest.raises(MusicInputError, match="do not all fit"):
-        play_music(
-            "C4 C4", "1 1", "D",
-            melody_on=False, harmony_on=True, bpm=120
-        )
+def test_harmony_plays_in_any_chosen_key():
+    """
+    Music that does not sit neatly in the chosen key still
+    produces a harmony, rather than an error that stops
+    the player hearing anything at all.
+    """
+
+    sample_rate, audio = play_music(
+        "C4 C4", "1 1", "D",
+        melody_on=False, harmony_on=True, bpm=120
+    )
+
+    assert len(audio) > 0
 
 
 def described(target, cents):
@@ -358,18 +365,19 @@ def test_unknown_part_is_rejected():
         )
 
 
-def test_harmony_part_checks_the_key():
+def test_harmony_part_works_in_any_key():
     from music import analyse_performance
 
-    with pytest.raises(MusicInputError, match="do not all fit"):
-        analyse_performance(
-            fake_audio_for(["C4"], [1.0]),
-            "C4",
-            "1",
-            120,
-            part="Harmony",
-            key="D"
-        )
+    text, performance, tuning = analyse_performance(
+        fake_audio_for(["C4"], [1.0]),
+        "C4",
+        "1",
+        120,
+        part="Harmony",
+        key="D"
+    )
+
+    assert "1 of 1" in text or "0 of 1" in text
 
 
 def test_guide_plays_your_part():

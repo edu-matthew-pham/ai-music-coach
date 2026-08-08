@@ -89,6 +89,63 @@ def keys_containing(pitches):
     return workable
 
 
+def nearest_position(scale_notes, note_midi):
+    """
+    Where a note sits in a scale, or where it sits closest.
+
+    Music borrows notes from outside its key all the time:
+    a passing sharp, a blue seventh. Rather than refuse to
+    harmonise the whole piece over one of them, such a note
+    is treated as the nearest scale note. The harmony keeps
+    moving in parallel and one interval comes out slightly
+    unusual, which is what a singer improvising a line
+    would do anyway.
+    """
+
+    best = None
+    best_distance = None
+
+    for position in range(len(scale_notes)):
+
+        midi_number, note_name = scale_notes[position]
+
+        distance = abs(midi_number - note_midi)
+
+        if best_distance is None or distance < best_distance:
+            best = position
+            best_distance = distance
+
+    return best
+
+
+def notes_outside(pitches, key):
+    """
+    The notes of this music that the key does not contain.
+
+    They can still be harmonised, at the nearest note in
+    the scale, but they are worth naming so nobody is
+    surprised by the interval that results.
+    """
+
+    scale_semitones = {
+        NOTE_SEMITONES[pitch]
+        for pitch in MAJOR_SCALES[key]
+    }
+
+    outside = []
+
+    for pitch in pitches:
+
+        if is_rest(pitch):
+            continue
+
+        if note_to_midi(pitch) % 12 not in scale_semitones:
+            if pitch not in outside:
+                outside.append(pitch)
+
+    return outside
+
+
 def move_in_scale(note, key="C", steps=-2):
     """
     Move a note through a major scale.
@@ -101,18 +158,14 @@ def move_in_scale(note, key="C", steps=-2):
 
     note_midi = note_to_midi(note)
 
-    current_position = None
-
-    for i in range(len(scale_notes)):
-        midi_number, note_name = scale_notes[i]
-
-        if midi_number == note_midi:
-            current_position = i
-            break
+    current_position = nearest_position(
+        scale_notes,
+        note_midi
+    )
 
     if current_position is None:
         raise ValueError(
-            f"{note} is not in the key of {key} major."
+            "That key has no notes to harmonise with."
         )
 
     new_position = current_position + steps

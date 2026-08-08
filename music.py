@@ -10,8 +10,13 @@ from playback import (
     COUNT_IN_BEATS
 )
 
-from key_detector import describe_key
-from harmony import make_harmony, keys_containing
+from key_detector import describe_key, detect_key
+from harmony import (
+    make_harmony,
+    keys_containing,
+    notes_outside,
+    MAJOR_SCALES
+)
 
 from notes import split_note, is_rest, REST
 
@@ -95,29 +100,29 @@ def check_bpm(bpm):
     return bpm
 
 
-def check_key_fits(pitches, key):
+def describe_key_fit(pitches, key):
     """
-    Make sure a harmony can actually be built in this key.
+    How well the chosen key suits the music.
 
-    When it cannot, suggest a key that would work.
+    The key is the player's to choose, so this reports
+    rather than refuses. Notes outside the key are still
+    harmonised, at the nearest note in the scale, and are
+    named here so the resulting interval is no surprise.
+
+    Returns a sentence, or None when everything fits.
     """
 
-    workable = keys_containing(pitches)
+    outside = notes_outside(pitches, key)
 
-    if key in workable:
-        return
+    if len(outside) == 0:
+        return None
 
-    if len(workable) == 0:
-        raise MusicInputError(
-            "These notes do not fit any of the available "
-            "keys, so no harmony can be built."
-        )
+    named = ", ".join(outside)
 
-    suggestion = " or ".join(workable)
-
-    raise MusicInputError(
-        f"These notes do not all fit in {key} major. "
-        f"Try {suggestion}."
+    return (
+        f"{len(outside)} notes fall outside {key} major "
+        f"({named}). They will be harmonised at the "
+        f"nearest note in the scale."
     )
 
 
@@ -323,8 +328,6 @@ def play_music(
 
     if harmony_on:
 
-        check_key_fits(pitches, key)
-
         harmony = make_harmony(
             pitches,
             key=key,
@@ -380,7 +383,6 @@ def show_harmony(pitch_text, key):
         )
 
     check_note_names(pitches)
-    check_key_fits(pitches, key)
 
     harmony = make_harmony(
         pitches,
@@ -654,7 +656,6 @@ def analyse_performance(
     )
 
     if part == "Harmony":
-        check_key_fits(pitches, key)
         pitches = make_harmony(
             pitches,
             key=key,
@@ -748,7 +749,6 @@ def part_notes(pitches, part, key, harmony_steps=-2):
     """
 
     if part == "Harmony":
-        check_key_fits(pitches, key)
         return make_harmony(
             pitches,
             key=key,
@@ -873,7 +873,6 @@ def show_target_music(
     harmony = None
 
     if harmony_on:
-        check_key_fits(pitches, key)
         harmony = make_harmony(
             pitches,
             key=key,
@@ -889,6 +888,52 @@ def show_target_music(
         title="The target music",
         harmony=harmony
     )
+
+
+def suggest_key(pitch_text, duration_text):
+    """
+    Name the keys this music might be in.
+
+    The strongest match comes first, with the others in
+    order. Nothing is chosen automatically: a short melody
+    often genuinely suits several keys, and which one to
+    sing in is the player's decision.
+    """
+
+    pitches, durations = read_music(
+        pitch_text,
+        duration_text
+    )
+
+    scored = detect_key(pitches, durations)
+
+    lines = [describe_key(pitches, durations)]
+
+    lines.append("")
+    lines.append("Closest matches:")
+
+    for name, score in scored[:4]:
+        lines.append(f"  {name}  ({score:.2f})")
+
+    # Which of these can actually be chosen for harmony.
+    available = [
+        name for name, score in scored[:8]
+        if name.endswith("major")
+        and name.split()[0] in MAJOR_SCALES
+    ]
+
+    if available:
+        lines.append("")
+        lines.append(
+            "Harmony can be built in: "
+            + ", ".join(
+                name.split()[0] for name in available[:3]
+            )
+            + ". A minor key shares its notes with the "
+            "major a third above."
+        )
+
+    return "\n".join(lines)
 
 
 def list_midi_tracks(file_path):

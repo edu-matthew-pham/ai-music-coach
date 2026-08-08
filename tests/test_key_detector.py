@@ -114,3 +114,37 @@ def test_flat_keys_go_by_their_flat_names():
     durations = [1.0] * 8 + [2.0, 2.0, 2.0]
 
     assert best_key(pitches, durations) == "Bb major"
+
+
+def test_the_key_report_ranks_candidates():
+    """
+    The report names the likeliest key and shows what else
+    the music could be, with scores, so the choice stays
+    informed and with the player.
+    """
+
+    from music import suggest_key
+
+    pitches, durations, lyrics, key = load_wellerman_phrase()
+
+    report = suggest_key(pitches, durations)
+
+    assert "D minor" in report
+    assert "Closest matches" in report
+    assert "Harmony can be built in" in report
+
+
+def test_key_fit_reports_rather_than_refuses():
+    """
+    Choosing a key that does not contain every note is
+    allowed: it is described, not forbidden.
+    """
+
+    from music import describe_key_fit
+
+    assert describe_key_fit(["D4", "F#4", "A4"], "D") is None
+
+    sentence = describe_key_fit(["D4", "G#4", "A4"], "D")
+
+    assert "G#4" in sentence
+    assert "nearest note" in sentence

@@ -5,6 +5,8 @@ import gradio as gr
 from harmony import MAJOR_SCALES
 from music import (
     MusicInputError,
+    suggest_key,
+    describe_key_fit,
     OCTAVE_CHOICES,
     PART_CHOICES,
     GUIDE_CHOICES,
@@ -94,13 +96,26 @@ with gr.Blocks(
         key_input = gr.Dropdown(
             list(MAJOR_SCALES),
             value="C",
-            label="Key"
+            label="Key",
+            info="Used for harmony. Notes outside it are "
+                 "harmonised at the nearest scale note."
         )
 
         bpm_input = gr.Number(
             value=120,
             label="BPM"
         )
+
+    detect_key_button = gr.Button(
+        "Detect key"
+    )
+
+    key_report = gr.Textbox(
+        label="Key",
+        interactive=False,
+        visible=False,
+        lines=8
+    )
 
     with gr.Row():
 
@@ -321,6 +336,18 @@ with gr.Blocks(
     # -----------------------------------------------------
     # EVENTS
     # -----------------------------------------------------
+
+    def show_key_report(pitch_text, duration_text):
+        return gr.update(
+            value=suggest_key(pitch_text, duration_text),
+            visible=True
+        )
+
+    detect_key_button.click(
+        fn=guard(show_key_report),
+        inputs=[pitch_input, duration_input],
+        outputs=key_report
+    )
 
     def clear_import():
         """
