@@ -11,6 +11,8 @@ from music import (
     make_practice_guide,
     show_target_music,
     load_wellerman_phrase,
+    import_midi_file,
+    list_midi_tracks,
     play_music,
     show_harmony,
     analyse_single_note,
@@ -103,6 +105,26 @@ with gr.Blocks(
         wellerman_button = gr.Button(
             "Load Wellerman Phrase"
         )
+
+    midi_upload = gr.File(
+        label="Or import a MIDI file",
+        file_types=[".mid", ".midi"],
+        type="filepath"
+    )
+
+    track_input = gr.Dropdown(
+        [],
+        label="Which track to import",
+        info="Choral and band files hold one track per "
+             "part. Pick the line you want to practise.",
+        visible=False
+    )
+
+    import_feedback = gr.Textbox(
+        label="Import",
+        interactive=False,
+        visible=False
+    )
 
     # -----------------------------------------------------
     # PLAYBACK
@@ -302,6 +324,76 @@ with gr.Blocks(
             duration_input,
             lyric_input,
             key_input
+        ]
+    )
+
+    def import_and_show(file_path):
+        """
+        Import a file and offer its tracks.
+
+        The first track with notes is imported to begin
+        with. For a file holding a single line that is the
+        whole music; for a choral file it is a starting
+        point, and the dropdown lists the other parts.
+        """
+
+        labels = list_midi_tracks(file_path)
+
+        pitches, durations, lyrics, bpm, feedback = (
+            import_midi_file(file_path, labels[0])
+        )
+
+        return (
+            pitches,
+            durations,
+            lyrics,
+            bpm,
+            gr.update(value=feedback, visible=True),
+            gr.update(
+                choices=labels,
+                value=labels[0],
+                visible=len(labels) > 1
+            )
+        )
+
+    def reimport_track(file_path, track_label):
+        pitches, durations, lyrics, bpm, feedback = (
+            import_midi_file(file_path, track_label)
+        )
+
+        return (
+            pitches,
+            durations,
+            lyrics,
+            bpm,
+            gr.update(value=feedback, visible=True)
+        )
+
+    midi_upload.upload(
+        fn=guard(import_and_show),
+        inputs=midi_upload,
+        outputs=[
+            pitch_input,
+            duration_input,
+            lyric_input,
+            bpm_input,
+            import_feedback,
+            track_input
+        ]
+    )
+
+    track_input.change(
+        fn=guard(reimport_track),
+        inputs=[
+            midi_upload,
+            track_input
+        ],
+        outputs=[
+            pitch_input,
+            duration_input,
+            lyric_input,
+            bpm_input,
+            import_feedback
         ]
     )
 

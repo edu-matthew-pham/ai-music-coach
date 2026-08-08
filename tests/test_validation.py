@@ -461,3 +461,44 @@ def test_harmony_part_can_be_judged_above():
     )
 
     assert "3 of 3 notes" in text
+
+
+def test_midi_import_reports_candidate_keys(tmp_path):
+    """
+    The key dropdown is not guessed at. The feedback names
+    which keys the imported notes would allow harmony in,
+    and the choice stays with the player.
+    """
+
+    import mido
+    from music import import_midi_file
+
+    midi_file = mido.MidiFile(ticks_per_beat=480)
+    track = mido.MidiTrack()
+    midi_file.tracks.append(track)
+
+    # F#4 narrows the field: it fits G and D but not C or F.
+    for number in [67, 66, 62]:
+        track.append(
+            mido.Message("note_on", note=number, velocity=80, time=0)
+        )
+        track.append(
+            mido.Message("note_off", note=number, velocity=0, time=480)
+        )
+
+    path = str(tmp_path / "sharp.mid")
+    midi_file.save(path)
+
+    pitches, durations, lyrics, bpm, feedback = (
+        import_midi_file(path)
+    )
+
+    assert "G or D" in feedback
+    assert "C" not in feedback.replace("BPM", "")
+
+
+def test_midi_import_needs_a_file():
+    from music import import_midi_file
+
+    with pytest.raises(MusicInputError, match="Choose a MIDI"):
+        import_midi_file(None)

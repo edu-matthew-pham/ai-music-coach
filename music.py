@@ -834,6 +834,121 @@ def show_target_music(
     )
 
 
+def list_midi_tracks(file_path):
+    """
+    Describe the tracks in an uploaded MIDI file.
+
+    Returns the labels, ready for a dropdown, and the
+    number of the track chosen by default.
+    """
+
+    from midi_import import describe_tracks, MidiImportError
+
+    if file_path is None:
+        raise MusicInputError(
+            "Choose a MIDI file first."
+        )
+
+    try:
+        described = describe_tracks(file_path)
+
+    except MidiImportError as problem:
+        raise MusicInputError(str(problem))
+
+    return [label for _, label in described]
+
+
+def track_number_from(label):
+    """
+    Read the track number back out of a dropdown label.
+    """
+
+    if label is None:
+        return None
+
+    try:
+        return int(label.split()[1])
+
+    except (IndexError, ValueError):
+        return None
+
+
+def import_midi_file(file_path, track_label=None):
+    """
+    Fill the music boxes from an uploaded MIDI file.
+
+    Returns pitch, duration and lyric text, the file's
+    tempo, and a line of feedback.
+
+    Neither the key nor the melody track is guessed at.
+    A choral file holds one track per voice, and the
+    highest is as often a piano part as the tune, so the
+    tracks are listed and the player chooses. The feedback
+    names the keys the notes would allow harmony in.
+    """
+
+    from midi_import import import_midi, MidiImportError
+
+    if file_path is None:
+        raise MusicInputError(
+            "Choose a MIDI file first."
+        )
+
+    try:
+        pitch_text, duration_text, lyric_text, bpm = (
+            import_midi(
+                file_path,
+                track_number=track_number_from(track_label)
+            )
+        )
+
+    except MidiImportError as problem:
+        raise MusicInputError(str(problem))
+
+    note_count = len(pitch_text.split())
+
+    if track_label is None:
+        source = "every track together"
+
+    else:
+        source = f"track {track_number_from(track_label)}"
+
+    lines = [
+        f"Imported {note_count} notes from {source} "
+        f"at {bpm} BPM."
+    ]
+
+    workable = keys_containing(pitch_text.split())
+
+    if len(workable) == 0:
+        lines.append(
+            "These notes fit none of the available keys, "
+            "so harmony is not available for this music."
+        )
+
+    elif len(workable) == 1:
+        lines.append(
+            f"For harmony, set the key to {workable[0]}."
+        )
+
+    else:
+        options = " or ".join(workable)
+        lines.append(
+            f"For harmony, the notes fit {options}."
+        )
+
+    if lyric_text:
+        lines.append("Lyrics were found and loaded.")
+
+    return (
+        pitch_text,
+        duration_text,
+        lyric_text,
+        bpm,
+        " ".join(lines)
+    )
+
+
 def load_twinkle_phrase():
     """
     The opening phrase of Twinkle Twinkle Little Star.

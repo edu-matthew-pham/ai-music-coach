@@ -51,10 +51,14 @@ def snap_to_beat(beats):
     return best
 
 
-def read_notes(midi_file):
+def read_notes(midi_file, track_number=None):
     """
     Collect every note in the file with its absolute start
     time and length, in beats.
+
+    track_number picks a single track. Left as None, every
+    track is read together, which suits a file holding one
+    line of music and not much else.
 
     Returns a list of (start_beats, length_beats, midi_number)
     and the first tempo found, as beats per minute.
@@ -66,7 +70,15 @@ def read_notes(midi_file):
 
     notes = []
 
-    for track in midi_file.tracks:
+    for position, track in enumerate(midi_file.tracks):
+
+        # The tempo usually lives on the first track, so it
+        # is read from every track even when only one is
+        # being imported.
+        wanted = (
+            track_number is None
+            or position == track_number
+        )
 
         time_ticks = 0
         sounding = {}
@@ -77,6 +89,9 @@ def read_notes(midi_file):
 
             if message.type == "set_tempo" and bpm is None:
                 bpm = round(mido.tempo2bpm(message.tempo))
+
+            elif not wanted:
+                continue
 
             elif message.type == "note_on" and message.velocity > 0:
                 sounding[message.note] = time_ticks
@@ -147,7 +162,78 @@ def keep_melody(notes):
     return melody
 
 
-def import_midi(path, maximum_notes=64):
+def describe_tracks(path):
+    """
+    Summarise what each track in a file contains.
+
+    A choral or band file holds one track per part, and
+    which is the melody cannot be guessed reliably: the
+    highest average pitch is often a descant or a piano
+    reduction rather than the tune. So the tracks are
+    described and the choice is left to the player.
+
+    Returns a list of (track_number, description).
+    """
+
+    try:
+        midi_file = mido.MidiFile(path)
+
+    except Exception:
+        raise MidiImportError(
+            "That file could not be read as MIDI."
+        )
+
+    described = []
+
+    for position, track in enumerate(midi_file.tracks):
+
+        numbers = [
+            message.note
+            for message in track
+            if message.type == "note_on"
+            and message.velocity > 0
+        ]
+
+        if len(numbers) == 0:
+            continue
+
+        one = mido.MidiFile(
+            ticks_per_beat=midi_file.ticks_per_beat
+        )
+        one.tracks.append(track)
+
+        notes, bpm = read_notes(one)
+        melody = keep_melody(notes)
+
+        opening = " ".join(
+            midi_to_note(number)
+            for _, _, number in melody[:6]
+        )
+
+        name = track.name.strip() if track.name else ""
+
+        label = f"Track {position}"
+
+        if name:
+            label += f" - {name}"
+
+        label += (
+            f" ({len(numbers)} notes, "
+            f"{midi_to_note(min(numbers))} to "
+            f"{midi_to_note(max(numbers))}): {opening}"
+        )
+
+        described.append((position, label))
+
+    if len(described) == 0:
+        raise MidiImportError(
+            "No notes were found in that file."
+        )
+
+    return described
+
+
+def import_midi(path, maximum_notes=64, track_number=None):
     """
     Turn a MIDI file into pitch, duration and lyric text.
 
@@ -164,7 +250,7 @@ def import_midi(path, maximum_notes=64):
             "That file could not be read as MIDI."
         )
 
-    notes, bpm = read_notes(midi_file)
+    notes, bpm = read_notes(midi_file, track_number)
 
     if len(notes) == 0:
         raise MidiImportError(

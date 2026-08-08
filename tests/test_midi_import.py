@@ -154,3 +154,93 @@ def test_empty_file_is_reported(tmp_path):
 
     with pytest.raises(MidiImportError, match="No notes"):
         import_midi(path)
+
+
+def test_describe_tracks_lists_each_voice(tmp_path):
+    """
+    A file with a part per track describes them all, so
+    the player can pick the line they are singing.
+    """
+
+    from midi_import import describe_tracks
+
+    midi_file = mido.MidiFile(ticks_per_beat=480)
+
+    voices = [
+        [(72, 1), (74, 1)],
+        [(60, 1), (62, 1)]
+    ]
+
+    for voice in voices:
+
+        track = mido.MidiTrack()
+        midi_file.tracks.append(track)
+
+        for number, beats in voice:
+            track.append(
+                mido.Message(
+                    "note_on", note=number, velocity=80, time=0
+                )
+            )
+            track.append(
+                mido.Message(
+                    "note_off",
+                    note=number,
+                    velocity=0,
+                    time=int(beats * 480)
+                )
+            )
+
+    path = str(tmp_path / "satb.mid")
+    midi_file.save(path)
+
+    described = describe_tracks(path)
+
+    assert len(described) == 2
+
+    assert described[0][0] == 0
+    assert "C5" in described[0][1]
+    assert "C4" in described[1][1]
+
+
+def test_importing_one_track_ignores_the_others(tmp_path):
+    """
+    Choosing a track imports that line alone, not the
+    highest note of everything sounding at once.
+    """
+
+    midi_file = mido.MidiFile(ticks_per_beat=480)
+
+    for numbers in ([72, 74], [60, 62]):
+
+        track = mido.MidiTrack()
+        midi_file.tracks.append(track)
+
+        for number in numbers:
+            track.append(
+                mido.Message(
+                    "note_on", note=number, velocity=80, time=0
+                )
+            )
+            track.append(
+                mido.Message(
+                    "note_off", note=number, velocity=0, time=480
+                )
+            )
+
+    path = str(tmp_path / "two.mid")
+    midi_file.save(path)
+
+    lower, durations, lyrics, bpm = import_midi(
+        path,
+        track_number=1
+    )
+
+    assert lower == "C4 D4"
+
+    upper, durations, lyrics, bpm = import_midi(
+        path,
+        track_number=0
+    )
+
+    assert upper == "C5 D5"
