@@ -40,13 +40,41 @@ SHORTEST_REST = 0.2
 #
 # A singer's phrase ends where they breathe, so a rest is
 # the honest place to break. Music with no rests still has
-# to be divided somehow, hence the cap: a stretch longer
-# than this breaks at a bar line instead. Very short
-# phrases are folded into the next, since two notes are
-# not worth practising alone.
+# to be divided somehow, so no phrase may run past the cap.
+# A break near the cap waits for a bar line when one is
+# close, since breaking mid bar is awkward to count in, but
+# the cap is never exceeded either way. Very short phrases
+# are folded into the next, since three notes are not worth
+# practising alone.
 PHRASE_REST = 0.7
-LONGEST_PHRASE_BEATS = 32
 SHORTEST_PHRASE_NOTES = 4
+
+
+# How long a phrase may run, in seconds.
+#
+# Seconds rather than notes, because a phrase is bounded
+# by breath: fourteen sixteenth notes and fourteen half
+# notes are the same count and nothing like the same
+# phrase. And seconds rather than beats, because a beat is
+# not a fixed length either. Twelve beats is ten seconds
+# at seventy and four at a hundred and eighty, and a
+# singer's lungs do not know the tempo.
+#
+# Past the comfortable length a phrase is divided at its
+# own widest gap, which is where the singer was breathing
+# even when the gap was too short to be written as a rest.
+# The hard cap is for music that never gives them a gap
+# at all, and is never exceeded.
+COMFORTABLE_PHRASE_SECONDS = 8
+LONGEST_PHRASE_SECONDS = 20
+
+
+def beats_from_seconds(seconds, bpm):
+    """
+    How many beats fit in a length of time.
+    """
+
+    return seconds * bpm / 60
 
 
 # The note lengths the app works in, as fractions of a
@@ -276,9 +304,70 @@ def describe_tracks(path):
     return described
 
 
+def phrase_beats(phrase):
+    """
+    How long a phrase runs, in beats.
+    """
+
+    first = phrase[0][0]
+    last = phrase[-1][0] + phrase[-1][1]
+
+    return last - first
+
+
+def split_at_widest_gap(phrase, longest_beats):
+    """
+    Divide an overlong phrase where it breathes most.
+
+    The widest gap inside a phrase is where a singer took
+    their breath, even when that gap was too short to be
+    written as a rest. Splitting there keeps the division
+    musical, where cutting at a note count would not.
+    """
+
+    if phrase_beats(phrase) <= longest_beats:
+        return [phrase]
+
+    widest = None
+    widest_at = None
+
+    previous_end = phrase[0][0] + phrase[0][1]
+
+    for position in range(1, len(phrase)):
+
+        start, length, midi_number = phrase[position]
+
+        gap = start - previous_end
+
+        # Keep both halves worth singing.
+        room = (
+            position >= SHORTEST_PHRASE_NOTES
+            and len(phrase) - position >= SHORTEST_PHRASE_NOTES
+        )
+
+        if room and (widest is None or gap > widest):
+            widest = gap
+            widest_at = position
+
+        previous_end = start + length
+
+    if widest_at is None:
+        return [phrase]
+
+    return (
+        split_at_widest_gap(
+            phrase[:widest_at], longest_beats
+        )
+        + split_at_widest_gap(
+            phrase[widest_at:], longest_beats
+        )
+    )
+
+
 def split_into_phrases(
     melody,
-    beats_per_bar=4
+    beats_per_bar=4,
+    bpm=120
 ):
     """
     Divide a line of music into phrases worth practising.
@@ -294,6 +383,16 @@ def split_into_phrases(
     if len(melody) == 0:
         return []
 
+    comfortable_beats = beats_from_seconds(
+        COMFORTABLE_PHRASE_SECONDS,
+        bpm
+    )
+
+    longest_beats = beats_from_seconds(
+        LONGEST_PHRASE_SECONDS,
+        bpm
+    )
+
     phrases = []
     current = [melody[0]]
 
@@ -307,12 +406,24 @@ def split_into_phrases(
 
         breaks_here = gap >= PHRASE_REST
 
-        # Nothing has rested for a long time, so break at
-        # the next bar line rather than run on forever.
-        if not breaks_here and so_far >= LONGEST_PHRASE_BEATS:
-            breaks_here = (
+        if not breaks_here:
+
+            on_a_bar_line = (
                 abs(start % beats_per_bar) < 0.01
             )
+
+            # Within a bar of the cap, take a bar line if
+            # one comes along.
+            nearly_full = so_far >= (
+                longest_beats - beats_per_bar
+            )
+
+            if nearly_full and on_a_bar_line:
+                breaks_here = True
+
+            # At the cap, break wherever we are.
+            elif so_far >= longest_beats:
+                breaks_here = True
 
         if breaks_here:
             phrases.append(current)
@@ -336,7 +447,15 @@ def split_into_phrases(
         else:
             joined.append(phrase)
 
-    return joined
+    # Divide anything still too long at its widest breath.
+    divided = []
+
+    for phrase in joined:
+        divided.extend(
+            split_at_widest_gap(phrase, comfortable_beats)
+        )
+
+    return divided
 
 
 def notes_to_text(melody):
@@ -445,7 +564,8 @@ def import_midi(path, maximum_notes=None, track_number=None,
 
         phrases = split_into_phrases(
             melody,
-            read_time_signature(midi_file)
+            read_time_signature(midi_file),
+            bpm
         )
 
         if phrase_number < 0 or phrase_number >= len(phrases):
@@ -460,7 +580,11 @@ def import_midi(path, maximum_notes=None, track_number=None,
 
     pitch_text, duration_text = notes_to_text(melody)
 
-    lyric_text = read_lyric_text(midi_file, len(melody))
+    lyric_text = read_lyric_text(
+        midi_file,
+        melody,
+        track_number
+    )
 
     return pitch_text, duration_text, lyric_text, bpm
 
@@ -491,7 +615,7 @@ def describe_phrases(path, track_number=None):
 
     beats_per_bar = read_time_signature(midi_file)
 
-    phrases = split_into_phrases(melody, beats_per_bar)
+    phrases = split_into_phrases(melody, beats_per_bar, bpm)
 
     described = []
 
@@ -519,26 +643,89 @@ def describe_phrases(path, track_number=None):
     return described
 
 
-def read_lyric_text(midi_file, note_count):
+def read_lyric_events(midi_file, track_number=None):
     """
-    Collect karaoke-style lyrics when the file has them.
+    Collect a track's lyrics with the time each falls at.
 
-    MIDI lyrics arrive one syllable per event. Only a file
-    whose syllable count matches its melody imports them;
-    anything else returns empty rather than guessing at
-    the alignment.
+    Lyrics belong to a voice, not to a file: notation
+    software writes them into the staff they are sung on,
+    so a choral export carries a separate set under every
+    part. Reading them all together would give four times
+    the syllables and match nothing.
+
+    Returns a list of (beats, text).
     """
+
+    ticks_per_beat = midi_file.ticks_per_beat
+
+    events = []
+
+    for position, track in enumerate(midi_file.tracks):
+
+        if track_number is not None and position != track_number:
+            continue
+
+        time_ticks = 0
+
+        for message in track:
+
+            time_ticks += message.time
+
+            if message.type != "lyrics":
+                continue
+
+            text = message.text.strip()
+
+            if text:
+                events.append(
+                    (time_ticks / ticks_per_beat, text)
+                )
+
+    return events
+
+
+def lyrics_for(melody, events, tolerance=0.05):
+    """
+    Line a track's syllables up with the notes it sings.
+
+    Each syllable belongs to the note starting at the same
+    moment, which is what lets a single phrase be lifted
+    out of a whole piece with its own words attached.
+
+    Returns the syllables for these notes, or an empty
+    list when they cannot be matched, since wrong words
+    are worse than none.
+    """
+
+    if len(events) == 0:
+        return []
 
     syllables = []
 
-    for track in midi_file.tracks:
-        for message in track:
-            if message.type == "lyrics":
-                text = message.text.strip()
-                if text:
-                    syllables.append(text)
+    for start, length, midi_number in melody:
 
-    if len(syllables) != note_count:
-        return ""
+        found = None
+
+        for moment, text in events:
+            if abs(moment - start) <= tolerance:
+                found = text
+                break
+
+        if found is None:
+            return []
+
+        syllables.append(found)
+
+    return syllables
+
+
+def read_lyric_text(midi_file, melody, track_number=None):
+    """
+    The words sung by these notes, as lyric box text.
+    """
+
+    events = read_lyric_events(midi_file, track_number)
+
+    syllables = lyrics_for(melody, events)
 
     return " ".join(syllables)

@@ -455,3 +455,335 @@ def test_fraction_lengths_read_back_the_same(tmp_path):
 
     assert sum(values[:3]) == pytest.approx(1.0)
     assert values[3] == pytest.approx(0.75)
+
+
+def test_a_phrase_never_runs_past_the_cap():
+    """
+    Music that never rests still has to be divided. The
+    cap is a hard limit, not a suggestion: it holds even
+    when no note lands on a bar line to break at.
+    """
+
+    from midi_import import (
+        split_into_phrases,
+        LONGEST_PHRASE_SECONDS,
+        beats_from_seconds
+    )
+
+    # Sixty beats of unbroken singing, deliberately off
+    # the bar grid so no tidy break is available.
+    melody = [
+        (0.5 + position, 1.0, 60)
+        for position in range(60)
+    ]
+
+    bpm = 120
+
+    phrases = split_into_phrases(
+        melody, beats_per_bar=4, bpm=bpm
+    )
+
+    cap = beats_from_seconds(LONGEST_PHRASE_SECONDS, bpm)
+
+    assert len(phrases) > 1
+
+    for phrase in phrases:
+
+        first = phrase[0][0]
+        last = phrase[-1][0] + phrase[-1][1]
+
+        assert last - first <= cap
+
+
+def test_a_long_phrase_prefers_to_break_at_a_bar_line():
+    """
+    Breaking mid bar is awkward to count in, so a bar line
+    near the cap is taken in preference.
+    """
+
+    from midi_import import split_into_phrases
+
+    melody = [
+        (float(position), 1.0, 60)
+        for position in range(60)
+    ]
+
+    phrases = split_into_phrases(melody, beats_per_bar=4)
+
+    for phrase in phrases[1:]:
+        assert phrase[0][0] % 4 == 0
+
+
+def write_voice(midi_file, notes, words=None, ticks=480):
+    """
+    Add one voice to a file, optionally with its own words.
+
+    Notation software writes lyrics into the staff they
+    belong to, so each voice carries its own.
+    """
+
+    track = mido.MidiTrack()
+    midi_file.tracks.append(track)
+
+    for position, (number, beats) in enumerate(notes):
+
+        if words is not None and position < len(words):
+            track.append(
+                mido.MetaMessage(
+                    "lyrics", text=words[position], time=0
+                )
+            )
+
+        track.append(
+            mido.Message(
+                "note_on", note=number, velocity=80, time=0
+            )
+        )
+        track.append(
+            mido.Message(
+                "note_off",
+                note=number,
+                velocity=0,
+                time=int(beats * ticks)
+            )
+        )
+
+    return track
+
+
+def test_each_voice_keeps_its_own_words(tmp_path):
+    """
+    A choral file carries a set of lyrics under every
+    part. Reading them all together would give several
+    times the syllables and match nothing.
+    """
+
+    midi_file = mido.MidiFile(ticks_per_beat=480)
+
+    write_voice(
+        midi_file,
+        [(72, 1), (74, 1), (76, 1)],
+        ["Glo-", "ri-", "a"]
+    )
+
+    write_voice(
+        midi_file,
+        [(60, 1), (62, 1), (64, 1)],
+        ["Ah", "ah", "ah"]
+    )
+
+    path = str(tmp_path / "choral.mid")
+    midi_file.save(path)
+
+    pitches, durations, upper, bpm = import_midi(
+        path, track_number=0
+    )
+
+    assert upper == "Glo- ri- a"
+
+    pitches, durations, lower, bpm = import_midi(
+        path, track_number=1
+    )
+
+    assert lower == "Ah ah ah"
+
+
+def test_a_phrase_keeps_only_its_own_words(tmp_path):
+    """
+    Lifting one phrase out of a piece must lift its words
+    with it, not the words of the whole song.
+    """
+
+    midi_file = mido.MidiFile(ticks_per_beat=480)
+
+    # Four notes, since a shorter phrase would be folded
+    # into the one after it.
+    track = write_voice(
+        midi_file,
+        [(60, 1), (62, 1), (64, 1), (65, 1)],
+        ["There", "once", "was", "a"]
+    )
+
+    # A rest, then a second phrase with its own words.
+    for position, (number, word) in enumerate(
+        [(65, "put"), (67, "to"), (69, "sea"), (71, "now")]
+    ):
+        track.append(
+            mido.MetaMessage(
+                "lyrics",
+                text=word,
+                time=480 if position == 0 else 0
+            )
+        )
+        track.append(
+            mido.Message(
+                "note_on", note=number, velocity=80, time=0
+            )
+        )
+        track.append(
+            mido.Message(
+                "note_off", note=number, velocity=0, time=480
+            )
+        )
+
+    path = str(tmp_path / "phrases.mid")
+    midi_file.save(path)
+
+    pitches, durations, lyrics, bpm = import_midi(
+        path, phrase_number=1
+    )
+
+    assert lyrics == "put to sea now"
+
+
+def test_unmatched_lyrics_are_left_out(tmp_path):
+    """
+    Words that do not line up with the notes are dropped:
+    wrong words are worse than none.
+    """
+
+    midi_file = mido.MidiFile(ticks_per_beat=480)
+
+    track = write_voice(
+        midi_file,
+        [(60, 1), (62, 1), (64, 1)]
+    )
+
+    # One stray syllable, at a time no note begins.
+    track.insert(
+        0,
+        mido.MetaMessage("lyrics", text="stray", time=0)
+    )
+
+    path = str(tmp_path / "stray.mid")
+    midi_file.save(path)
+
+    pitches, durations, lyrics, bpm = import_midi(path)
+
+    assert lyrics == ""
+
+
+def test_a_long_phrase_is_divided_at_its_widest_breath():
+    """
+    Two sung lines are often separated by a breath too
+    short to be written as a rest. Rather than treat every
+    such gap as a phrase end, an overlong phrase is divided
+    at its own widest gap, which is where the breath was.
+    """
+
+    from midi_import import split_at_widest_gap
+
+    # Twelve beats of singing with a small gap halfway.
+    melody = []
+    time = 0.0
+
+    for position in range(12):
+
+        melody.append((time, 1.0, 60 + position))
+
+        time += 1.0
+
+        if position == 5:
+            time += 0.3
+
+    phrases = split_at_widest_gap(melody, longest_beats=8)
+
+    assert len(phrases) == 2
+    assert len(phrases[0]) == 6
+    assert len(phrases[1]) == 6
+
+
+def test_phrase_length_is_measured_in_time_not_notes():
+    """
+    Fourteen sixteenth notes and fourteen half notes are
+    the same count and nothing like the same phrase. A
+    breath is a length of time.
+    """
+
+    from midi_import import split_at_widest_gap
+
+    # Sixteen quick notes, four beats in total: short
+    # enough to sing in one breath despite the count.
+    quick = [
+        (position * 0.25, 0.25, 60)
+        for position in range(16)
+    ]
+
+    assert len(split_at_widest_gap(quick, longest_beats=8)) == 1
+
+    # Eight slow notes, thirty two beats: far too long,
+    # despite being half as many notes.
+    slow = []
+    time = 0.0
+
+    for position in range(8):
+        slow.append((time, 4.0, 60))
+        time += 4.0
+        if position == 3:
+            time += 0.5
+
+    assert len(split_at_widest_gap(slow, longest_beats=8)) > 1
+
+
+def test_a_phrase_within_the_limit_is_left_alone():
+    from midi_import import split_at_widest_gap
+
+    melody = [
+        (position * 0.5, 0.5, 60)
+        for position in range(6)
+    ]
+
+    assert split_at_widest_gap(melody, longest_beats=8) == [melody]
+
+
+def test_the_same_music_phrases_differently_at_different_tempos():
+    """
+    A phrase is bounded by breath, and how much music fits
+    in a breath depends on how fast it goes by. The same
+    written notes are one phrase when quick and several
+    when slow.
+    """
+
+    from midi_import import split_into_phrases
+
+    # Twenty four beats of singing with small gaps, which
+    # is a minute and a half at twenty beats a minute and
+    # a few seconds at three hundred.
+    melody = []
+    time = 0.0
+
+    for position in range(24):
+
+        melody.append((time, 1.0, 60))
+
+        time += 1.0
+
+        if position % 4 == 3:
+            time += 0.3
+
+    quick = split_into_phrases(melody, 4, bpm=300)
+    slow = split_into_phrases(melody, 4, bpm=40)
+
+    assert len(slow) > len(quick)
+
+
+def test_dividing_never_leaves_a_scrap():
+    """
+    Both halves must be worth singing, so a phrase is not
+    divided in a way that leaves two or three notes alone.
+    """
+
+    from midi_import import (
+        split_at_widest_gap,
+        SHORTEST_PHRASE_NOTES
+    )
+
+    # The widest gap sits right at the start, where using
+    # it would leave a single note behind.
+    melody = [(0.0, 0.5, 60), (2.0, 0.5, 62)]
+
+    for position in range(2, 12):
+        melody.append((2.0 + position * 0.5, 0.5, 60 + position))
+
+    for phrase in split_at_widest_gap(melody, longest_beats=8):
+        assert len(phrase) >= SHORTEST_PHRASE_NOTES
