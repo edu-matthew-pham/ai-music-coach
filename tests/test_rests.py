@@ -149,3 +149,47 @@ def test_imported_gaps_become_rests(tmp_path):
 
     assert pitches == "C4 R E4"
     assert durations == "1 1 1"
+
+
+def test_triplets_are_written_as_fractions():
+    """
+    A third of a beat has no exact decimal, so it is
+    written the way a musician reads it.
+    """
+
+    from music import read_beats
+
+    assert read_beats("1/3") == pytest.approx(1 / 3)
+    assert read_beats("2/3") == pytest.approx(2 / 3)
+    assert read_beats("4/3") == pytest.approx(4 / 3)
+
+
+def test_a_triplet_fills_its_beat_exactly():
+    """
+    Three triplet notes make one beat, which decimals
+    written into a textbox cannot quite manage.
+    """
+
+    pitches, durations = read_music(
+        "C4 E4 G4",
+        "1/3 1/3 1/3"
+    )
+
+    assert sum(durations) == pytest.approx(1.0)
+
+
+def test_plain_lengths_still_read():
+    from music import read_beats
+
+    assert read_beats("1") == 1.0
+    assert read_beats("0.75") == 0.75
+
+
+def test_nonsense_fractions_are_rejected():
+    from music import read_beats
+
+    with pytest.raises(MusicInputError, match="Fractions look like"):
+        read_beats("1/0")
+
+    with pytest.raises(MusicInputError, match="Fractions look like"):
+        read_beats("a/3")

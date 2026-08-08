@@ -22,7 +22,7 @@ from midi_import import (
     import_midi,
     BEAT_FRACTIONS
 )
-from music import import_midi_file, list_midi_tracks
+from music import import_midi_file, list_midi_tracks, read_beats
 
 
 FIXTURE_DIRECTORY = os.path.join(
@@ -41,11 +41,12 @@ def allowed_duration(text):
     """
     Whether a duration is one the importer can produce.
 
-    Derived from the importer's own list rather than
-    written out again, so the two cannot drift apart.
+    The text is read back with the app's own parser, so a
+    length written as a fraction is checked the same way
+    the music boxes would read it.
     """
 
-    value = float(text)
+    value = read_beats(text)
 
     return any(
         abs(value - fraction) < 0.001

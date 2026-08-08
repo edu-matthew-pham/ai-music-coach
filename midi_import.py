@@ -320,16 +320,21 @@ def import_midi(path, maximum_notes=64, track_number=None):
 
     def show(value):
         """
-        Write a length in the shortest form that reads
-        back as the same number.
+        Write a length the way a musician would read it.
+
+        Triplets are written as fractions, because thirds
+        of a beat have no exact decimal and 0.3333 is both
+        uglier and slightly wrong.
         """
 
         if value == int(value):
             return str(int(value))
 
-        # Triplets do not divide evenly, so they are
-        # written to enough places to survive the trip
-        # through the textbox and back.
+        thirds = value * 3
+
+        if abs(thirds - round(thirds)) < 0.001:
+            return f"{round(thirds)}/3"
+
         return str(round(value, 4))
 
     pitch_text = " ".join(pitches)

@@ -67,12 +67,16 @@ with gr.Blocks(
 
     pitch_input = gr.Textbox(
         label="Pitches",
-        value="C4 C4 G4 G4 A4 A4 G4"
+        value="C4 C4 G4 G4 A4 A4 G4",
+        info="Notes like C4, F#4 or Bb3. Write a rest as R."
     )
 
     duration_input = gr.Textbox(
         label="Durations (beats)",
-        value="1 1 1 1 1 1 2"
+        value="1 1 1 1 1 1 2",
+        info="One length per note, in beats. 1 is a beat, "
+             "0.5 half a beat, 1.5 a dotted beat. Write "
+             "triplets as fractions: 1/3."
     )
 
     lyric_input = gr.Textbox(

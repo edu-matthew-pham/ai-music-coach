@@ -153,6 +153,55 @@ def describe_pitch(pitch):
     return f"{pitch.note}({round(pitch.cents):+d})"
 
 
+def read_beats(text):
+    """
+    Read one note length from the durations box.
+
+    Lengths are written in beats. A plain number is the
+    usual case, and a fraction such as 1/3 is there for
+    triplets, which have no exact decimal: writing 0.3333
+    is both uglier and slightly wrong.
+
+        1      one beat
+        0.5    half a beat
+        1.5    a dotted beat
+        1/3    one note of a triplet
+        2/3    two thirds of a beat
+    """
+
+    text = text.strip()
+
+    if "/" in text:
+
+        top, _, bottom = text.partition("/")
+
+        try:
+            value = float(top) / float(bottom)
+
+        except (ValueError, ZeroDivisionError):
+            raise MusicInputError(
+                f"'{text}' is not a length. Fractions look "
+                f"like 1/3."
+            )
+
+    else:
+
+        try:
+            value = float(text)
+
+        except ValueError:
+            raise MusicInputError(
+                f"'{text}' is not a number of beats."
+            )
+
+    if value <= 0:
+        raise MusicInputError(
+            "Every note must last longer than zero beats."
+        )
+
+    return value
+
+
 def sung_count(pitches):
     """
     How many of these entries are actually sung.
@@ -214,21 +263,9 @@ def read_music(pitch_text, duration_text):
     durations = []
 
     for duration in duration_strings:
-
-        try:
-            beats = float(duration)
-
-        except ValueError:
-            raise MusicInputError(
-                f"'{duration}' is not a number of beats."
-            )
-
-        if beats <= 0:
-            raise MusicInputError(
-                "Every note must last longer than zero beats."
-            )
-
-        durations.append(beats)
+        durations.append(
+            read_beats(duration)
+        )
 
     if len(pitches) != len(durations):
         raise MusicInputError(
