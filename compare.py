@@ -13,7 +13,7 @@ left to whatever is displaying the result.
 
 from typing import NamedTuple, Optional
 
-from notes import note_to_midi, midi_to_note
+from notes import note_to_midi, midi_to_note, is_rest
 
 
 class NoteComparison(NamedTuple):
@@ -37,6 +37,17 @@ class NoteComparison(NamedTuple):
     cents_from_target: Optional[float]
 
     @property
+    def is_rest(self):
+        """
+        Whether the music asks for silence here.
+
+        A rest is not a note that went undetected: nothing
+        was meant to be sung, so nothing is judged.
+        """
+
+        return self.target_midi is None
+
+    @property
     def expected(self):
         """
         The note actually being judged against.
@@ -44,6 +55,9 @@ class NoteComparison(NamedTuple):
         This is the target note unless the music has been
         shifted, in which case it is the shifted note.
         """
+
+        if self.target_midi is None:
+            return None
 
         return midi_to_note(self.target_midi)
 
@@ -85,6 +99,16 @@ def compare_note(target, pitch, transpose=0):
     for a player whose comfortable range is not the one the
     music was written in. Shifting down an octave is -12.
     """
+
+    if is_rest(target):
+
+        return NoteComparison(
+            target=target,
+            target_midi=None,
+            heard=None,
+            heard_cents=None,
+            cents_from_target=None
+        )
 
     target_midi = note_to_midi(target) + transpose
 
@@ -159,7 +183,7 @@ def suggest_transpose(comparisons):
 
     for comparison in comparisons:
 
-        if not comparison.was_detected:
+        if comparison.is_rest or not comparison.was_detected:
             continue
 
         offsets.append(
@@ -194,8 +218,15 @@ def summarise(comparisons):
     no distance to average for those.
     """
 
-    detected = [
+    # Rests are not part of the score: there was nothing
+    # to sing, so nothing to get right or wrong.
+    sung = [
         comparison for comparison in comparisons
+        if not comparison.is_rest
+    ]
+
+    detected = [
+        comparison for comparison in sung
         if comparison.was_detected
     ]
 
@@ -216,7 +247,7 @@ def summarise(comparisons):
         average_error = total / len(detected)
 
     return {
-        "total": len(comparisons),
+        "total": len(sung),
         "detected": len(detected),
         "on_target": len(on_target),
         "average_cents_off": average_error

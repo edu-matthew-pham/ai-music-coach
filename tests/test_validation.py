@@ -271,7 +271,7 @@ def test_lyrics_are_optional():
 def test_lyrics_must_match_the_notes():
     from music import read_lyrics
 
-    with pytest.raises(MusicInputError, match="7 notes but 2"):
+    with pytest.raises(MusicInputError, match="7 sung notes but 2"):
         read_lyrics("some words", 7)
 
 

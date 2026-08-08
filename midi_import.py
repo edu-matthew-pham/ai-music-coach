@@ -17,7 +17,7 @@ Dense piano arrangements will come out as their top line.
 
 import mido
 
-from notes import midi_to_note
+from notes import midi_to_note, REST
 
 
 class MidiImportError(ValueError):
@@ -27,6 +27,11 @@ class MidiImportError(ValueError):
     The message is written to be shown to the person who
     chose the file.
     """
+
+
+# A gap shorter than this is the ordinary space between
+# notes rather than a rest anyone would write down.
+SHORTEST_REST = 0.2
 
 
 # The note lengths the app works in, as fractions of a
@@ -265,7 +270,20 @@ def import_midi(path, maximum_notes=64, track_number=None):
     pitches = []
     durations = []
 
+    # Music begins where its first note does, so silence
+    # before the opening note is dropped rather than kept
+    # as a rest. Silence between notes is kept: it is part
+    # of the phrasing and of when a singer breathes.
+    previous_end = melody[0][0]
+
     for start, length, midi_number in melody:
+
+        gap = start - previous_end
+
+        if gap >= SHORTEST_REST:
+
+            pitches.append(REST)
+            durations.append(snap_to_beat(gap))
 
         pitches.append(
             midi_to_note(midi_number)
@@ -274,6 +292,8 @@ def import_midi(path, maximum_notes=64, track_number=None):
         durations.append(
             snap_to_beat(length)
         )
+
+        previous_end = start + length
 
     def show(value):
         if value == int(value):

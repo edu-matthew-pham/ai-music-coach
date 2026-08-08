@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 
 import numpy as np
 
-from notes import note_to_midi, midi_to_note
+from notes import note_to_midi, midi_to_note, is_rest
 
 
 # Anything inside this is close enough that a listener would
@@ -67,11 +67,19 @@ def make_performance_plot(
 
     start_time = 0.0
 
+    lyric_position = 0
+
     for position in range(len(targets)):
 
-        midi = note_to_midi(targets[position]) + transpose
-
         length = durations[position] * seconds_per_beat
+
+        # A rest leaves a gap: no box, no label, but the
+        # time still passes.
+        if is_rest(targets[position]):
+            start_time += length
+            continue
+
+        midi = note_to_midi(targets[position]) + transpose
 
         axes.broken_barh(
             [(start_time, length)],
@@ -96,9 +104,10 @@ def make_performance_plot(
         # An underscore is a held syllable and shows as a
         # continuation line rather than text, following
         # engraving convention.
-        if lyrics is not None:
+        if lyrics is not None and lyric_position < len(lyrics):
 
-            syllable = lyrics[position]
+            syllable = lyrics[lyric_position]
+            lyric_position += 1
 
             if syllable == "_":
                 shown = "—"
@@ -131,9 +140,13 @@ def make_performance_plot(
 
         for position in range(len(harmony)):
 
-            midi = note_to_midi(harmony[position]) + transpose
-
             length = durations[position] * seconds_per_beat
+
+            if is_rest(harmony[position]):
+                harmony_start += length
+                continue
+
+            midi = note_to_midi(harmony[position]) + transpose
 
             axes.broken_barh(
                 [(harmony_start, length)],
@@ -212,12 +225,20 @@ def make_tuning_plot(comparisons):
     Turn a list of NoteComparison into a matplotlib figure.
     """
 
-    height = max(2.5, 0.5 * len(comparisons) + 1.2)
+    height = max(
+        2.5,
+        0.5 * len([c for c in comparisons if not c.is_rest]) + 1.2
+    )
 
     figure, axes = plt.subplots(figsize=(8, height))
 
+    sung = [
+        comparison for comparison in comparisons
+        if not comparison.is_rest
+    ]
+
     positions = list(
-        range(len(comparisons))
+        range(len(sung))
     )
 
     labels = []
@@ -225,6 +246,9 @@ def make_tuning_plot(comparisons):
     colours = []
 
     for comparison in comparisons:
+
+        if comparison.is_rest:
+            continue
 
         labels.append(comparison.target)
 
@@ -269,7 +293,7 @@ def make_tuning_plot(comparisons):
     # Mark the notes where nothing was heard.
     for position in positions:
 
-        if not comparisons[position].was_detected:
+        if not sung[position].was_detected:
 
             axes.text(
                 0,

@@ -46,6 +46,23 @@ SHARP_NAMES = [
 ]
 
 
+# How a silence is written in a line of music. Rests take
+# a place among the notes: they have a length, they just
+# have no pitch. Music without them cannot hold a phrase
+# apart or leave a singer room to breathe.
+REST = "R"
+
+REST_MARKERS = {"R", "r", "-"}
+
+
+def is_rest(pitch):
+    """
+    Whether this entry in a line of music is a silence.
+    """
+
+    return pitch in REST_MARKERS
+
+
 def split_note(note):
     """
     Split a note such as C4, F#4 or Bb3 into its

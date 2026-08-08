@@ -2,7 +2,7 @@
 
 import math
 
-from notes import note_to_frequency
+from notes import note_to_frequency, is_rest
 
 
 # How many beats of clicks are played before the music, so
@@ -111,14 +111,23 @@ def add_metronome(sound, total_beats, bpm=120, sample_rate=8000):
 def make_note(pitch, beats, bpm=120, sample_rate=8000):
     """
     Turn one musical note into a list of sound values.
+
+    A rest is silence of the same length, so a line of
+    music keeps its shape whether or not it is sounding.
     """
 
     sound = []
 
-    frequency = note_to_frequency(pitch)
-
     seconds_per_beat = 60 / bpm
     duration_seconds = beats * seconds_per_beat
+
+    if is_rest(pitch):
+
+        return [0.0] * int(
+            duration_seconds * sample_rate
+        )
+
+    frequency = note_to_frequency(pitch)
 
     # Play sound for 90% of the note.
     sound_seconds = duration_seconds * 0.9

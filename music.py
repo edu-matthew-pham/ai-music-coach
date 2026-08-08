@@ -12,7 +12,7 @@ from playback import (
 
 from harmony import make_harmony, keys_containing
 
-from notes import split_note
+from notes import split_note, is_rest, REST
 
 from compare import compare_sequence, summarise
 
@@ -53,6 +53,9 @@ def check_note_names(pitches):
     """
 
     for pitch in pitches:
+
+        if is_rest(pitch):
+            continue
 
         if len(pitch) < 2 or not pitch[-1].isdigit():
             raise MusicInputError(
@@ -150,6 +153,17 @@ def describe_pitch(pitch):
     return f"{pitch.note}({round(pitch.cents):+d})"
 
 
+def sung_count(pitches):
+    """
+    How many of these entries are actually sung.
+    """
+
+    return len([
+        pitch for pitch in pitches
+        if not is_rest(pitch)
+    ])
+
+
 def read_lyrics(lyric_text, note_count):
     """
     Turn a lyrics textbox into one syllable per note.
@@ -173,9 +187,10 @@ def read_lyrics(lyric_text, note_count):
 
     if len(syllables) != note_count:
         raise MusicInputError(
-            f"There are {note_count} notes but "
+            f"There are {note_count} sung notes but "
             f"{len(syllables)} syllables. Each note needs "
-            f"one syllable, or _ to hold the previous one."
+            f"one syllable, or _ to hold the previous one. "
+            f"Rests do not take a syllable."
         )
 
     return syllables
@@ -650,13 +665,17 @@ def analyse_performance(
     lines.append("")
 
     for comparison in comparisons:
+
+        if comparison.is_rest:
+            continue
+
         lines.append(
             describe_comparison(comparison)
         )
 
     lyrics = read_lyrics(
         lyric_text,
-        len(pitches)
+        sung_count(pitches)
     )
 
     trace = trace_performance(audio)
@@ -810,7 +829,7 @@ def show_target_music(
 
     lyrics = read_lyrics(
         lyric_text,
-        len(pitches)
+        sung_count(pitches)
     )
 
     harmony = None

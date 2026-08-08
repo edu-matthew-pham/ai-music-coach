@@ -1,6 +1,6 @@
 # harmony.py
 
-from notes import NOTE_SEMITONES, note_to_midi
+from notes import NOTE_SEMITONES, note_to_midi, is_rest
 
 
 MAJOR_SCALES = {
@@ -65,6 +65,8 @@ def keys_containing(pitches):
         fits = True
 
         for pitch in pitches:
+            if is_rest(pitch):
+                continue
             if note_to_midi(pitch) % 12 not in scale_semitones:
                 fits = False
                 break
@@ -124,6 +126,12 @@ def make_harmony(pitches, key="C", steps=-2):
     harmony = []
 
     for pitch in pitches:
+
+        # A silence in the melody is a silence in the
+        # harmony: both parts breathe together.
+        if is_rest(pitch):
+            harmony.append(pitch)
+            continue
 
         harmony_note = move_in_scale(
             pitch,
