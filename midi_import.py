@@ -35,10 +35,33 @@ SHORTEST_REST = 0.2
 
 
 # The note lengths the app works in, as fractions of a
-# beat. Real performances land between the cracks, so an
-# imported length snaps to the nearest of these.
+# beat, taking a beat as a quarter note. Real files land
+# between the cracks, so an imported length snaps to the
+# nearest of these.
+#
+# The list covers plain notes, dotted notes at every level
+# including double dots, and triplets. Music written in
+# compound time leans on dotted values, and leaving them
+# out does not merely round one note: the error repeats
+# and the phrase drifts out of time.
 BEAT_FRACTIONS = [
-    0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0, 8.0
+    # Triplets.
+    1 / 3, 2 / 3, 4 / 3, 8 / 3,
+
+    # Sixteenths and their dots.
+    0.25, 0.375, 0.4375,
+
+    # Eighths.
+    0.5, 0.75, 0.875,
+
+    # Quarters.
+    1.0, 1.5, 1.75,
+
+    # Halves.
+    2.0, 2.75, 3.0, 3.5,
+
+    # Whole notes and longer.
+    4.0, 6.0, 7.0, 8.0
 ]
 
 
@@ -296,9 +319,18 @@ def import_midi(path, maximum_notes=64, track_number=None):
         previous_end = start + length
 
     def show(value):
+        """
+        Write a length in the shortest form that reads
+        back as the same number.
+        """
+
         if value == int(value):
             return str(int(value))
-        return str(value)
+
+        # Triplets do not divide evenly, so they are
+        # written to enough places to survive the trip
+        # through the textbox and back.
+        return str(round(value, 4))
 
     pitch_text = " ".join(pitches)
 

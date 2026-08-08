@@ -133,8 +133,13 @@ def test_chords_keep_the_top_note():
 def test_awkward_lengths_snap_to_beats():
     assert snap_to_beat(0.98) == 1.0
     assert snap_to_beat(0.52) == 0.5
-    assert snap_to_beat(1.7) == 1.5
-    assert snap_to_beat(7.0) == 6.0
+
+    # Nearer a double dotted quarter than a dotted one.
+    assert snap_to_beat(1.7) == 1.75
+
+    # A double dotted whole note is a length in its own
+    # right, so it is kept rather than rounded down.
+    assert snap_to_beat(7.0) == 7.0
 
 
 def test_unreadable_file_is_reported(tmp_path):
@@ -244,3 +249,27 @@ def test_importing_one_track_ignores_the_others(tmp_path):
     )
 
     assert upper == "C5 D5"
+
+
+def test_dotted_lengths_are_kept():
+    """
+    Dotted notes are ordinary music, and a file full of
+    them drifts out of time if they round to the nearest
+    plain note instead.
+    """
+
+    assert snap_to_beat(0.373) == 0.375
+    assert snap_to_beat(1.748) == 1.75
+    assert snap_to_beat(2.748) == 2.75
+    assert snap_to_beat(0.87) == 0.875
+
+
+def test_triplets_are_kept():
+    assert snap_to_beat(0.334) == pytest.approx(1 / 3)
+    assert snap_to_beat(0.665) == pytest.approx(2 / 3)
+
+
+def test_plain_lengths_still_win_when_they_are_nearest():
+    assert snap_to_beat(0.98) == 1.0
+    assert snap_to_beat(0.51) == 0.5
+    assert snap_to_beat(2.02) == 2.0

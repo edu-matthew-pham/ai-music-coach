@@ -17,7 +17,11 @@ import os
 
 import pytest
 
-from midi_import import describe_tracks, import_midi
+from midi_import import (
+    describe_tracks,
+    import_midi,
+    BEAT_FRACTIONS
+)
 from music import import_midi_file, list_midi_tracks
 
 
@@ -33,9 +37,20 @@ MIDI_FILES = sorted(
 )
 
 
-DURATIONS_ALLOWED = {
-    "0.25", "0.5", "0.75", "1", "1.5", "2", "3", "4", "6", "8"
-}
+def allowed_duration(text):
+    """
+    Whether a duration is one the importer can produce.
+
+    Derived from the importer's own list rather than
+    written out again, so the two cannot drift apart.
+    """
+
+    value = float(text)
+
+    return any(
+        abs(value - fraction) < 0.001
+        for fraction in BEAT_FRACTIONS
+    )
 
 
 @pytest.mark.skipif(
@@ -69,7 +84,9 @@ def test_real_file_imports_into_playable_music(path):
 
     # Every duration must be a length the app understands.
     for duration in duration_list:
-        assert duration in DURATIONS_ALLOWED
+        assert allowed_duration(duration), (
+            f"{duration} is not a note length"
+        )
 
     assert 20 <= bpm <= 300
 
