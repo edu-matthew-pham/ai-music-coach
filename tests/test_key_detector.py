@@ -202,3 +202,49 @@ def test_the_whole_texture_names_the_key_more_surely():
     all_margin = from_all[0][1] - from_all[1][1]
 
     assert all_margin > line_margin
+
+
+def test_the_key_report_needs_no_file():
+    """
+    Detecting the key reads the music boxes, so it works
+    on notes typed by hand as much as on an import.
+    """
+
+    from music import suggest_key
+
+    report = suggest_key(
+        "D4 E4 F4 G4 A4 Bb4 A4 D4",
+        "1 1 1 1 1 1 1 2"
+    )
+
+    assert "D minor" in report
+
+
+def test_import_feedback_does_not_claim_harmony_is_unavailable():
+    """
+    Harmony works in any key now, so the feedback must
+    recommend rather than refuse.
+    """
+
+    import os
+
+    from music import import_midi_file, list_midi_tracks
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures",
+        "midi",
+        "o-holy-night-satb.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("o holy night fixture not present")
+
+    tracks = list_midi_tracks(path)
+
+    pitches, durations, lyrics, bpm, feedback = (
+        import_midi_file(path, tracks[1])
+    )
+
+    assert "not available" not in feedback
+    assert "Harmony still works" in feedback

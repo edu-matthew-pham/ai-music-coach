@@ -1,9 +1,11 @@
 # main.py
 
-import gradio as gr
 import os
 
+import gradio as gr
+
 from harmony import MAJOR_SCALES
+from help_text import HELP_TEXT
 from music import (
     MusicInputError,
     suggest_key,
@@ -69,6 +71,9 @@ with gr.Blocks(
     gr.Markdown(
         "## Target Music"
     )
+
+    with gr.Accordion("How to use this", open=False):
+        gr.Markdown(HELP_TEXT)
 
     pitch_input = gr.Textbox(
         label="Pitches",
@@ -587,7 +592,13 @@ with gr.Blocks(
         ]
     )
 
+
 if __name__ == "__main__":
+
+    # Hosting reads the port from the environment and
+    # expects the server on every interface, not just
+    # localhost. Both fall back to the local defaults, so
+    # running it on your own machine is unchanged.
     port = int(os.environ.get("PORT", 7860))
 
     demo.launch(

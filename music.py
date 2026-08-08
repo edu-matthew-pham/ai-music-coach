@@ -1093,23 +1093,29 @@ def import_midi_file(
         describe_key(all_pitches, all_durations)
     )
 
+    # Which keys hold every note, if any do. Harmony works
+    # in any key now, so this is a recommendation and not
+    # a restriction: a key that contains the lot gives the
+    # tidiest harmony line.
     workable = keys_containing(pitch_text.split())
 
-    if len(workable) == 0:
+    if len(workable) == 1:
         lines.append(
-            "These notes fit none of the available keys, "
-            "so harmony is not available for this music."
+            f"Every note fits {workable[0]} major."
         )
 
-    elif len(workable) == 1:
+    elif len(workable) > 1:
+        options = " or ".join(workable)
         lines.append(
-            f"For harmony, set the key to {workable[0]}."
+            f"Every note fits {options} major."
         )
 
     else:
-        options = " or ".join(workable)
         lines.append(
-            f"For harmony, the notes fit {options}."
+            "No single key holds every note, which is "
+            "ordinary in real music. Harmony still works: "
+            "notes outside the chosen key are sung at the "
+            "nearest note in the scale."
         )
 
     if lyric_text:
