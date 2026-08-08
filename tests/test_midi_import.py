@@ -412,3 +412,46 @@ def test_nothing_is_lost_when_a_track_is_split(tmp_path):
     counted = sum(len(phrase) for phrase in phrases)
 
     assert counted == len(melody)
+
+
+def test_lengths_are_written_as_fractions_of_a_beat(tmp_path):
+    """
+    Note lengths are fractions by nature, and writing them
+    that way shows the structure: dotted notes are three
+    over something, double dotted are seven over something.
+    """
+
+    path = write_midi(
+        str(tmp_path / "fractions.mid"),
+        [
+            (60, 1),      # a beat
+            (62, 0.5),    # an eighth
+            (64, 0.75),   # dotted eighth
+            (65, 1.5),    # dotted quarter
+            (67, 2)       # a half note
+        ]
+    )
+
+    pitches, durations, lyrics, bpm = import_midi(path)
+
+    assert durations == "1 1/2 3/4 3/2 2"
+
+
+def test_fraction_lengths_read_back_the_same(tmp_path):
+    """
+    What the importer writes, the music boxes must read.
+    """
+
+    from music import read_beats
+
+    path = write_midi(
+        str(tmp_path / "roundtrip.mid"),
+        [(60, 1 / 3), (62, 1 / 3), (64, 1 / 3), (65, 0.75)]
+    )
+
+    pitches, durations, lyrics, bpm = import_midi(path)
+
+    values = [read_beats(text) for text in durations.split()]
+
+    assert sum(values[:3]) == pytest.approx(1.0)
+    assert values[3] == pytest.approx(0.75)

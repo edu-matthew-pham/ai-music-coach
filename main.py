@@ -75,9 +75,9 @@ with gr.Blocks(
     duration_input = gr.Textbox(
         label="Durations (beats)",
         value="1 1 1 1 1 1 2",
-        info="One length per note, in beats. 1 is a beat, "
-             "0.5 half a beat, 1.5 a dotted beat. Write "
-             "triplets as fractions: 1/3."
+        info="One length per note, as a fraction of a beat. "
+             "1 is a beat, 1/2 an eighth note, 3/2 a dotted "
+             "beat, 1/3 a triplet. Decimals work too."
     )
 
     lyric_input = gr.Textbox(

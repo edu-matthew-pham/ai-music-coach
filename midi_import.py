@@ -15,6 +15,8 @@ notation software, one voice per track, import cleanly.
 Dense piano arrangements will come out as their top line.
 """
 
+from fractions import Fraction
+
 import mido
 
 from notes import midi_to_note, REST
@@ -366,22 +368,28 @@ def notes_to_text(melody):
 
     def show(value):
         """
-        Write a length the way a musician would read it.
+        Write a length as a fraction of a beat.
 
-        Triplets are written as fractions, because thirds
-        of a beat have no exact decimal and 0.3333 is both
-        uglier and slightly wrong.
+        Fractions are how note lengths actually work, and
+        writing them that way makes the structure plain:
+        every dotted note is three over something, because
+        a dot adds half again, and every double dotted note
+        is seven over something. Triplets, which have no
+        exact decimal at all, then need no special case.
+
+            1/4  sixteenth        3/8  dotted sixteenth
+            1/2  eighth           3/4  dotted eighth
+            1    quarter          3/2  dotted quarter
+            2    half             3    dotted half
+            1/3  triplet
         """
 
-        if value == int(value):
-            return str(int(value))
+        fraction = Fraction(value).limit_denominator(16)
 
-        thirds = value * 3
+        if fraction.denominator == 1:
+            return str(fraction.numerator)
 
-        if abs(thirds - round(thirds)) < 0.001:
-            return f"{round(thirds)}/3"
-
-        return str(round(value, 4))
+        return f"{fraction.numerator}/{fraction.denominator}"
 
     return (
         " ".join(pitches),
