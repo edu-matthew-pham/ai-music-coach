@@ -148,3 +148,57 @@ def test_key_fit_reports_rather_than_refuses():
 
     assert "G#4" in sentence
     assert "nearest note" in sentence
+
+
+def test_the_whole_texture_names_the_key_more_surely():
+    """
+    A key is heard in everything sounding at once, not in
+    one line of it. The other voices are exactly what tell
+    a listener which key a melody sits in, so reading them
+    should leave less doubt, not more.
+    """
+
+    import os
+    import mido
+
+    from midi_import import read_all_notes, read_notes, keep_melody
+    from notes import midi_to_note
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures",
+        "midi",
+        "o-holy-night-satb.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("o holy night fixture not present")
+
+    # The soprano line alone.
+    midi_file = mido.MidiFile(path)
+    notes, bpm = read_notes(midi_file, 1)
+    melody = keep_melody(notes)
+
+    line_pitches = [
+        midi_to_note(number) for start, length, number in melody
+    ]
+    line_durations = [
+        length for start, length, number in melody
+    ]
+
+    # Everything sounding, all parts together.
+    all_pitches, all_durations = read_all_notes(path)
+
+    assert len(all_pitches) > len(line_pitches)
+
+    from_line = detect_key(line_pitches, line_durations)
+    from_all = detect_key(all_pitches, all_durations)
+
+    # The same key, named with a wider margin over the
+    # next best guess.
+    assert from_line[0][0] == from_all[0][0] == "D major"
+
+    line_margin = from_line[0][1] - from_line[1][1]
+    all_margin = from_all[0][1] - from_all[1][1]
+
+    assert all_margin > line_margin

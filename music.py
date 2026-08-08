@@ -1079,13 +1079,18 @@ def import_midi_file(
         f"at {bpm} BPM."
     ]
 
-    pitch_list, duration_list = read_music(
-        pitch_text,
-        duration_text
-    )
+    # The key is heard in the whole texture, not in one
+    # line of it. The other voices and the accompaniment
+    # are exactly what tells a listener whether a piece is
+    # in a major key or its relative minor, so detection
+    # reads the file entire, whichever track was chosen
+    # to sing.
+    from midi_import import read_all_notes
+
+    all_pitches, all_durations = read_all_notes(file_path)
 
     lines.append(
-        describe_key(pitch_list, duration_list)
+        describe_key(all_pitches, all_durations)
     )
 
     workable = keys_containing(pitch_text.split())

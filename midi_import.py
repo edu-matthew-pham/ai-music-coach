@@ -240,6 +240,43 @@ def keep_melody(notes):
     return melody
 
 
+def read_all_notes(path):
+    """
+    Every note in a file, before anything is thrown away.
+
+    Reducing to a single line is what singing needs, not
+    what listening needs: the accompaniment and the other
+    voices are what tell you the key. So detection reads
+    this, and only then is the melody lifted out for the
+    music boxes.
+
+    Returns (pitches, durations) with one entry per note,
+    overlaps and all.
+    """
+
+    try:
+        midi_file = mido.MidiFile(path)
+
+    except Exception:
+        raise MidiImportError(
+            "That file could not be read as MIDI."
+        )
+
+    notes, bpm = read_notes(midi_file)
+
+    pitches = [
+        midi_to_note(number)
+        for start, length, number in notes
+    ]
+
+    durations = [
+        length
+        for start, length, number in notes
+    ]
+
+    return pitches, durations
+
+
 def describe_tracks(path):
     """
     Summarise what each track in a file contains.
