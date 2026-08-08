@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from harmony import MAJOR_SCALES
 from pitch_detector import Pitch
 from music import (
     MusicInputError,
@@ -354,3 +355,25 @@ def test_show_target_music_works_without_lyrics():
     )
 
     assert len(figure.axes[0].collections) == 2
+
+
+def test_examples_return_everything_the_boxes_need():
+    """
+    An example fills the pitch, duration and lyric boxes
+    and sets the key. The interface appends its own
+    updates to clear any imported file, so the count here
+    is what that wiring depends on.
+    """
+
+    from music import load_wellerman_phrase
+
+    for loader in (load_twinkle_phrase, load_wellerman_phrase):
+
+        values = loader()
+
+        assert len(values) == 4
+
+        pitches, durations, lyrics, key = values
+
+        assert len(pitches.split()) == len(durations.split())
+        assert key in MAJOR_SCALES

@@ -321,24 +321,52 @@ with gr.Blocks(
     # EVENTS
     # -----------------------------------------------------
 
+    def clear_import():
+        """
+        Put the import controls away.
+
+        An example is a whole piece of music in itself, so
+        the track and phrase of whatever was imported
+        before no longer mean anything and must not be
+        left on screen describing music that has gone.
+        """
+
+        return (
+            None,
+            gr.update(choices=[], value=None, visible=False),
+            gr.update(choices=[], value=None, visible=False),
+            gr.update(value="", visible=False)
+        )
+
+    def load_example(loader):
+        """
+        Load a built in phrase, clearing any import.
+        """
+
+        def loaded():
+            return loader() + clear_import()
+
+        return loaded
+
+    example_outputs = [
+        pitch_input,
+        duration_input,
+        lyric_input,
+        key_input,
+        midi_upload,
+        track_input,
+        phrase_input,
+        import_feedback
+    ]
+
     example_button.click(
-        fn=load_twinkle_phrase,
-        outputs=[
-            pitch_input,
-            duration_input,
-            lyric_input,
-            key_input
-        ]
+        fn=load_example(load_twinkle_phrase),
+        outputs=example_outputs
     )
 
     wellerman_button.click(
-        fn=load_wellerman_phrase,
-        outputs=[
-            pitch_input,
-            duration_input,
-            lyric_input,
-            key_input
-        ]
+        fn=load_example(load_wellerman_phrase),
+        outputs=example_outputs
     )
 
     def import_track(file_path, track_label):
