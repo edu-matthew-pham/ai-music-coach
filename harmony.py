@@ -23,6 +23,43 @@ MAJOR_SCALES = {
 }
 
 
+# The minor key that shares each major key's notes. A
+# piece in D minor uses the notes of F major, which is why
+# the app can harmonise minor music without knowing
+# anything about minor keys: the scale is the same seven
+# notes started in a different place.
+RELATIVE_MINORS = {
+    "C": "A",
+    "G": "E",
+    "D": "B",
+    "A": "F#",
+    "E": "C#",
+    "B": "G#",
+    "F#": "D#",
+    "Db": "Bb",
+    "Ab": "F",
+    "Eb": "C",
+    "Bb": "G",
+    "F": "D"
+}
+
+
+def key_choices():
+    """
+    How the keys are offered, as (label, value) pairs.
+
+    Each key is named both ways, since a key signature
+    belongs to a major key and its relative minor equally,
+    and a singer working from a minor piece should not
+    have to know which major to ask for.
+    """
+
+    return [
+        (f"{major} major / {RELATIVE_MINORS[major]} minor", major)
+        for major in MAJOR_SCALES
+    ]
+
+
 def build_scale_notes(key, lowest=24, highest=108):
     """
     Build all notes belonging to a major key across

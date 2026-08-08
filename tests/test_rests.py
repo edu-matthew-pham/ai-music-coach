@@ -193,3 +193,46 @@ def test_nonsense_fractions_are_rejected():
 
     with pytest.raises(MusicInputError, match="Fractions look like"):
         read_beats("a/3")
+
+
+def test_every_way_in_reads_fractions():
+    """
+    Durations are parsed in more than one place, and a
+    fraction that works when the music is played must also
+    work when the recording is compared. This checks each
+    way in rather than trusting them to agree.
+    """
+
+    import numpy as np
+
+    from playback import make_melody
+    from music import play_music, analyse_sequence, analyse_performance
+
+    pitches = "C4 E4 G4"
+    durations = "1/2 1/2 1"
+
+    # Playing it.
+    rate, audio = play_music(
+        pitches, durations, "C",
+        melody_on=True, harmony_on=False, bpm=120
+    )
+
+    assert len(audio) > 0
+
+    # Detecting a recording of it.
+    rate, sound = make_melody(
+        ["C4", "E4", "G4"], [0.5, 0.5, 1.0], 120, 8000
+    )
+
+    recording = (rate, np.array(sound))
+
+    heard = analyse_sequence(recording, durations, 120)
+
+    assert "C4" in heard
+
+    # Comparing a performance of it.
+    text, performance, tuning = analyse_performance(
+        recording, pitches, durations, 120
+    )
+
+    assert "3 of 3" in text

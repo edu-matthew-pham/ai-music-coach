@@ -137,6 +137,36 @@ def detect_key(pitches, durations):
     return scored
 
 
+# How far below the best score a key can sit and still be
+# worth showing. A piece with a clear key leaves everything
+# else far behind and only one candidate is listed; a short
+# melody that genuinely suits several brings several along.
+CANDIDATE_MARGIN = 0.15
+
+MOST_CANDIDATES = 6
+
+
+def plausible_keys(pitches, durations):
+    """
+    The keys worth considering, best first.
+
+    Everything close to the best score, rather than a
+    fixed number of them: how many keys a piece could be
+    in is a property of the music, not a display setting.
+    """
+
+    scored = detect_key(pitches, durations)
+
+    best = scored[0][1]
+
+    close = [
+        (name, score) for name, score in scored
+        if best - score <= CANDIDATE_MARGIN
+    ]
+
+    return close[:MOST_CANDIDATES]
+
+
 def describe_key(pitches, durations, margin=0.05):
     """
     A sentence naming the music's key, honest about doubt.

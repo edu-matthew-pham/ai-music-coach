@@ -73,10 +73,12 @@ sound like, with the runners up and how close they are.
 Short melodies often genuinely fit several keys, so it
 names more than one rather than guessing.
 
-The key you choose is used to build the harmony line,
-{len(MAJOR_SCALES)} keys being available. A note outside
-that key is still harmonised, at the nearest note in the
-scale.
+The key you choose is used to build the harmony line.
+Each of the {len(MAJOR_SCALES)} settings is named twice,
+as in `F major / D minor`, because a key signature belongs
+to both equally: a piece in D minor uses the notes of F
+major. A note outside the chosen key is still harmonised,
+at the nearest note in the scale.
 
 ## Singing
 

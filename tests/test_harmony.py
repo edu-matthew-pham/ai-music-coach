@@ -106,3 +106,47 @@ def test_a_chromatic_line_still_harmonises():
     )
 
     assert len(harmony) == 5
+
+
+def test_every_key_is_offered_by_both_its_names():
+    """
+    A key signature belongs to a major key and its
+    relative minor equally, and a singer working from a
+    minor piece should not have to know which major to
+    ask for.
+    """
+
+    from harmony import key_choices, MAJOR_SCALES
+
+    choices = key_choices()
+
+    assert len(choices) == len(MAJOR_SCALES)
+
+    for label, value in choices:
+
+        assert value in MAJOR_SCALES
+        assert "major" in label
+        assert "minor" in label
+
+        # The value the rest of the app receives is the
+        # major key, whatever the label says.
+        assert label.startswith(value)
+
+
+def test_relative_minors_are_a_third_below():
+    """
+    The relative minor sits three semitones below its
+    major, sharing all seven notes.
+    """
+
+    from harmony import RELATIVE_MINORS
+    from notes import note_to_midi
+
+    for major, minor in RELATIVE_MINORS.items():
+
+        distance = (
+            note_to_midi(major + "4")
+            - note_to_midi(minor + "4")
+        ) % 12
+
+        assert distance == 3, f"{major} and {minor}"

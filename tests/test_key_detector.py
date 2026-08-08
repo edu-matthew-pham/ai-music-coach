@@ -130,8 +130,8 @@ def test_the_key_report_ranks_candidates():
     report = suggest_key(pitches, durations)
 
     assert "D minor" in report
-    assert "Closest matches" in report
-    assert "Harmony can be built in" in report
+    assert "Also possible" in report or "Nothing else" in report
+    assert "set the key to" in report
 
 
 def test_key_fit_reports_rather_than_refuses():
@@ -248,3 +248,101 @@ def test_import_feedback_does_not_claim_harmony_is_unavailable():
 
     assert "not available" not in feedback
     assert "Harmony still works" in feedback
+
+
+def test_a_detected_minor_key_names_a_key_setting():
+    """
+    The detector names minor keys, but harmony is built
+    from major scales, so the report has to say which
+    setting to actually choose.
+    """
+
+    from music import key_setting_for
+
+    assert key_setting_for("D minor") == "F"
+    assert key_setting_for("A minor") == "C"
+    assert key_setting_for("D major") == "D"
+
+
+def test_the_report_names_the_setting_to_choose():
+    from music import suggest_key
+
+    pitches, durations, lyrics, key = load_wellerman_phrase()
+
+    report = suggest_key(pitches, durations)
+
+    assert "set the key to F major / D minor" in report
+
+
+def test_the_report_names_every_setting_that_fits():
+    """
+    A short melody touches few pitches, and those pitches
+    sit inside several keys. Naming only the likeliest
+    would hide settings that work just as well.
+    """
+
+    from music import suggest_key
+
+    pitches, durations, lyrics, key = load_wellerman_phrase()
+
+    report = suggest_key(pitches, durations)
+
+    # The line uses only A, D and F, which C major holds
+    # as surely as F major does.
+    assert "C major / A minor" in report
+    assert "also fit" in report
+
+
+def test_how_many_candidates_depends_on_the_music():
+    """
+    How many keys a piece could be in is a property of the
+    music, not a fixed number of rows to fill.
+
+    A melody circling one triad names its key at once. A
+    melody that wanders the scale without settling leaves
+    several keys equally possible, and all of them are
+    worth showing.
+    """
+
+    from key_detector import plausible_keys
+
+    # Landing hard on the tonic and fifth of D minor.
+    settled = plausible_keys(
+        ["D4", "A4", "D4"],
+        [2.0, 2.0, 4.0]
+    )
+
+    # Even time on every note of a scale, settling
+    # nowhere, so the tonic could be any of them.
+    wandering = plausible_keys(
+        ["C4", "D4", "E4", "F4", "G4", "A4", "B4"],
+        [1.0] * 7
+    )
+
+    assert len(settled) < len(wandering)
+
+
+def test_candidates_never_run_past_the_limit():
+    from key_detector import plausible_keys, MOST_CANDIDATES
+
+    # A chromatic scale suits nothing in particular, so
+    # everything scores about the same.
+    pitches = [
+        "C4", "C#4", "D4", "D#4", "E4", "F4",
+        "F#4", "G4", "G#4", "A4", "A#4", "B4"
+    ]
+
+    candidates = plausible_keys(pitches, [1.0] * 12)
+
+    assert len(candidates) <= MOST_CANDIDATES
+
+
+def test_the_best_candidate_is_always_shown():
+    from key_detector import plausible_keys, detect_key
+
+    pitches = ["D4", "F4", "A4", "D5"]
+    durations = [2.0, 1.0, 1.0, 2.0]
+
+    best = detect_key(pitches, durations)[0]
+
+    assert plausible_keys(pitches, durations)[0] == best

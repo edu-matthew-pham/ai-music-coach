@@ -4,7 +4,7 @@ import os
 
 import gradio as gr
 
-from harmony import MAJOR_SCALES
+from harmony import MAJOR_SCALES, key_choices
 from help_text import HELP_TEXT
 from music import (
     MusicInputError,
@@ -100,11 +100,13 @@ with gr.Blocks(
     with gr.Row():
 
         key_input = gr.Dropdown(
-            list(MAJOR_SCALES),
+            key_choices(),
             value="C",
             label="Key",
-            info="Used for harmony. Notes outside it are "
-                 "harmonised at the nearest scale note."
+            info="A key signature belongs to a major key "
+                 "and its relative minor equally. Notes "
+                 "outside it are harmonised at the "
+                 "nearest scale note."
         )
 
         bpm_input = gr.Number(

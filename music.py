@@ -10,12 +10,17 @@ from playback import (
     COUNT_IN_BEATS
 )
 
-from key_detector import describe_key, detect_key
+from key_detector import (
+    describe_key,
+    detect_key,
+    plausible_keys
+)
 from harmony import (
     make_harmony,
     keys_containing,
     notes_outside,
-    MAJOR_SCALES
+    MAJOR_SCALES,
+    RELATIVE_MINORS
 )
 
 from notes import split_note, is_rest, REST
@@ -422,7 +427,7 @@ def analyse_sequence(
     durations = []
 
     for duration in duration_strings:
-        durations.append(float(duration))
+        durations.append(read_beats(duration))
 
     pitches = detect_sequence(
         audio,
@@ -890,6 +895,27 @@ def show_target_music(
     )
 
 
+def key_setting_for(key_name):
+    """
+    The key setting that suits a detected key.
+
+    A major key is itself. A minor key is sung with the
+    notes of its relative major, which is the setting the
+    harmony is built from.
+    """
+
+    tonic, _, kind = key_name.partition(" ")
+
+    if kind == "major":
+        return tonic if tonic in MAJOR_SCALES else None
+
+    for major, minor in RELATIVE_MINORS.items():
+        if minor == tonic:
+            return major
+
+    return None
+
+
 def suggest_key(pitch_text, duration_text):
     """
     Name the keys this music might be in.
@@ -905,32 +931,55 @@ def suggest_key(pitch_text, duration_text):
         duration_text
     )
 
-    scored = detect_key(pitches, durations)
+    scored = plausible_keys(pitches, durations)
 
     lines = [describe_key(pitches, durations)]
 
     lines.append("")
-    lines.append("Closest matches:")
 
-    for name, score in scored[:4]:
-        lines.append(f"  {name}  ({score:.2f})")
+    if len(scored) == 1:
+        lines.append("Nothing else comes close.")
 
-    # Which of these can actually be chosen for harmony.
-    available = [
-        name for name, score in scored[:8]
-        if name.endswith("major")
-        and name.split()[0] in MAJOR_SCALES
-    ]
+    else:
+        lines.append("Also possible:")
 
-    if available:
+        for name, score in scored:
+            lines.append(f"  {name}  ({score:.2f})")
+
+    # Which key setting each candidate corresponds to. A
+    # minor key is sung with the notes of its relative
+    # major, so that is what the dropdown wants.
+    best_name = scored[0][0]
+
+    setting = key_setting_for(best_name)
+
+    if setting:
         lines.append("")
         lines.append(
-            "Harmony can be built in: "
-            + ", ".join(
-                name.split()[0] for name in available[:3]
-            )
-            + ". A minor key shares its notes with the "
-            "major a third above."
+            f"For harmony, set the key to "
+            f"{setting} major / {RELATIVE_MINORS[setting]} "
+            f"minor."
+        )
+
+    # A short melody often touches only a handful of
+    # pitches, and those pitches sit inside several keys.
+    # Naming only the likeliest would hide settings that
+    # work just as well.
+    workable = keys_containing(pitches)
+
+    others = [
+        major for major in workable
+        if major != setting
+    ]
+
+    if others:
+        named = ", ".join(
+            f"{major} major / {RELATIVE_MINORS[major]} minor"
+            for major in others
+        )
+
+        lines.append(
+            f"These notes also fit {named}."
         )
 
     return "\n".join(lines)
