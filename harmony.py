@@ -3,10 +3,22 @@
 from notes import NOTE_SEMITONES, note_to_midi, is_rest
 
 
+# Every major key, each spelled the way its key signature
+# spells it: sharp keys in sharps, flat keys in flats. F
+# sharp major genuinely contains an E sharp, which is the
+# same sound as F but not the same note name.
 MAJOR_SCALES = {
     "C": ["C", "D", "E", "F", "G", "A", "B"],
     "G": ["G", "A", "B", "C", "D", "E", "F#"],
     "D": ["D", "E", "F#", "G", "A", "B", "C#"],
+    "A": ["A", "B", "C#", "D", "E", "F#", "G#"],
+    "E": ["E", "F#", "G#", "A", "B", "C#", "D#"],
+    "B": ["B", "C#", "D#", "E", "F#", "G#", "A#"],
+    "F#": ["F#", "G#", "A#", "B", "C#", "D#", "E#"],
+    "Db": ["Db", "Eb", "F", "Gb", "Ab", "Bb", "C"],
+    "Ab": ["Ab", "Bb", "C", "Db", "Eb", "F", "G"],
+    "Eb": ["Eb", "F", "G", "Ab", "Bb", "C", "D"],
+    "Bb": ["Bb", "C", "D", "Eb", "F", "G", "A"],
     "F": ["F", "G", "A", "Bb", "C", "D", "E"]
 }
 

@@ -10,6 +10,7 @@ from playback import (
     COUNT_IN_BEATS
 )
 
+from key_detector import describe_key
 from harmony import make_harmony, keys_containing
 
 from notes import split_note, is_rest, REST
@@ -1033,6 +1034,15 @@ def import_midi_file(
         f"at {bpm} BPM."
     ]
 
+    pitch_list, duration_list = read_music(
+        pitch_text,
+        duration_text
+    )
+
+    lines.append(
+        describe_key(pitch_list, duration_list)
+    )
+
     workable = keys_containing(pitch_text.split())
 
     if len(workable) == 0:
@@ -1085,12 +1095,16 @@ def load_twinkle_phrase():
     The opening phrase of Twinkle Twinkle Little Star.
     """
 
+    # Two bars of four beats. The last note is shortened
+    # to make room for the breath rather than the rest
+    # being added on top, which would leave the phrase a
+    # beat longer than the music it came from.
     pitches = (
-        "C4 C4 G4 G4 A4 A4 G4"
+        "C4 C4 G4 G4 A4 A4 G4 R"
     )
 
     durations = (
-        "1 1 1 1 1 1 2"
+        "1 1 1 1 1 1 3/2 1/2"
     )
 
     lyrics = (
@@ -1111,14 +1125,14 @@ def load_wellerman_phrase():
 
     # Pitches follow the traditional verse: pickup on the
     # dominant, repeated tonics, the third on "ship", then
-    # the dominant above. Durations carry the shanty's
-    # dotted swing: long-short pairs from "once" onward.
+    # the dominant above. The line ends with a rest, which
+    # is where a singer breathes before the next line.
     pitches = (
-        "A3 D4 D4 D4 F4 A4 A4 A4 A4"
+        "A3 D4 D4 D4 D4 F4 A4 A4 A4 R"
     )
 
     durations = (
-        "0.5 0.75 0.25 0.75 0.25 0.75 0.25 0.75 2"
+        "1/2 1/2 1/4 1/4 1/2 1/2 1/2 1/2 1 3/2"
     )
 
     lyrics = (

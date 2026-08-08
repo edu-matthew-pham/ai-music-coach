@@ -2,6 +2,7 @@
 
 import gradio as gr
 
+from harmony import MAJOR_SCALES
 from music import (
     MusicInputError,
     OCTAVE_CHOICES,
@@ -91,7 +92,7 @@ with gr.Blocks(
     with gr.Row():
 
         key_input = gr.Dropdown(
-            ["C", "G", "D", "F"],
+            list(MAJOR_SCALES),
             value="C",
             label="Key"
         )

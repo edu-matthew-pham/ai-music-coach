@@ -115,8 +115,10 @@ def test_melody_and_harmony_mix_together():
 def test_load_twinkle_phrase():
     pitches, durations, lyrics, key = load_twinkle_phrase()
 
-    assert pitches == "C4 C4 G4 G4 A4 A4 G4"
-    assert durations == "1 1 1 1 1 1 2"
+    # The phrase ends with a rest: somewhere to breathe
+    # before the line repeats.
+    assert pitches == "C4 C4 G4 G4 A4 A4 G4 R"
+    assert durations == "1 1 1 1 1 1 3/2 1/2"
     assert lyrics == "Twin- kle twin- kle lit- tle star"
     assert key == "C"
 
@@ -131,7 +133,8 @@ def test_load_wellerman_phrase_is_playable_and_harmonisable():
     from music import (
         load_wellerman_phrase,
         read_music,
-        read_lyrics
+        read_lyrics,
+        sung_count
     )
     from harmony import make_harmony
 
@@ -139,9 +142,11 @@ def test_load_wellerman_phrase_is_playable_and_harmonisable():
 
     pitch_list, duration_list = read_music(pitches, durations)
 
-    syllables = read_lyrics(lyrics, len(pitch_list))
+    # A rest takes no syllable, so the words are counted
+    # against the notes that are actually sung.
+    syllables = read_lyrics(lyrics, sung_count(pitch_list))
 
-    assert len(syllables) == len(pitch_list)
+    assert len(syllables) == sung_count(pitch_list)
 
     harmony = make_harmony(pitch_list, key=key)
 
@@ -355,6 +360,76 @@ def test_show_target_music_works_without_lyrics():
     )
 
     assert len(figure.axes[0].collections) == 2
+
+
+def test_every_example_is_complete_and_singable():
+    """
+    Whatever an example button loads must work with every
+    part of the app: the counts agree, the words fit the
+    sung notes, the harmony builds in the key it brings,
+    and it can be played.
+    """
+
+    from music import (
+        load_wellerman_phrase,
+        read_music,
+        read_lyrics,
+        sung_count,
+        play_music
+    )
+    from harmony import make_harmony
+
+    for loader in (load_twinkle_phrase, load_wellerman_phrase):
+
+        pitches, durations, lyrics, key = loader()
+
+        pitch_list, duration_list = read_music(
+            pitches, durations
+        )
+
+        assert len(pitch_list) == len(duration_list)
+
+        syllables = read_lyrics(
+            lyrics, sung_count(pitch_list)
+        )
+
+        assert len(syllables) == sung_count(pitch_list)
+
+        harmony = make_harmony(pitch_list, key=key)
+
+        assert len(harmony) == len(pitch_list)
+
+        sample_rate, audio = play_music(
+            pitches, durations, key,
+            melody_on=True, harmony_on=True, bpm=120
+        )
+
+        assert len(audio) > 0
+
+
+def test_examples_fill_whole_bars():
+    """
+    A phrase that does not fill whole bars cannot be
+    counted in, looped, or played against a metronome
+    without the beat sliding. The breath at the end comes
+    out of the last note rather than being added on top.
+    """
+
+    from music import load_wellerman_phrase, read_music
+
+    for loader in (load_twinkle_phrase, load_wellerman_phrase):
+
+        pitches, durations, lyrics, key = loader()
+
+        pitch_list, duration_list = read_music(
+            pitches, durations
+        )
+
+        total = sum(duration_list)
+
+        assert total % 2 == 0, (
+            f"{loader.__name__} runs to {total} beats"
+        )
 
 
 def test_examples_return_everything_the_boxes_need():
