@@ -1053,7 +1053,23 @@ def import_midi_file(
         )
 
     if lyric_text:
-        lines.append("Lyrics were found and loaded.")
+
+        held = lyric_text.split().count("_")
+
+        if held:
+            lines.append(
+                f"Lyrics were found, with {held} notes "
+                f"holding the syllable before them."
+            )
+
+        else:
+            lines.append("Lyrics were found and loaded.")
+
+    else:
+        lines.append(
+            "This track has no lyrics, so the lyric box "
+            "is left empty."
+        )
 
     return (
         pitch_text,

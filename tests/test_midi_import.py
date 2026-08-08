@@ -87,10 +87,12 @@ def test_imports_karaoke_lyrics(tmp_path):
     assert lyric_text == "la la"
 
 
-def test_mismatched_lyrics_are_left_out(tmp_path):
+def test_notes_without_words_are_marked_as_held(tmp_path):
     """
-    A file whose lyric count does not match its notes is
-    imported without lyrics rather than misaligned.
+    A file with fewer syllables than notes keeps the words
+    it has. The notes with nothing of their own carry on
+    the syllable before them, which is what a score means
+    by writing a word once and holding it.
     """
 
     path = write_midi(
@@ -109,7 +111,7 @@ def test_mismatched_lyrics_are_left_out(tmp_path):
 
     pitches, durations, lyric_text, bpm = import_midi(path)
 
-    assert lyric_text == ""
+    assert lyric_text == "only two _"
 
 
 def test_chords_keep_the_top_note():
@@ -649,10 +651,12 @@ def test_unmatched_lyrics_are_left_out(tmp_path):
         [(60, 1), (62, 1), (64, 1)]
     )
 
-    # One stray syllable, at a time no note begins.
-    track.insert(
-        0,
-        mido.MetaMessage("lyrics", text="stray", time=0)
+    # One stray syllable, after the singing has finished,
+    # where no note begins. Note that it has to go at the
+    # end: a lyric placed before a note delays that note
+    # too, and would line up with it after all.
+    track.append(
+        mido.MetaMessage("lyrics", text="stray", time=240)
     )
 
     path = str(tmp_path / "stray.mid")
@@ -660,6 +664,8 @@ def test_unmatched_lyrics_are_left_out(tmp_path):
 
     pitches, durations, lyrics, bpm = import_midi(path)
 
+    # The stray syllable lines up with nothing, so there
+    # is nothing to keep.
     assert lyrics == ""
 
 
@@ -787,3 +793,86 @@ def test_dividing_never_leaves_a_scrap():
 
     for phrase in split_at_widest_gap(melody, longest_beats=8):
         assert len(phrase) >= SHORTEST_PHRASE_NOTES
+
+
+def test_a_word_held_across_notes_marks_the_notes_that_carry_it():
+    """
+    A word sung across several notes is written once in a
+    score, and the notes carrying it on are marked as held.
+    Those notes must not throw away the words that did
+    line up.
+    """
+
+    import tempfile
+    import os
+
+    midi_file = mido.MidiFile(ticks_per_beat=480)
+    track = mido.MidiTrack()
+    midi_file.tracks.append(track)
+
+    words = {0: "A-", 2: "men"}
+
+    for position, number in enumerate([60, 62, 64, 65]):
+
+        if position in words:
+            track.append(
+                mido.MetaMessage(
+                    "lyrics", text=words[position], time=0
+                )
+            )
+
+        track.append(
+            mido.Message(
+                "note_on", note=number, velocity=80, time=0
+            )
+        )
+        track.append(
+            mido.Message(
+                "note_off", note=number, velocity=0, time=480
+            )
+        )
+
+    path = os.path.join(tempfile.mkdtemp(), "melisma.mid")
+    midi_file.save(path)
+
+    pitches, durations, lyrics, bpm = import_midi(path)
+
+    assert lyrics == "A- _ men _"
+
+
+def test_partial_lyrics_are_kept(tmp_path):
+    """
+    Words for half the notes are still worth having.
+    """
+
+    midi_file = mido.MidiFile(ticks_per_beat=480)
+    track = mido.MidiTrack()
+    midi_file.tracks.append(track)
+
+    for position, number in enumerate([60, 62, 64, 65, 67, 69]):
+
+        if position < 2:
+            track.append(
+                mido.MetaMessage(
+                    "lyrics", text=f"word{position}", time=0
+                )
+            )
+
+        track.append(
+            mido.Message(
+                "note_on", note=number, velocity=80, time=0
+            )
+        )
+        track.append(
+            mido.Message(
+                "note_off", note=number, velocity=0, time=480
+            )
+        )
+
+    path = str(tmp_path / "partial.mid")
+    midi_file.save(path)
+
+    pitches, durations, lyrics, bpm = import_midi(path)
+
+    assert lyrics.startswith("word0 word1")
+    assert lyrics.count("_") == 4

@@ -31,6 +31,13 @@ class MidiImportError(ValueError):
     """
 
 
+# What is written under a note that continues the word
+# before it. A word sung across several notes appears once
+# in the score, and the notes carrying it on are marked as
+# held rather than left blank.
+HELD_SYLLABLE = "_"
+
+
 # A gap shorter than this is the ordinary space between
 # notes rather than a rest anyone would write down.
 SHORTEST_REST = 0.2
@@ -692,15 +699,22 @@ def lyrics_for(melody, events, tolerance=0.05):
     moment, which is what lets a single phrase be lifted
     out of a whole piece with its own words attached.
 
-    Returns the syllables for these notes, or an empty
-    list when they cannot be matched, since wrong words
-    are worse than none.
+    Not every note carries a syllable. A word sung across
+    several notes is written once and held, so the notes
+    that continue it have nothing of their own. Those are
+    marked as held, which is what they are, rather than
+    throwing away the words that did match.
+
+    Returns an empty list only when nothing matched at
+    all, since words that line up with nothing are worse
+    than no words.
     """
 
     if len(events) == 0:
         return []
 
     syllables = []
+    matched = 0
 
     for start, length, midi_number in melody:
 
@@ -712,9 +726,14 @@ def lyrics_for(melody, events, tolerance=0.05):
                 break
 
         if found is None:
-            return []
+            syllables.append(HELD_SYLLABLE)
 
-        syllables.append(found)
+        else:
+            syllables.append(found)
+            matched += 1
+
+    if matched == 0:
+        return []
 
     return syllables
 
