@@ -93,3 +93,35 @@ def test_the_guide_calls_the_controls_what_the_screen_does():
 def test_the_guide_explains_the_tuning_numbers():
     assert "cents" in HELP_TEXT
     assert "fifteen" in HELP_TEXT
+
+
+def test_the_interface_ignores_events_with_no_file():
+    """
+    Clearing a dropdown fires its change event, so the
+    import handlers are called when the file has just been
+    cleared. That must do nothing rather than throw an
+    error at someone who only pressed Load Twinkle.
+    """
+
+    import os
+
+    interface = open(
+        os.path.join(
+            os.path.dirname(__file__), "..", "main.py"
+        )
+    ).read()
+
+    # Every handler that takes a file guards against its
+    # absence before asking the music layer for anything.
+    assert interface.count("if file_path is None") >= 3
+
+    # And the guard comes before the work in each case.
+    for handler in [
+        "def import_and_show",
+        "def import_track",
+        "def reimport_phrase"
+    ]:
+        start = interface.index(handler)
+        body = interface[start:start + 600]
+
+        assert "is None" in body, handler

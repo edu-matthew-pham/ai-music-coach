@@ -403,6 +403,26 @@ with gr.Blocks(
         outputs=example_outputs
     )
 
+    music_outputs = [
+        pitch_input,
+        duration_input,
+        lyric_input,
+        bpm_input,
+        import_feedback
+    ]
+
+    def unchanged(count):
+        """
+        Leave every output exactly as it is.
+
+        Clearing a dropdown fires its change event, so
+        these handlers are called when there is no file
+        and nothing to do. That is ordinary, not an error
+        worth throwing in someone's face.
+        """
+
+        return tuple(gr.update() for _ in range(count))
+
     def import_track(file_path, track_label):
         """
         Import a track, and offer the phrases it holds.
@@ -411,6 +431,9 @@ with gr.Blocks(
         once, so it arrives divided where the music rests,
         with the first phrase loaded.
         """
+
+        if file_path is None:
+            return unchanged(len(music_outputs) + 1)
 
         phrases = list_midi_phrases(file_path, track_label)
 
@@ -441,6 +464,9 @@ with gr.Blocks(
         Import a file, offering its tracks and phrases.
         """
 
+        if file_path is None:
+            return unchanged(len(music_outputs) + 2)
+
         tracks = list_midi_tracks(file_path)
 
         results = import_track(file_path, tracks[0])
@@ -454,6 +480,10 @@ with gr.Blocks(
         )
 
     def reimport_phrase(file_path, track_label, phrase_label):
+
+        if file_path is None or phrase_label is None:
+            return unchanged(len(music_outputs))
+
         pitches, durations, lyrics, bpm, feedback = (
             import_midi_file(
                 file_path, track_label, phrase_label
@@ -467,14 +497,6 @@ with gr.Blocks(
             bpm,
             gr.update(value=feedback, visible=True)
         )
-
-    music_outputs = [
-        pitch_input,
-        duration_input,
-        lyric_input,
-        bpm_input,
-        import_feedback
-    ]
 
     midi_upload.upload(
         fn=guard(import_and_show),
