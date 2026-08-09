@@ -9,6 +9,7 @@ from help_text import HELP_TEXT
 from music import (
     MusicInputError,
     suggest_key,
+    suggest_chords,
     describe_key_fit,
     OCTAVE_CHOICES,
     PART_CHOICES,
@@ -90,6 +91,11 @@ with gr.Blocks(
         info="One length per note, as a fraction of a beat. "
              "1 is a beat, 1/2 an eighth note, 3/2 a dotted "
              "beat, 1/3 a triplet. Decimals work too."
+    )
+
+    detect_chords_button = gr.Button(
+        "Detect chords",
+        size="sm"
     )
 
     chart_input = gr.Textbox(
@@ -388,6 +394,16 @@ with gr.Blocks(
             value=suggest_key(pitch_text, duration_text),
             visible=True
         )
+
+    detect_chords_button.click(
+        fn=guard(suggest_chords),
+        inputs=[
+            chart_notes_state,
+            pitch_input,
+            duration_input
+        ],
+        outputs=chart_input
+    )
 
     detect_key_button.click(
         fn=guard(show_key_report),

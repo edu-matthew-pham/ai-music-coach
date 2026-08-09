@@ -21,7 +21,7 @@ there.
 """
 
 from chords import CHORD_QUALITIES, CHORD_QUALITIES as QUALITIES
-from notes import SHARP_NAMES
+from notes import SHARP_NAMES, FLAT_NAMES, FLAT_KEYS
 
 
 # The chords worth looking for. Kept deliberately short:
@@ -60,10 +60,38 @@ MISSING_PENALTY = 0.5
 QUIET_BEAT = 0.05
 
 
+# How many different notes have to be sounding before a
+# chord can be named at all.
+#
+# One note is not a chord. A bare melody passage will
+# happily match some triad containing that note, and the
+# answer is confident, arbitrary and wrong. Two notes are
+# thin but real: an open fifth is a chord, and hymns do
+# reduce to two voices. Below two, the honest answer is
+# silence, and a chart with a gap in it says something
+# true where a full one would not.
+FEWEST_NOTES = 2
+
+
 # How close a second name has to be before it is worth
 # mentioning. Scaled by how much is sounding, so a busy
 # beat and a quiet one are judged alike.
 ALTERNATIVE_MARGIN = 0.15
+
+
+def note_name(semitone, key=None):
+    """
+    Spell a note the way the key does.
+
+    A chart in B flat major that reads A sharp is the same
+    sound written in the wrong dialect, and a singer
+    reading it has to translate every bar.
+    """
+
+    if key in FLAT_KEYS:
+        return FLAT_NAMES[semitone]
+
+    return SHARP_NAMES[semitone]
 
 
 def weigh_pitches(notes, start, end):
@@ -139,7 +167,7 @@ def score_chord(weights, lowest, root, quality):
     return score
 
 
-def name_chord(weights, lowest):
+def name_chord(weights, lowest, key=None):
     """
     The chord that best explains a span, or None.
     """
@@ -147,6 +175,11 @@ def name_chord(weights, lowest):
     total = sum(weights)
 
     if total <= QUIET_BEAT:
+        return None
+
+    sounding = len([weight for weight in weights if weight > 0])
+
+    if sounding < FEWEST_NOTES:
         return None
 
     best = None
@@ -160,7 +193,7 @@ def name_chord(weights, lowest):
 
             if best_score is None or score > best_score:
                 best_score = score
-                best = SHARP_NAMES[root] + quality
+                best = note_name(root, key) + quality
 
     # A chord that explains less than it leaves out is not
     # worth naming.
@@ -170,7 +203,7 @@ def name_chord(weights, lowest):
     return best
 
 
-def detect_chords(notes, total_beats, beats_per_bar=4):
+def detect_chords(notes, total_beats, beats_per_bar=4, key=None):
     """
     Name the chord on every beat, then join the repeats.
 
@@ -190,7 +223,7 @@ def detect_chords(notes, total_beats, beats_per_bar=4):
             beat + 1
         )
 
-        named.append(name_chord(weights, lowest))
+        named.append(name_chord(weights, lowest, key))
 
     # Join runs of the same chord into one entry.
     chords = []
@@ -292,19 +325,51 @@ def write_chart(chords, total_beats, beats_per_bar=4):
     return "| " + " | ".join(bars) + " |"
 
 
-def chart_from_notes(notes, total_beats, beats_per_bar=4):
+def explain_empty_chart(notes, total_beats):
+    """
+    Why no chords were found, when none were.
+
+    An empty box with no explanation looks like a fault.
+    Usually it means the music is a single line, which is
+    not a fault at all: there are no chords in a melody,
+    only notes one after another.
+    """
+
+    thin = 0
+
+    for beat in range(int(round(total_beats))):
+
+        weights, lowest = weigh_pitches(notes, beat, beat + 1)
+
+        if len([w for w in weights if w > 0]) < FEWEST_NOTES:
+            thin += 1
+
+    if total_beats and thin > total_beats * 0.5:
+        return (
+            "No chords were read: this music is mostly a "
+            "single line, and a melody on its own does not "
+            "say what the harmony is. Write a chart by "
+            "hand if you know it."
+        )
+
+    return (
+        "No chords were read from this music."
+    )
+
+
+def chart_from_notes(notes, total_beats, beats_per_bar=4, key=None):
     """
     Read a chord chart out of a piece of polyphonic music.
     """
 
-    chords = detect_chords(notes, total_beats, beats_per_bar)
+    chords = detect_chords(notes, total_beats, beats_per_bar, key)
 
     chords = fill_gaps(chords, total_beats)
 
     return write_chart(chords, total_beats, beats_per_bar)
 
 
-def other_names_for(weights, lowest, chosen, most=2):
+def other_names_for(weights, lowest, chosen, most=2, key=None):
     """
     What else the same notes could be called.
 
@@ -328,7 +393,7 @@ def other_names_for(weights, lowest, chosen, most=2):
 
         for quality in DETECTED_QUALITIES:
 
-            name = SHARP_NAMES[root] + quality
+            name = note_name(root, key) + quality
 
             if name == chosen:
                 continue
@@ -339,7 +404,7 @@ def other_names_for(weights, lowest, chosen, most=2):
 
     scored.sort(reverse=True)
 
-    best = score_chord_for_name(weights, lowest, chosen)
+    best = score_chord_for_name(weights, lowest, chosen, key)
 
     close = [
         name for score, name in scored
@@ -349,7 +414,7 @@ def other_names_for(weights, lowest, chosen, most=2):
     return close[:most]
 
 
-def score_chord_for_name(weights, lowest, name):
+def score_chord_for_name(weights, lowest, name, key=None):
     """
     Score a chord given the way it is written.
     """
@@ -358,13 +423,13 @@ def score_chord_for_name(weights, lowest, name):
 
         for quality in DETECTED_QUALITIES:
 
-            if SHARP_NAMES[root] + quality == name:
+            if note_name(root, key) + quality == name:
                 return score_chord(weights, lowest, root, quality)
 
     return 0.0
 
 
-def bass_note_for(weights, lowest, name):
+def bass_note_for(weights, lowest, name, key=None):
     """
     The bass note, when it is not the root.
 
@@ -381,10 +446,10 @@ def bass_note_for(weights, lowest, name):
 
         for quality in DETECTED_QUALITIES:
 
-            if SHARP_NAMES[root] + quality == name:
+            if note_name(root, key) + quality == name:
 
                 if lowest != root:
-                    return SHARP_NAMES[lowest]
+                    return note_name(lowest, key)
 
                 return None
 
@@ -611,7 +676,7 @@ def second_opinion(notes, chords):
     )
 
 
-def asides_for(notes, chords):
+def asides_for(notes, chords, key=None):
     """
     A short note to print under each chord symbol.
 
@@ -628,12 +693,14 @@ def asides_for(notes, chords):
 
         parts = []
 
-        bass = bass_note_for(weights, lowest, name)
+        bass = bass_note_for(weights, lowest, name, key)
 
         if bass:
             parts.append("/" + bass)
 
-        others = other_names_for(weights, lowest, name, most=1)
+        others = other_names_for(
+            weights, lowest, name, most=1, key=key
+        )
 
         if others:
             parts.append("or " + others[0])

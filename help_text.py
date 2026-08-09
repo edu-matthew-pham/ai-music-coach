@@ -79,6 +79,12 @@ the first line is two bars of four with a chord change
 halfway through the first. The bars set the metre
 themselves: three slots to a bar is three four.
 
+Importing a file fills the chart in for you, read from
+every voice sounding together. **Detect chords** reads it
+again, which is worth doing after editing the music. A
+file holding only a melody gives no chords, because a
+single line does not say what the harmony is.
+
 Switch **Chords** on in the playback section to hear the
 chart strummed underneath, voiced below the melody so it
 supports the line rather than covering it. A chord sounds

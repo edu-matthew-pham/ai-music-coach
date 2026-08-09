@@ -1167,6 +1167,47 @@ def key_setting_for(key_name):
     return None
 
 
+def suggest_chords(chart_notes, pitch_text, duration_text):
+    """
+    Read the chords again from the music that was imported.
+
+    Only imported music has chords to find: a melody typed
+    into the boxes is one line, and one line does not say
+    what the harmony is. So this works on the notes the
+    import kept, and says so plainly when there are none.
+    """
+
+    from chord_detector import chart_from_notes, explain_empty_chart
+
+    if not chart_notes:
+        raise MusicInputError(
+            "Chords are read from music with more than one "
+            "voice, so there is nothing to read here. "
+            "Import a file with several parts, or write a "
+            "chart by hand."
+        )
+
+    pitches, durations = read_music(pitch_text, duration_text)
+
+    total = sum(durations)
+
+    from midi_import import spelling_key
+
+    chart = chart_from_notes(
+        chart_notes,
+        total,
+        4,
+        key=spelling_key(chart_notes)
+    )
+
+    if not chart:
+        raise MusicInputError(
+            explain_empty_chart(chart_notes, total)
+        )
+
+    return chart
+
+
 def suggest_key(pitch_text, duration_text):
     """
     Name the keys this music might be in.

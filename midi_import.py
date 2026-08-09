@@ -737,6 +737,43 @@ def import_midi(path, maximum_notes=None, track_number=None,
     )
 
 
+def spelling_key(notes):
+    """
+    Which key to spell the chords in.
+
+    Read from the music itself, since a file rarely says.
+    Only the spelling depends on it: B flat and A sharp are
+    the same chord, and this decides which way a singer
+    reads it.
+    """
+
+    from key_detector import detect_key
+    from notes import midi_to_note
+
+    if not notes:
+        return None
+
+    names = [midi_to_note(number) for start, length, number in notes]
+
+    lengths = [length for start, length, number in notes]
+
+    best, score = detect_key(names, lengths)[0]
+
+    tonic, space, kind = best.partition(" ")
+
+    if kind == "minor":
+
+        from harmony import RELATIVE_MINORS
+
+        for major, minor in RELATIVE_MINORS.items():
+            if minor == tonic:
+                return major
+
+        return None
+
+    return tonic
+
+
 def read_chart_text(midi_file, notes, span, beats_per_bar=4):
     """
     Read the chords out of the whole texture.
@@ -779,7 +816,8 @@ def read_chart_text(midi_file, notes, span, beats_per_bar=4):
     return chart_from_notes(
         within,
         span_end - span_start,
-        beats_per_bar
+        beats_per_bar,
+        key=spelling_key(notes)
     ), within
 
 

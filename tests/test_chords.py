@@ -1204,3 +1204,89 @@ def test_the_two_opinions_answer_different_questions():
     assert namer
     assert reader
     assert namer != reader
+
+
+def test_a_single_line_is_not_named_as_chords():
+    """
+    One note is not a chord. A bare melody will happily
+    match some triad containing that note, and the answer
+    is confident, arbitrary and wrong.
+    """
+
+    from chord_detector import name_chord, weigh_pitches
+
+    # One note sounding, at length.
+    notes = [(0.0, 4.0, 62)]
+
+    weights, lowest = weigh_pitches(notes, 0, 4)
+
+    assert name_chord(weights, lowest) is None
+
+
+def test_two_notes_are_thin_but_real():
+    """
+    An open fifth is a chord, and hymns do reduce to two
+    voices.
+    """
+
+    from chord_detector import name_chord, weigh_pitches
+
+    notes = [(0.0, 4.0, 62), (0.0, 4.0, 69)]
+
+    weights, lowest = weigh_pitches(notes, 0, 4)
+
+    assert name_chord(weights, lowest) == "D"
+
+
+def test_an_empty_chart_explains_itself():
+    """
+    An empty box with no explanation looks like a fault.
+    """
+
+    from chord_detector import chart_from_notes, explain_empty_chart
+
+    melody = [(float(beat), 1.0, 62 + beat) for beat in range(8)]
+
+    assert chart_from_notes(melody, 8, 4) == ""
+
+    reason = explain_empty_chart(melody, 8)
+
+    assert "single line" in reason
+
+
+def test_chords_are_spelled_in_the_key():
+    """
+    A chart in B flat major that reads A sharp is the same
+    sound written in the wrong dialect.
+    """
+
+    from chord_detector import chart_from_notes
+
+    # A B flat chord, held.
+    notes = [
+        (0.0, 4.0, 46), (0.0, 4.0, 50), (0.0, 4.0, 53)
+    ]
+
+    assert "A#" in chart_from_notes(notes, 4, 4)
+    assert "Bb" in chart_from_notes(notes, 4, 4, key="Bb")
+
+
+def test_the_spelling_key_is_read_from_the_music():
+    from midi_import import spelling_key
+
+    # A B flat major scale.
+    notes = [
+        (float(beat), 1.0, midi)
+        for beat, midi in enumerate(
+            [46, 48, 50, 51, 53, 55, 57, 58]
+        )
+    ]
+
+    assert spelling_key(notes) == "Bb"
+
+
+def test_detecting_chords_needs_more_than_one_voice():
+    from music import suggest_chords, MusicInputError
+
+    with pytest.raises(MusicInputError, match="more than one"):
+        suggest_chords(None, "C4 E4", "1 1")
