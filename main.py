@@ -22,6 +22,8 @@ from music import (
     import_midi_file,
     list_midi_tracks,
     list_midi_phrases,
+    phrase_number_from,
+    remember_lyrics,
     play_music,
     show_harmony,
     analyse_single_note,
@@ -75,6 +77,11 @@ with gr.Blocks(
     )
 
     chart_notes_state = gr.State(None)
+
+    # Lyrics the player has typed, kept per phrase so that
+    # the phrase list can name them and so they come back
+    # when a phrase is chosen again.
+    saved_lyrics_state = gr.State({})
 
     with gr.Accordion("How to use this", open=False):
         gr.Markdown(HELP_TEXT)
@@ -395,6 +402,55 @@ with gr.Blocks(
             visible=True
         )
 
+    def keep_lyrics(saved, file_path, track_label, phrase_label,
+                    lyric_text):
+        """
+        Remember what has been typed, and name the phrase
+        by it.
+        """
+
+        kept = remember_lyrics(
+            saved, track_label, phrase_label, lyric_text
+        )
+
+        if file_path is None or track_label is None:
+            return kept, gr.update()
+
+        try:
+            phrases = list_midi_phrases(
+                file_path, track_label, kept
+            )
+
+        except MusicInputError:
+            return kept, gr.update()
+
+        # The chosen phrase keeps its place in the list
+        # even though its name has changed.
+        chosen = phrase_label
+
+        if phrase_label in phrases:
+            chosen = phrase_label
+
+        else:
+            number = phrase_number_from(phrase_label)
+
+            if number is not None and number + 1 < len(phrases):
+                chosen = phrases[number + 1]
+
+        return kept, gr.update(choices=phrases, value=chosen)
+
+    lyric_input.blur(
+        fn=keep_lyrics,
+        inputs=[
+            saved_lyrics_state,
+            midi_upload,
+            track_input,
+            phrase_input,
+            lyric_input
+        ],
+        outputs=[saved_lyrics_state, phrase_input]
+    )
+
     detect_chords_button.click(
         fn=guard(suggest_chords),
         inputs=[
@@ -485,7 +541,7 @@ with gr.Blocks(
 
         return tuple(gr.update() for _ in range(count))
 
-    def import_track(file_path, track_label):
+    def import_track(file_path, track_label, saved_lyrics=None):
         """
         Import a track, and offer the phrases it holds.
 
@@ -497,7 +553,9 @@ with gr.Blocks(
         if file_path is None:
             return unchanged(len(music_outputs) + 1)
 
-        phrases = list_midi_phrases(file_path, track_label)
+        phrases = list_midi_phrases(
+            file_path, track_label, saved_lyrics
+        )
 
         # Take the whole track when it is short enough to
         # be one phrase anyway, otherwise start with the
@@ -522,7 +580,7 @@ with gr.Blocks(
             )
         )
 
-    def import_and_show(file_path):
+    def import_and_show(file_path, saved_lyrics=None):
         """
         Import a file, offering its tracks and phrases.
         """
@@ -532,7 +590,7 @@ with gr.Blocks(
 
         tracks = list_midi_tracks(file_path)
 
-        results = import_track(file_path, tracks[0])
+        results = import_track(file_path, tracks[0], saved_lyrics)
 
         return results + (
             gr.update(
@@ -564,13 +622,13 @@ with gr.Blocks(
 
     midi_upload.upload(
         fn=guard(import_and_show),
-        inputs=midi_upload,
+        inputs=[midi_upload, saved_lyrics_state],
         outputs=music_outputs + [phrase_input, track_input]
     )
 
     track_input.change(
         fn=guard(import_track),
-        inputs=[midi_upload, track_input],
+        inputs=[midi_upload, track_input, saved_lyrics_state],
         outputs=music_outputs + [phrase_input]
     )
 

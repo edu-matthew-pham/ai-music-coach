@@ -1005,6 +1005,8 @@ def describe_phrases(path, track_number=None, channel=None):
 
     phrases = split_into_phrases(melody, beats_per_bar, bpm)
 
+    events = read_lyric_events(midi_file, track_number)
+
     described = []
 
     for position, phrase in enumerate(phrases):
@@ -1016,19 +1018,81 @@ def describe_phrases(path, track_number=None, channel=None):
             (last[0] + last[1] - 0.01) / beats_per_bar
         ) + 1
 
-        opening = " ".join(
-            midi_to_note(number)
-            for _, _, number in phrase[:5]
-        )
-
         described.append((
             position,
             f"Phrase {position + 1} "
             f"(bars {first_bar} to {last_bar}, "
-            f"{len(phrase)} notes): {opening}"
+            f"{len(phrase)} notes): "
+            + phrase_opening(phrase, events)
         ))
 
     return described
+
+
+# How much of a phrase to show in the list. Enough to know
+# which phrase it is, short enough to read at a glance.
+OPENING_WORDS = 6
+
+
+def phrase_opening(phrase, events=None):
+    """
+    The few words or notes that identify a phrase.
+
+    Words where the music has them. "There once was a
+    ship" tells a singer which phrase this is; the same
+    phrase written as A#3 C4 C4 C4 C4 tells them almost
+    nothing, and they would have to load each one to find
+    out.
+    """
+
+    if events:
+
+        syllables = lyrics_for(phrase, events)
+
+        words = join_syllables(syllables)
+
+        if words:
+            return words
+
+    return " ".join(
+        midi_to_note(number)
+        for start, length, number in phrase[:5]
+    )
+
+
+def join_syllables(syllables):
+    """
+    Put sung syllables back together into words.
+
+    Syllables arrive one to a note, hyphenated where a word
+    runs across several, and marked where a word is held.
+    Reading them as they come gives "Twin- kle twin- kle",
+    which is not how anyone would say it.
+    """
+
+    words = []
+
+    building = ""
+
+    for syllable in syllables:
+
+        if syllable in (None, "", HELD_SYLLABLE):
+            continue
+
+        if syllable.endswith("-"):
+            building += syllable[:-1]
+
+        else:
+            words.append(building + syllable)
+            building = ""
+
+        if len(words) >= OPENING_WORDS:
+            break
+
+    if building and len(words) < OPENING_WORDS:
+        words.append(building)
+
+    return " ".join(words)
 
 
 def read_lyric_events(midi_file, track_number=None):

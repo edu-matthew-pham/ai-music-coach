@@ -335,3 +335,120 @@ def test_percussion_is_described_rather_than_hidden():
 
     # But not put forward as something to sing.
     assert "Drums" not in parts[0]
+
+
+def test_phrases_are_named_by_their_words():
+    """
+    "There once was a ship" tells a singer which phrase
+    this is. The same phrase written as A#3 C4 C4 C4 C4
+    tells them almost nothing, and they would have to load
+    each one to find out.
+    """
+
+    import os
+
+    from music import list_midi_tracks, list_midi_phrases
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "d_ML_10791.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the band arrangement fixture is absent")
+
+    parts = list_midi_tracks(path)
+
+    phrases = list_midi_phrases(path, parts[0])
+
+    joined = " ".join(phrases)
+
+    assert "There once was a ship" in joined
+
+
+def test_a_phrase_without_words_is_named_by_its_notes():
+    import os
+
+    from music import list_midi_tracks, list_midi_phrases
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "o-holy-night-satb.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the satb fixture is not present")
+
+    parts = list_midi_tracks(path)
+
+    phrases = list_midi_phrases(path, parts[0])
+
+    assert "F#4" in " ".join(phrases)
+
+
+def test_typed_lyrics_name_the_phrase_they_belong_to():
+    """
+    A phrase the player has written words for is named by
+    those words: their own working text rather than the
+    notes, and their own corrections rather than whatever
+    the file happened to carry.
+    """
+
+    import os
+
+    from music import (
+        list_midi_tracks,
+        list_midi_phrases,
+        remember_lyrics
+    )
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "o-holy-night-satb.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the satb fixture is not present")
+
+    parts = list_midi_tracks(path)
+
+    phrases = list_midi_phrases(path, parts[0])
+
+    saved = remember_lyrics(
+        {},
+        parts[0],
+        phrases[1],
+        "O ho- ly night the stars are bright- ly shin- ing"
+    )
+
+    named = list_midi_phrases(path, parts[0], saved)
+
+    # Hyphenated syllables are put back into words.
+    assert "O holy night" in named[1]
+
+    # And only that phrase is renamed.
+    assert named[2] == phrases[2]
+
+
+def test_lyrics_belong_to_a_phrase_of_a_part():
+    """
+    The third phrase of the bass line is a different
+    stretch of music from the third of the tune.
+    """
+
+    from music import remember_lyrics, phrase_key
+
+    saved = remember_lyrics({}, "0:0 Sax", "Phrase 3", "hello")
+
+    assert phrase_key("0:0 Sax", "Phrase 3") in saved
+    assert phrase_key("0:1 Bass", "Phrase 3") not in saved
+
+
+def test_clearing_the_lyric_box_forgets_them():
+    from music import remember_lyrics
+
+    saved = remember_lyrics({}, "0:0", "Phrase 1", "words here")
+
+    assert saved
+
+    assert not remember_lyrics(saved, "0:0", "Phrase 1", "   ")
