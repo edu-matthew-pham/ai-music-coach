@@ -497,7 +497,7 @@ def test_midi_import_reports_candidate_keys(tmp_path):
     path = str(tmp_path / "sharp.mid")
     midi_file.save(path)
 
-    pitches, durations, lyrics, bpm, feedback = (
+    pitches, durations, lyrics, bpm, feedback, chart = (
         import_midi_file(path)
     )
 

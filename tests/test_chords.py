@@ -923,3 +923,101 @@ def test_the_bass_stays_in_a_range_people_can_sing():
         for note in line:
             assert BASS_LOWEST_MIDI <= note_to_midi(note)
             assert note_to_midi(note) <= BASS_HIGHEST_MIDI
+
+
+def test_a_phrase_is_padded_to_whole_bars():
+    """
+    Phrases break where the music breathes, and a breath
+    rarely falls on a bar line. Padding to the bars either
+    side gives the chart, the bar lines and the downbeats
+    somewhere to sit.
+    """
+
+    import os
+
+    from midi_import import import_midi
+    from music import read_music
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "o-holy-night-satb.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the satb fixture is not present")
+
+    for phrase in range(6):
+
+        pitches, durations, lyrics, bpm, chart = import_midi(
+            path, track_number=1, phrase_number=phrase
+        )
+
+        pitch_list, duration_list = read_music(pitches, durations)
+
+        assert sum(duration_list) % 4 == 0
+
+
+def test_an_imported_chart_fits_its_music():
+    """
+    A chart read from a file has to pass the same check as
+    one typed by hand, or importing produces music that
+    cannot be played.
+    """
+
+    import os
+
+    from midi_import import import_midi
+    from music import read_music, read_chords
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "o-holy-night-satb.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the satb fixture is not present")
+
+    for phrase in range(8):
+
+        pitches, durations, lyrics, bpm, chart = import_midi(
+            path, track_number=1, phrase_number=phrase
+        )
+
+        pitch_list, duration_list = read_music(pitches, durations)
+
+        # Raises if the chart and the music disagree.
+        chords, bars = read_chords(chart, duration_list)
+
+        assert len(chords) > 0
+
+
+def test_chords_come_from_every_voice_not_the_one_sung():
+    """
+    A soprano line alone holds no chords. The four parts
+    of a hymn spell one out on every beat.
+    """
+
+    import os
+
+    from midi_import import import_midi
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "o-holy-night-satb.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the satb fixture is not present")
+
+    pitches, durations, lyrics, bpm, chart = import_midi(
+        path, track_number=1, phrase_number=0
+    )
+
+    chords, bars = read_chart(chart)
+
+    # Real chords, not one per melody note.
+    assert len(chords) < len(pitches.split())
+
+    names = {name for start, length, name in chords}
+
+    assert "D" in names

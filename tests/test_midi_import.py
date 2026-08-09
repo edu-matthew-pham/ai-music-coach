@@ -68,7 +68,7 @@ def test_imports_a_simple_melody(tmp_path):
         bpm=100
     )
 
-    pitches, durations, lyric_text, bpm = import_midi(path)
+    pitches, durations, lyric_text, bpm, chart = import_midi(path)
 
     assert pitches == "C4 E4 G4"
     assert durations == "1 1 2"
@@ -82,7 +82,7 @@ def test_imports_karaoke_lyrics(tmp_path):
         lyrics=["la", "la"]
     )
 
-    pitches, durations, lyric_text, bpm = import_midi(path)
+    pitches, durations, lyric_text, bpm, chart = import_midi(path)
 
     assert lyric_text == "la la"
 
@@ -109,7 +109,7 @@ def test_notes_without_words_are_marked_as_held(tmp_path):
     ]
     assert len(events) == 2
 
-    pitches, durations, lyric_text, bpm = import_midi(path)
+    pitches, durations, lyric_text, bpm, chart = import_midi(path)
 
     assert lyric_text == "only two _"
 
@@ -238,14 +238,14 @@ def test_importing_one_track_ignores_the_others(tmp_path):
     path = str(tmp_path / "two.mid")
     midi_file.save(path)
 
-    lower, durations, lyrics, bpm = import_midi(
+    lower, durations, lyrics, bpm, chart = import_midi(
         path,
         track_number=1
     )
 
     assert lower == "C4 D4"
 
-    upper, durations, lyrics, bpm = import_midi(
+    upper, durations, lyrics, bpm, chart = import_midi(
         path,
         track_number=0
     )
@@ -345,12 +345,18 @@ def test_a_phrase_imports_on_its_own(tmp_path):
         ]
     )
 
-    pitches, durations, lyrics, bpm = import_midi(
+    pitches, durations, lyrics, bpm, chart = import_midi(
         path,
         phrase_number=1
     )
 
-    assert pitches == "C5 D5 E5 F5"
+    # The phrase is padded out to the bars around it, so
+    # its chords, bar lines and downbeats have somewhere
+    # to sit. The rests are the count before it and the
+    # breath after.
+    assert "C5 D5 E5 F5" in pitches
+    assert pitches.startswith("R")
+    assert pitches.endswith("R")
 
 
 def test_short_phrases_are_joined_to_the_next(tmp_path):
@@ -434,7 +440,7 @@ def test_lengths_are_written_as_fractions_of_a_beat(tmp_path):
         ]
     )
 
-    pitches, durations, lyrics, bpm = import_midi(path)
+    pitches, durations, lyrics, bpm, chart = import_midi(path)
 
     assert durations == "1 1/2 3/4 3/2 2"
 
@@ -451,7 +457,7 @@ def test_fraction_lengths_read_back_the_same(tmp_path):
         [(60, 1 / 3), (62, 1 / 3), (64, 1 / 3), (65, 0.75)]
     )
 
-    pitches, durations, lyrics, bpm = import_midi(path)
+    pitches, durations, lyrics, bpm, chart = import_midi(path)
 
     values = [read_beats(text) for text in durations.split()]
 
@@ -577,13 +583,13 @@ def test_each_voice_keeps_its_own_words(tmp_path):
     path = str(tmp_path / "choral.mid")
     midi_file.save(path)
 
-    pitches, durations, upper, bpm = import_midi(
+    pitches, durations, upper, bpm, chart = import_midi(
         path, track_number=0
     )
 
     assert upper == "Glo- ri- a"
 
-    pitches, durations, lower, bpm = import_midi(
+    pitches, durations, lower, bpm, chart = import_midi(
         path, track_number=1
     )
 
@@ -631,7 +637,7 @@ def test_a_phrase_keeps_only_its_own_words(tmp_path):
     path = str(tmp_path / "phrases.mid")
     midi_file.save(path)
 
-    pitches, durations, lyrics, bpm = import_midi(
+    pitches, durations, lyrics, bpm, chart = import_midi(
         path, phrase_number=1
     )
 
@@ -662,7 +668,7 @@ def test_unmatched_lyrics_are_left_out(tmp_path):
     path = str(tmp_path / "stray.mid")
     midi_file.save(path)
 
-    pitches, durations, lyrics, bpm = import_midi(path)
+    pitches, durations, lyrics, bpm, chart = import_midi(path)
 
     # The stray syllable lines up with nothing, so there
     # is nothing to keep.
@@ -835,7 +841,7 @@ def test_a_word_held_across_notes_marks_the_notes_that_carry_it():
     path = os.path.join(tempfile.mkdtemp(), "melisma.mid")
     midi_file.save(path)
 
-    pitches, durations, lyrics, bpm = import_midi(path)
+    pitches, durations, lyrics, bpm, chart = import_midi(path)
 
     assert lyrics == "A- _ men _"
 
@@ -872,7 +878,7 @@ def test_partial_lyrics_are_kept(tmp_path):
     path = str(tmp_path / "partial.mid")
     midi_file.save(path)
 
-    pitches, durations, lyrics, bpm = import_midi(path)
+    pitches, durations, lyrics, bpm, chart = import_midi(path)
 
     assert lyrics.startswith("word0 word1")
     assert lyrics.count("_") == 4

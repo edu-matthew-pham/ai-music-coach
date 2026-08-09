@@ -1337,7 +1337,7 @@ def import_midi_file(
         )
 
     try:
-        pitch_text, duration_text, lyric_text, bpm = (
+        pitch_text, duration_text, lyric_text, bpm, chart_text = (
             import_midi(
                 file_path,
                 track_number=track_number_from(track_label),
@@ -1424,12 +1424,19 @@ def import_midi_file(
             "is left empty."
         )
 
+    if chart_text:
+        lines.append(
+            "The chords were read from every voice "
+            "sounding together, and can be edited."
+        )
+
     return (
         pitch_text,
         duration_text,
         lyric_text,
         bpm,
-        " ".join(lines)
+        " ".join(lines),
+        chart_text
     )
 
 

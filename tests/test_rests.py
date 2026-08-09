@@ -145,7 +145,7 @@ def test_imported_gaps_become_rests(tmp_path):
     path = str(tmp_path / "gap.mid")
     midi_file.save(path)
 
-    pitches, durations, lyrics, bpm = import_midi(path)
+    pitches, durations, lyrics, bpm, chart = import_midi(path)
 
     assert pitches == "C4 R E4"
     assert durations == "1 1 1"

@@ -502,19 +502,63 @@ def split_into_phrases(
     return divided
 
 
-def notes_to_text(melody):
+def bar_span(phrase, beats_per_bar=4):
+    """
+    The bar lines either side of a phrase.
+
+    Phrases are split where the music breathes, and a
+    breath rarely falls on a bar line: a line may begin on
+    a pickup and end part way through a beat. That is
+    correct as music and awkward as data, since a chord
+    chart is written in bars and the metronome marks a
+    downbeat, and neither can line up with a phrase that
+    starts and stops mid-bar.
+
+    Returns (start, end) in beats.
+    """
+
+    first_start = phrase[0][0]
+
+    last_start, last_length, last_pitch = phrase[-1]
+
+    phrase_end = last_start + last_length
+
+    start = int(first_start // beats_per_bar) * beats_per_bar
+
+    bars = -(-(phrase_end - start) // beats_per_bar)
+
+    return start, start + bars * beats_per_bar
+
+
+def notes_to_text(melody, span=None):
     """
     Turn a list of notes into pitch and duration text.
 
     Silence between notes becomes a rest, so the timing
     survives. Silence before the first note is dropped:
     music begins where it begins.
+
+    Given a span of whole bars to fill, the silence at
+    either end is written as a rest instead. Those rests
+    are real music rather than filler: the one before a
+    pickup is time the singer counts, and the one after
+    the last note is where they breathe.
     """
 
     pitches = []
     durations = []
 
     previous_end = melody[0][0]
+
+    if span is not None:
+
+        span_start, span_end = span
+
+        if melody[0][0] > span_start:
+            pitches.append(REST)
+            durations.append(
+                snap_to_beat(melody[0][0] - span_start)
+            )
 
     for start, length, midi_number in melody:
 
@@ -528,6 +572,28 @@ def notes_to_text(melody):
         durations.append(snap_to_beat(length))
 
         previous_end = start + length
+
+    if span is not None:
+
+        span_start, span_end = span
+
+        # Every length is snapped to the nearest sensible
+        # fraction of a beat, and those roundings add up,
+        # so the notes rarely total exactly what the bars
+        # say. The closing rest takes up the difference:
+        # it is the one length nobody is counting.
+        wanted = span_end - span_start
+
+        so_far = sum(durations)
+
+        remaining = wanted - so_far
+
+        if remaining >= SHORTEST_REST:
+            pitches.append(REST)
+            durations.append(remaining)
+
+        elif remaining and durations:
+            durations[-1] += remaining
 
     def show(value):
         """
@@ -619,10 +685,19 @@ def import_midi(path, maximum_notes=None, track_number=None,
 
         melody = phrases[phrase_number]
 
+        # A phrase is padded out to the bars around it, so
+        # that its chords, bar lines and downbeats all have
+        # somewhere to sit.
+        span = bar_span(melody, read_time_signature(midi_file))
+
+    else:
+        span = None
+
     if maximum_notes is not None:
         melody = melody[:maximum_notes]
+        span = None
 
-    pitch_text, duration_text = notes_to_text(melody)
+    pitch_text, duration_text = notes_to_text(melody, span)
 
     lyric_text = read_lyric_text(
         midi_file,
@@ -630,7 +705,64 @@ def import_midi(path, maximum_notes=None, track_number=None,
         track_number
     )
 
-    return pitch_text, duration_text, lyric_text, bpm
+    # Chords come from every voice sounding together, not
+    # from the one being sung.
+    all_notes, all_bpm = read_notes(midi_file)
+
+    chart_text = read_chart_text(
+        midi_file,
+        all_notes,
+        span,
+        read_time_signature(midi_file)
+    )
+
+    return pitch_text, duration_text, lyric_text, bpm, chart_text
+
+
+def read_chart_text(midi_file, notes, span, beats_per_bar=4):
+    """
+    Read the chords out of the whole texture.
+
+    The chords come from every voice sounding together,
+    not from the part being sung: a soprano line alone
+    holds no chords, while the four parts of a hymn spell
+    one out on every beat.
+
+    Only for a phrase, since that is what has been padded
+    to whole bars, and a chart has to fit the music it is
+    written above.
+    """
+
+    if span is None:
+        return ""
+
+    from chord_detector import chart_from_notes
+
+    span_start, span_end = span
+
+    within = []
+
+    for start, length, midi_number in notes:
+
+        if start + length <= span_start or start >= span_end:
+            continue
+
+        within.append(
+            (
+                max(0.0, start - span_start),
+                length,
+                midi_number
+            )
+        )
+
+    if not within:
+        return ""
+
+    return chart_from_notes(
+        within,
+        span_end - span_start,
+        beats_per_bar
+    )
 
 
 def describe_phrases(path, track_number=None):

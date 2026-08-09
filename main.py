@@ -495,7 +495,7 @@ with gr.Blocks(
             lyrics,
             bpm,
             gr.update(value=feedback, visible=True),
-            "",
+            chart,
             gr.update(
                 choices=phrases,
                 value=chosen,
@@ -528,7 +528,7 @@ with gr.Blocks(
         if file_path is None or phrase_label is None:
             return unchanged(len(music_outputs))
 
-        pitches, durations, lyrics, bpm, feedback = (
+        pitches, durations, lyrics, bpm, feedback, chart = (
             import_midi_file(
                 file_path, track_label, phrase_label
             )
@@ -540,7 +540,7 @@ with gr.Blocks(
             lyrics,
             bpm,
             gr.update(value=feedback, visible=True),
-            ""
+            chart
         )
 
     midi_upload.upload(

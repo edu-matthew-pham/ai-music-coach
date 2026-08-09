@@ -242,7 +242,7 @@ def test_import_feedback_does_not_claim_harmony_is_unavailable():
 
     tracks = list_midi_tracks(path)
 
-    pitches, durations, lyrics, bpm, feedback = (
+    pitches, durations, lyrics, bpm, feedback, chart = (
         import_midi_file(path, tracks[1])
     )
 
