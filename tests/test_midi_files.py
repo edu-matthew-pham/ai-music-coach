@@ -115,7 +115,7 @@ def test_every_track_of_a_real_file_imports(path):
 
     for number, label in describe_tracks(path):
 
-        pitches, durations, lyrics, bpm, chart = import_midi(
+        pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(
             path,
             track_number=number
         )
@@ -200,7 +200,7 @@ def test_the_soprano_line_of_o_holy_night():
     if not os.path.exists(path):
         pytest.skip("o holy night fixture not present")
 
-    pitches, durations, lyrics, bpm, chart = import_midi(
+    pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(
         path,
         track_number=1
     )

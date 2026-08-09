@@ -1076,7 +1076,8 @@ def show_target_music(
     harmony_choice="Third below",
     chart_text="",
     harmony_style="Thirds, chord-corrected",
-    bass_on=False
+    bass_on=False,
+    chart_notes=None
 ):
     """
     Draw the target music as a score-like picture.
@@ -1118,6 +1119,17 @@ def show_target_music(
 
     chords, bars = read_chords(chart_text, durations)
 
+    # What the chart cannot say, printed under each
+    # symbol: the note a chord is played over, and a name
+    # that fits the same notes equally well.
+    chord_asides = None
+
+    if chords and chart_notes:
+
+        from chord_detector import asides_for
+
+        chord_asides = asides_for(chart_notes, chords)
+
     return make_performance_plot(
         pitches,
         durations,
@@ -1129,7 +1141,8 @@ def show_target_music(
         chords=chords,
         bars=bars,
         bass=bass,
-        key=key
+        key=key,
+        chord_asides=chord_asides
     )
 
 
@@ -1337,7 +1350,14 @@ def import_midi_file(
         )
 
     try:
-        pitch_text, duration_text, lyric_text, bpm, chart_text = (
+        (
+            pitch_text,
+            duration_text,
+            lyric_text,
+            bpm,
+            chart_text,
+            chart_notes
+        ) = (
             import_midi(
                 file_path,
                 track_number=track_number_from(track_label),
@@ -1425,10 +1445,36 @@ def import_midi_file(
         )
 
     if chart_text:
+
         lines.append(
             "The chords were read from every voice "
             "sounding together, and can be edited."
         )
+
+        # What the chart itself has no way to say: which
+        # chords are played over another note, where a
+        # second name fits equally well, and where an
+        # independent reader would disagree.
+        from chord_detector import (
+            describe_detection,
+            second_opinion,
+            midi_reader_opinion
+        )
+        from chords import read_chart
+
+        chords, bars = read_chart(chart_text)
+
+        aside = describe_detection(chart_notes, chords)
+
+        if aside:
+            lines.append(aside)
+
+        for opinion in (
+            second_opinion(chart_notes, chords),
+            midi_reader_opinion(chart_notes, chords)
+        ):
+            if opinion:
+                lines.append(opinion)
 
     return (
         pitch_text,

@@ -68,7 +68,7 @@ def test_imports_a_simple_melody(tmp_path):
         bpm=100
     )
 
-    pitches, durations, lyric_text, bpm, chart = import_midi(path)
+    pitches, durations, lyric_text, bpm, chart, chart_notes = import_midi(path)
 
     assert pitches == "C4 E4 G4"
     assert durations == "1 1 2"
@@ -82,7 +82,7 @@ def test_imports_karaoke_lyrics(tmp_path):
         lyrics=["la", "la"]
     )
 
-    pitches, durations, lyric_text, bpm, chart = import_midi(path)
+    pitches, durations, lyric_text, bpm, chart, chart_notes = import_midi(path)
 
     assert lyric_text == "la la"
 
@@ -109,7 +109,7 @@ def test_notes_without_words_are_marked_as_held(tmp_path):
     ]
     assert len(events) == 2
 
-    pitches, durations, lyric_text, bpm, chart = import_midi(path)
+    pitches, durations, lyric_text, bpm, chart, chart_notes = import_midi(path)
 
     assert lyric_text == "only two _"
 
@@ -238,14 +238,14 @@ def test_importing_one_track_ignores_the_others(tmp_path):
     path = str(tmp_path / "two.mid")
     midi_file.save(path)
 
-    lower, durations, lyrics, bpm, chart = import_midi(
+    lower, durations, lyrics, bpm, chart, chart_notes = import_midi(
         path,
         track_number=1
     )
 
     assert lower == "C4 D4"
 
-    upper, durations, lyrics, bpm, chart = import_midi(
+    upper, durations, lyrics, bpm, chart, chart_notes = import_midi(
         path,
         track_number=0
     )
@@ -345,7 +345,7 @@ def test_a_phrase_imports_on_its_own(tmp_path):
         ]
     )
 
-    pitches, durations, lyrics, bpm, chart = import_midi(
+    pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(
         path,
         phrase_number=1
     )
@@ -440,7 +440,7 @@ def test_lengths_are_written_as_fractions_of_a_beat(tmp_path):
         ]
     )
 
-    pitches, durations, lyrics, bpm, chart = import_midi(path)
+    pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(path)
 
     assert durations == "1 1/2 3/4 3/2 2"
 
@@ -457,7 +457,7 @@ def test_fraction_lengths_read_back_the_same(tmp_path):
         [(60, 1 / 3), (62, 1 / 3), (64, 1 / 3), (65, 0.75)]
     )
 
-    pitches, durations, lyrics, bpm, chart = import_midi(path)
+    pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(path)
 
     values = [read_beats(text) for text in durations.split()]
 
@@ -583,13 +583,13 @@ def test_each_voice_keeps_its_own_words(tmp_path):
     path = str(tmp_path / "choral.mid")
     midi_file.save(path)
 
-    pitches, durations, upper, bpm, chart = import_midi(
+    pitches, durations, upper, bpm, chart, chart_notes = import_midi(
         path, track_number=0
     )
 
     assert upper == "Glo- ri- a"
 
-    pitches, durations, lower, bpm, chart = import_midi(
+    pitches, durations, lower, bpm, chart, chart_notes = import_midi(
         path, track_number=1
     )
 
@@ -637,7 +637,7 @@ def test_a_phrase_keeps_only_its_own_words(tmp_path):
     path = str(tmp_path / "phrases.mid")
     midi_file.save(path)
 
-    pitches, durations, lyrics, bpm, chart = import_midi(
+    pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(
         path, phrase_number=1
     )
 
@@ -668,7 +668,7 @@ def test_unmatched_lyrics_are_left_out(tmp_path):
     path = str(tmp_path / "stray.mid")
     midi_file.save(path)
 
-    pitches, durations, lyrics, bpm, chart = import_midi(path)
+    pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(path)
 
     # The stray syllable lines up with nothing, so there
     # is nothing to keep.
@@ -841,7 +841,7 @@ def test_a_word_held_across_notes_marks_the_notes_that_carry_it():
     path = os.path.join(tempfile.mkdtemp(), "melisma.mid")
     midi_file.save(path)
 
-    pitches, durations, lyrics, bpm, chart = import_midi(path)
+    pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(path)
 
     assert lyrics == "A- _ men _"
 
@@ -878,7 +878,74 @@ def test_partial_lyrics_are_kept(tmp_path):
     path = str(tmp_path / "partial.mid")
     midi_file.save(path)
 
-    pitches, durations, lyrics, bpm, chart = import_midi(path)
+    pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(path)
 
     assert lyrics.startswith("word0 word1")
     assert lyrics.count("_") == 4
+
+
+def test_repeated_notes_are_not_lost(tmp_path):
+    """
+    Several notes of the same pitch can sound at once: a
+    piano part repeating a note under a held pedal, or two
+    voices meeting on the same pitch.
+
+    Keeping only the latest start loses every one but the
+    last, which quietly drops a fifth of the notes in a
+    real piano arrangement and gives every reader of those
+    notes - chords, key, melody - the wrong music.
+    """
+
+    import mido
+
+    from midi_import import read_notes
+
+    midi_file = mido.MidiFile()
+    track = mido.MidiTrack()
+    midi_file.tracks.append(track)
+
+    ticks = midi_file.ticks_per_beat
+
+    # The same pitch struck twice, the second beginning
+    # before the first has ended.
+    track.append(mido.Message("note_on", note=60, velocity=64, time=0))
+    track.append(mido.Message("note_on", note=60, velocity=64, time=ticks // 2))
+    track.append(mido.Message("note_off", note=60, time=ticks // 2))
+    track.append(mido.Message("note_off", note=60, time=ticks // 2))
+
+    notes, bpm = read_notes(midi_file)
+
+    assert len(notes) == 2
+
+
+def test_every_note_in_a_real_file_is_read():
+    """
+    Checked against an independent parser, since a reader
+    that silently drops notes looks perfectly healthy from
+    the inside.
+    """
+
+    import os
+
+    import mido
+
+    miditoolkit = pytest.importorskip("miditoolkit")
+
+    from midi_import import read_notes
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "o-holy-night-satb.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the satb fixture is not present")
+
+    ours, bpm = read_notes(mido.MidiFile(path))
+
+    theirs = sum(
+        len(instrument.notes)
+        for instrument in miditoolkit.MidiFile(path).instruments
+    )
+
+    assert len(ours) == theirs

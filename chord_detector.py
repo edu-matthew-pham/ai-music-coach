@@ -60,6 +60,12 @@ MISSING_PENALTY = 0.5
 QUIET_BEAT = 0.05
 
 
+# How close a second name has to be before it is worth
+# mentioning. Scaled by how much is sounding, so a busy
+# beat and a quiet one are judged alike.
+ALTERNATIVE_MARGIN = 0.15
+
+
 def weigh_pitches(notes, start, end):
     """
     How long each pitch class sounds during a span.
@@ -296,3 +302,343 @@ def chart_from_notes(notes, total_beats, beats_per_bar=4):
     chords = fill_gaps(chords, total_beats)
 
     return write_chart(chords, total_beats, beats_per_bar)
+
+
+def other_names_for(weights, lowest, chosen, most=2):
+    """
+    What else the same notes could be called.
+
+    Some pitch sets genuinely are two chords: D, F sharp,
+    A and B is a D sixth and a B minor seventh at once, and
+    which one it is depends on the music around it rather
+    than on the notes. Naming only the winner hides that
+    the question was open.
+
+    Returns the next best names, closest first.
+    """
+
+    total = sum(weights)
+
+    if total <= QUIET_BEAT:
+        return []
+
+    scored = []
+
+    for root in range(12):
+
+        for quality in DETECTED_QUALITIES:
+
+            name = SHARP_NAMES[root] + quality
+
+            if name == chosen:
+                continue
+
+            scored.append(
+                (score_chord(weights, lowest, root, quality), name)
+            )
+
+    scored.sort(reverse=True)
+
+    best = score_chord_for_name(weights, lowest, chosen)
+
+    close = [
+        name for score, name in scored
+        if best - score <= ALTERNATIVE_MARGIN * total
+    ]
+
+    return close[:most]
+
+
+def score_chord_for_name(weights, lowest, name):
+    """
+    Score a chord given the way it is written.
+    """
+
+    for root in range(12):
+
+        for quality in DETECTED_QUALITIES:
+
+            if SHARP_NAMES[root] + quality == name:
+                return score_chord(weights, lowest, root, quality)
+
+    return 0.0
+
+
+def bass_note_for(weights, lowest, name):
+    """
+    The bass note, when it is not the root.
+
+    A chord with a note other than its root at the bottom
+    is an inversion, written D/F sharp. The chart notation
+    has no way to say that, so it is worth mentioning
+    rather than losing.
+    """
+
+    if lowest is None:
+        return None
+
+    for root in range(12):
+
+        for quality in DETECTED_QUALITIES:
+
+            if SHARP_NAMES[root] + quality == name:
+
+                if lowest != root:
+                    return SHARP_NAMES[lowest]
+
+                return None
+
+    return None
+
+
+def describe_detection(notes, chords):
+    """
+    What the chart does not say.
+
+    The chart holds one name per chord because it has to
+    parse and be played. Everything else the detection
+    knew - the inversions, and the places where another
+    name fits just as well - is reported alongside it, for
+    the player to judge.
+    """
+
+    inversions = []
+    alternatives = []
+
+    for start, length, name in chords:
+
+        weights, lowest = weigh_pitches(notes, start, start + length)
+
+        bass = bass_note_for(weights, lowest, name)
+
+        if bass:
+            inversions.append(f"{name}/{bass}")
+
+        others = other_names_for(weights, lowest, name)
+
+        if others:
+            alternatives.append(
+                f"{name} ({' or '.join(others)})"
+            )
+
+    lines = []
+
+    if inversions:
+        lines.append(
+            "Some chords are played over another note: "
+            + ", ".join(inversions[:6])
+            + "."
+        )
+
+    if alternatives:
+        lines.append(
+            "Some could be named differently: "
+            + ", ".join(alternatives[:6])
+            + "."
+        )
+
+    return " ".join(lines)
+
+
+def as_midi_object(notes, ticks_per_beat=480):
+    """
+    Build a MIDI object in memory from a list of notes.
+
+    Chord readers that expect a file can read one of these
+    just as well: a file is only a way of carrying notes
+    about, and we already have the notes.
+    """
+
+    from miditoolkit import MidiFile, Instrument, Note
+
+    midi_object = MidiFile()
+
+    midi_object.ticks_per_beat = ticks_per_beat
+
+    instrument = Instrument(program=0)
+
+    for start, length, midi_number in notes:
+
+        instrument.notes.append(
+            Note(
+                velocity=80,
+                pitch=midi_number,
+                start=int(start * ticks_per_beat),
+                end=int((start + length) * ticks_per_beat)
+            )
+        )
+
+    midi_object.instruments.append(instrument)
+
+    # Without this the readers find no music: it is how
+    # they know where to stop looking.
+    midi_object.max_tick = max(
+        (note.end for note in instrument.notes),
+        default=0
+    )
+
+    return midi_object
+
+
+def midi_reader_opinion(notes, chords):
+    """
+    What a chord reader working from the notes makes of it.
+
+    This one does its own segmentation, weighing one beat
+    against two before deciding, so it disagrees with us in
+    a different way than a namer does: not about what the
+    notes are called, but about where one chord ends.
+    """
+
+    try:
+        from chorder import Dechorder
+
+    except ImportError:
+        return ""
+
+    theirs = Dechorder.dechord(as_midi_object(notes))
+
+    differences = []
+
+    for start, length, name in chords:
+
+        beat = int(round(start))
+
+        if beat >= len(theirs):
+            continue
+
+        other = str(theirs[beat])
+
+        if other == "None":
+            continue
+
+        if root_of(other) != root_of(name):
+            differences.append(f"{name} (or {other})")
+
+    if not differences:
+        return ""
+
+    return (
+        "A reader that decides where chords change would "
+        "hear some differently: "
+        + ", ".join(differences[:4])
+        + "."
+    )
+
+
+def root_of(name):
+    """
+    The note a chord is built on, however it is written.
+    """
+
+    name = str(name).split("/")[0]
+
+    for quality in [
+        "maj7", "m7", "dim", "aug", "sus4", "sus2",
+        "M7", "M", "m", "7", "o", "+", "6"
+    ]:
+        if name.endswith(quality):
+            name = name[:-len(quality)]
+            break
+
+    name = name.replace("-", "b")
+
+    return {
+        "Bb": "A#", "Eb": "D#", "Ab": "G#",
+        "Db": "C#", "Gb": "F#"
+    }.get(name, name)
+
+
+def second_opinion(notes, chords):
+    """
+    What another chord namer makes of the same notes.
+
+    Our detector fills the chart; this only comments. It is
+    worth hearing because it disagrees usefully: pychord
+    names a set of notes strictly and says nothing when a
+    passing tone spoils the set, so its silence marks the
+    beats where something is sounding that the chord does
+    not explain.
+
+    Not needed for the app to work, and this returns
+    nothing when it is absent.
+    """
+
+    try:
+        from pychord.analyzer import find_chords_from_notes
+
+    except ImportError:
+        return ""
+
+    differences = []
+
+    for start, length, name in chords:
+
+        weights, lowest = weigh_pitches(notes, start, start + length)
+
+        sounding = [
+            SHARP_NAMES[semitone]
+            for semitone in range(12)
+            if weights[semitone] > 0.2
+        ]
+
+        theirs = [
+            str(chord)
+            for chord in find_chords_from_notes(sounding)
+        ]
+
+        if not theirs:
+            continue
+
+        if not any(
+            chord.split("/")[0] == name for chord in theirs
+        ):
+            differences.append(
+                f"{name} (read elsewhere as {theirs[0]})"
+            )
+
+    if not differences:
+        return (
+            "A second chord reader agrees with all of "
+            "these."
+        )
+
+    return (
+        "A second chord reader would name some of these "
+        "differently: "
+        + ", ".join(differences[:6])
+        + "."
+    )
+
+
+def asides_for(notes, chords):
+    """
+    A short note to print under each chord symbol.
+
+    Keyed by the beat the chord starts on, so the picture
+    can place them without knowing how they were worked
+    out.
+    """
+
+    asides = {}
+
+    for start, length, name in chords:
+
+        weights, lowest = weigh_pitches(notes, start, start + length)
+
+        parts = []
+
+        bass = bass_note_for(weights, lowest, name)
+
+        if bass:
+            parts.append("/" + bass)
+
+        others = other_names_for(weights, lowest, name, most=1)
+
+        if others:
+            parts.append("or " + others[0])
+
+        if parts:
+            asides[round(float(start), 3)] = "  ".join(parts)
+
+    return asides

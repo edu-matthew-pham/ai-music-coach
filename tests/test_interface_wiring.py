@@ -84,6 +84,82 @@ def test_handlers_return_what_they_are_wired_to(name, expected):
         )
 
 
+# How many values each music function hands back. The
+# interface has to unpack exactly this many, and a mistake
+# here is invisible until someone presses the control.
+RETURN_COUNTS = {
+    "import_midi_file": 6,
+    "list_midi_tracks": 1,
+    "list_midi_phrases": 1
+}
+
+
+def test_handlers_unpack_what_the_music_layer_returns():
+    """
+    Returning the right number of values is only half of
+    it: the handler also has to take apart what it is
+    given. Adding a value to a music function and missing
+    one of the places that unpacks it leaves an error
+    waiting for whoever presses that button.
+    """
+
+    from music import import_midi_file
+
+    tree = parsed_interface()
+
+    for node in ast.walk(tree):
+
+        if not isinstance(node, ast.Assign):
+            continue
+
+        call = node.value
+
+        if not isinstance(call, ast.Call):
+            continue
+
+        name = getattr(call.func, "id", None)
+
+        if name not in RETURN_COUNTS:
+            continue
+
+        for target in node.targets:
+
+            if isinstance(target, ast.Tuple):
+
+                assert len(target.elts) == RETURN_COUNTS[name], (
+                    f"{name} returns {RETURN_COUNTS[name]} "
+                    f"values but is unpacked into "
+                    f"{len(target.elts)}"
+                )
+
+
+def test_the_return_counts_are_right():
+    """
+    The counts above are only useful while they match what
+    the music layer actually does.
+    """
+
+    import inspect
+
+    import music
+
+    source = inspect.getsource(music.import_midi_file)
+
+    # The final return of import_midi_file.
+    tree = ast.parse(source)
+
+    returns = [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Return)
+        and isinstance(node.value, ast.Tuple)
+    ]
+
+    assert returns
+
+    for node in returns:
+        assert len(node.value.elts) == RETURN_COUNTS["import_midi_file"]
+
+
 def test_the_music_outputs_list_is_the_length_expected():
     """
     The counts above are only right while the list of

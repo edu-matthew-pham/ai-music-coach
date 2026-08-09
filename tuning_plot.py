@@ -51,7 +51,8 @@ def make_performance_plot(
     chords=None,
     bars=None,
     bass=None,
-    key=None
+    key=None,
+    chord_asides=None
 ):
     """
     Draw what was sung over what was written.
@@ -76,6 +77,9 @@ def make_performance_plot(
     """
 
     seconds_per_beat = 60 / bpm
+
+    def name_at(beat):
+        return round(float(beat), 3)
 
     figure, axes = plt.subplots(figsize=(8, 4))
     # Resized once the range of the voices is known.
@@ -223,8 +227,12 @@ def make_performance_plot(
 
     axes.set_xlim(0, start_time)
 
-    # Room above the music for the chord symbols.
-    headroom = 4 if chords else 2
+    # Room above the music for the chord symbols, and more
+    # again when they carry a bracket underneath.
+    headroom = 2
+
+    if chords:
+        headroom = 5 if chord_asides else 4
 
     axes.set_ylim(lowest - 2, highest + headroom)
 
@@ -253,8 +261,15 @@ def make_performance_plot(
 
     # Chord symbols above the music, at the moment each
     # chord arrives, as a lead sheet prints them.
+    #
+    # A bracket underneath carries what the chart cannot
+    # say: the note the chord is played over, and a name
+    # that fits the same notes equally well. Information
+    # rather than instruction, the way a key is offered as
+    # F major / D minor without either being the answer.
     if chords:
         for chord_start, chord_length, name in chords:
+
             axes.text(
                 chord_start * seconds_per_beat + 0.05,
                 highest + headroom - 1,
@@ -264,6 +279,18 @@ def make_performance_plot(
                 color="#37474f",
                 va="center"
             )
+
+            aside = (chord_asides or {}).get(name_at(chord_start))
+
+            if aside:
+                axes.text(
+                    chord_start * seconds_per_beat + 0.05,
+                    highest + headroom - 1.9,
+                    aside,
+                    fontsize=7,
+                    color="#78909c",
+                    va="center"
+                )
 
     # Label the pitch axis with note names rather than
     # MIDI numbers, since players think in notes.

@@ -172,16 +172,27 @@ def read_notes(midi_file, track_number=None):
                 continue
 
             elif message.type == "note_on" and message.velocity > 0:
-                sounding[message.note] = time_ticks
+
+                # Several notes of the same pitch can sound
+                # at once: a piano part repeating a note
+                # under a held pedal, or two voices meeting
+                # on the same pitch. Keeping only the latest
+                # start would lose every one but the last,
+                # so they are stacked and matched in turn.
+                sounding.setdefault(message.note, []).append(
+                    time_ticks
+                )
 
             elif message.type in ("note_off", "note_on"):
 
                 # A note_on with zero velocity is the other
                 # accepted way of ending a note.
-                started = sounding.pop(message.note, None)
+                starts = sounding.get(message.note)
 
-                if started is None:
+                if not starts:
                     continue
+
+                started = starts.pop(0)
 
                 start_beats = started / ticks_per_beat
                 length_beats = (
@@ -709,14 +720,21 @@ def import_midi(path, maximum_notes=None, track_number=None,
     # from the one being sung.
     all_notes, all_bpm = read_notes(midi_file)
 
-    chart_text = read_chart_text(
+    chart_text, chart_notes = read_chart_text(
         midi_file,
         all_notes,
         span,
         read_time_signature(midi_file)
     )
 
-    return pitch_text, duration_text, lyric_text, bpm, chart_text
+    return (
+        pitch_text,
+        duration_text,
+        lyric_text,
+        bpm,
+        chart_text,
+        chart_notes
+    )
 
 
 def read_chart_text(midi_file, notes, span, beats_per_bar=4):
@@ -734,7 +752,7 @@ def read_chart_text(midi_file, notes, span, beats_per_bar=4):
     """
 
     if span is None:
-        return ""
+        return "", []
 
     from chord_detector import chart_from_notes
 
@@ -756,13 +774,13 @@ def read_chart_text(midi_file, notes, span, beats_per_bar=4):
         )
 
     if not within:
-        return ""
+        return "", []
 
     return chart_from_notes(
         within,
         span_end - span_start,
         beats_per_bar
-    )
+    ), within
 
 
 def describe_phrases(path, track_number=None):

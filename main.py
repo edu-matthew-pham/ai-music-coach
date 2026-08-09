@@ -73,6 +73,8 @@ with gr.Blocks(
         "## Target Music"
     )
 
+    chart_notes_state = gr.State(None)
+
     with gr.Accordion("How to use this", open=False):
         gr.Markdown(HELP_TEXT)
 
@@ -485,7 +487,7 @@ with gr.Blocks(
         # first phrase.
         chosen = phrases[0] if len(phrases) == 2 else phrases[1]
 
-        pitches, durations, lyrics, bpm, feedback = (
+        pitches, durations, lyrics, bpm, feedback, chart = (
             import_midi_file(file_path, track_label, chosen)
         )
 
@@ -590,7 +592,8 @@ with gr.Blocks(
             harmony_choice_input,
             chart_input,
             harmony_style_input,
-            bass_input
+            bass_input,
+            chart_notes_state
         ],
         outputs=target_plot
     )

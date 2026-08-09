@@ -8,6 +8,8 @@ syncopated melody crosses the bar lines. The two only have
 to last the same time.
 """
 
+import os
+
 import pytest
 
 from chords import (
@@ -933,8 +935,6 @@ def test_a_phrase_is_padded_to_whole_bars():
     somewhere to sit.
     """
 
-    import os
-
     from midi_import import import_midi
     from music import read_music
 
@@ -948,7 +948,7 @@ def test_a_phrase_is_padded_to_whole_bars():
 
     for phrase in range(6):
 
-        pitches, durations, lyrics, bpm, chart = import_midi(
+        pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(
             path, track_number=1, phrase_number=phrase
         )
 
@@ -964,8 +964,6 @@ def test_an_imported_chart_fits_its_music():
     cannot be played.
     """
 
-    import os
-
     from midi_import import import_midi
     from music import read_music, read_chords
 
@@ -979,7 +977,7 @@ def test_an_imported_chart_fits_its_music():
 
     for phrase in range(8):
 
-        pitches, durations, lyrics, bpm, chart = import_midi(
+        pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(
             path, track_number=1, phrase_number=phrase
         )
 
@@ -997,8 +995,6 @@ def test_chords_come_from_every_voice_not_the_one_sung():
     of a hymn spell one out on every beat.
     """
 
-    import os
-
     from midi_import import import_midi
 
     path = os.path.join(
@@ -1009,7 +1005,7 @@ def test_chords_come_from_every_voice_not_the_one_sung():
     if not os.path.exists(path):
         pytest.skip("the satb fixture is not present")
 
-    pitches, durations, lyrics, bpm, chart = import_midi(
+    pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(
         path, track_number=1, phrase_number=0
     )
 
@@ -1021,3 +1017,190 @@ def test_chords_come_from_every_voice_not_the_one_sung():
     names = {name for start, length, name in chords}
 
     assert "D" in names
+
+
+def test_alternative_names_are_offered_not_chosen():
+    """
+    Some pitch sets genuinely are two chords. Naming only
+    the winner hides that the question was open, so the
+    others are reported alongside - information, not a
+    change to what the chart says.
+    """
+
+    import mido
+
+    from midi_import import read_notes
+    from chord_detector import (
+        detect_chords,
+        fill_gaps,
+        other_names_for,
+        weigh_pitches
+    )
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "o-holy-night-satb.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the satb fixture is not present")
+
+    notes, bpm = read_notes(mido.MidiFile(path))
+
+    chords = fill_gaps(detect_chords(notes, 24, 4), 24)
+
+    # The chart still names one chord per change.
+    for start, length, name in chords:
+        assert " " not in name
+        assert "(" not in name
+
+    # And somewhere among them, a second name fits.
+    found = False
+
+    for start, length, name in chords:
+
+        weights, lowest = weigh_pitches(notes, start, start + length)
+
+        if other_names_for(weights, lowest, name):
+            found = True
+
+    assert found
+
+
+def test_an_inversion_is_reported_since_the_chart_cannot_write_it():
+    """
+    A chord with a note other than its root at the bottom
+    is written D/F sharp. The chart notation has no way to
+    say that, so it is mentioned rather than lost.
+    """
+
+    from chord_detector import bass_note_for
+
+    # D, F sharp and A sounding, with F sharp lowest.
+    weights = [0.0] * 12
+    weights[2] = 1.0
+    weights[6] = 1.0
+    weights[9] = 1.0
+
+    assert bass_note_for(weights, 6, "D") == "F#"
+
+    # Root position says nothing.
+    assert bass_note_for(weights, 2, "D") is None
+
+
+def test_the_asides_are_keyed_to_where_the_chords_start():
+    from chord_detector import asides_for
+
+    notes = [
+        (0.0, 4.0, 42),
+        (0.0, 4.0, 62),
+        (0.0, 4.0, 69)
+    ]
+
+    chords = [(0.0, 4.0, "D")]
+
+    asides = asides_for(notes, chords)
+
+    assert 0.0 in asides
+    assert "/F#" in asides[0.0]
+
+
+def test_a_note_list_can_be_read_by_a_midi_chord_reader():
+    """
+    A file is only a way of carrying notes about, and we
+    already have the notes, so a reader that expects a
+    file can be handed one built in memory.
+    """
+
+    pytest.importorskip("chorder")
+    pytest.importorskip("miditoolkit")
+
+    from chorder import Dechorder
+
+    from chord_detector import as_midi_object
+
+    # D major for a bar, then G major.
+    notes = [
+        (0, 4, 50), (0, 4, 54), (0, 4, 57),
+        (4, 4, 55), (4, 4, 59), (4, 4, 62)
+    ]
+
+    read = [
+        str(chord)
+        for chord in Dechorder.dechord(as_midi_object(notes))
+    ]
+
+    assert read[0].startswith("D")
+    assert read[-1].startswith("G")
+
+
+def test_second_opinions_are_optional():
+    """
+    The app runs without either reader installed, and the
+    extra lines simply do not appear.
+    """
+
+    import builtins
+
+    from chord_detector import second_opinion, midi_reader_opinion
+
+    real_import = builtins.__import__
+
+    def refuse(name, *args, **kwargs):
+        if name in ("pychord", "pychord.analyzer", "chorder"):
+            raise ImportError(name)
+        return real_import(name, *args, **kwargs)
+
+    notes = [(0, 4, 50), (0, 4, 54), (0, 4, 57)]
+    chords = [(0.0, 4.0, "D")]
+
+    builtins.__import__ = refuse
+
+    try:
+        assert second_opinion(notes, chords) == ""
+        assert midi_reader_opinion(notes, chords) == ""
+
+    finally:
+        builtins.__import__ = real_import
+
+
+def test_the_two_opinions_answer_different_questions():
+    """
+    One names a set of notes; the other decides where a
+    chord ends. They are worth having both because they
+    disagree in different ways.
+    """
+
+    pytest.importorskip("pychord")
+    pytest.importorskip("chorder")
+
+    import mido
+
+    from midi_import import read_notes
+    from chord_detector import (
+        detect_chords,
+        fill_gaps,
+        second_opinion,
+        midi_reader_opinion
+    )
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "o-holy-night-satb.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the satb fixture is not present")
+
+    notes, bpm = read_notes(mido.MidiFile(path))
+
+    chords = fill_gaps(detect_chords(notes, 48, 4), 48)
+
+    namer = second_opinion(notes, chords)
+    reader = midi_reader_opinion(notes, chords)
+
+    # Both have something to say, and it is not the same
+    # something.
+    assert namer
+    assert reader
+    assert namer != reader
