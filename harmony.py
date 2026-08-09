@@ -304,8 +304,8 @@ def make_chord_harmony(
     """
     A harmony line that knows the chords.
 
-    Three ways of choosing each note, none more correct
-    than the others - they are different sounds:
+    Two ways of choosing each note, neither more correct
+    than the other - they are different sounds:
 
     Thirds, chord-corrected: parallel thirds as usual,
     except where the third lands outside the chord, when
@@ -322,14 +322,15 @@ def make_chord_harmony(
     than shadowing the tune, which is the sound of an
     arranged inner voice.
 
-    Independent voice: chord tones, but preferring to stay
-    put. A common tone held while the melody moves is what
-    makes the harmony sound like a second singer with
-    their own line. Where the previous note has to move,
-    it moves as little as possible. First principles: this
-    is elementary voice leading - retain common tones,
-    otherwise step - which is how chorale inner voices
-    have been written for centuries.
+    A third way, holding a note while it still fits the
+    chord, was tried and taken out again: on a short
+    phrase over changing chords it is forced to move
+    almost at once, and what it produces is barely
+    distinguishable from chord tones. Holding common tones
+    is only the first rule of voice leading, and a line
+    with no shape of its own is not really an independent
+    voice. Worth returning to with the rest of the rules,
+    and with music long enough for it to matter.
 
     Notes with no chord under them fall back to the
     parallel third, and a melody note that is itself
@@ -370,22 +371,6 @@ def make_chord_harmony(
             chosen = nearest_chord_tone_below(
                 melody_midi, tones
             )
-
-        elif style == "Independent voice":
-
-            if (
-                previous is not None
-                and is_chord_tone(previous, tones)
-                and previous < melody_midi
-            ):
-                # The old note still fits the new chord:
-                # hold it while the melody moves.
-                chosen = previous
-
-            else:
-                chosen = nearest_chord_tone_below(
-                    melody_midi, tones
-                )
 
         else:
 

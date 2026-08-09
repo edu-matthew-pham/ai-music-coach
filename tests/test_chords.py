@@ -467,3 +467,128 @@ def test_quiet_music_is_left_alone():
     quiet = [0.1, -0.2, 0.3]
 
     assert keep_in_range(quiet) == quiet
+
+
+def test_the_sour_third_is_corrected():
+    """
+    Parallel thirds put A under C over a C chord: the one
+    sour moment in Twinkle. Chord correction takes the
+    fifth of the chord instead, and touches nothing else,
+    because every other third already is a chord tone -
+    triads being stacked thirds.
+    """
+
+    from harmony import make_harmony, make_chord_harmony
+
+    pitches = ["C4", "C4", "G4", "G4", "A4", "A4", "G4"]
+    durations = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0]
+
+    chords, bars = read_chart("| C . . . | F . C . |")
+
+    voiced = [
+        (start, length, chord_semitones(name))
+        for start, length, name in chords
+    ]
+
+    parallel = make_harmony(pitches, key="C")
+
+    corrected = make_chord_harmony(
+        pitches, durations, voiced, "C", -2,
+        "Thirds, chord-corrected"
+    )
+
+    assert parallel[0] == "A3"
+    assert corrected[0] == "G3"
+
+    # Everything after the repair is the parallel line.
+    assert corrected[2:] == parallel[2:]
+
+
+def test_chord_tones_follow_the_harmony_not_the_tune():
+    """
+    Where corrected thirds shadow the melody, chord tones
+    take the nearest note of the chord below it, which is
+    an arranged inner voice rather than a duet partner.
+    """
+
+    from harmony import make_chord_harmony
+
+    # A melody leaping about over one chord.
+    pitches = ["C4", "E4", "C5", "G4"]
+    durations = [1.0, 1.0, 1.0, 1.0]
+
+    chords, bars = read_chart("| C . . . |")
+
+    voiced = [
+        (start, length, chord_semitones(name))
+        for start, length, name in chords
+    ]
+
+    line = make_chord_harmony(
+        pitches, durations, voiced, "C", -2,
+        "Chord tones"
+    )
+
+    # Every note belongs to the chord, and sits below the
+    # melody it supports.
+    from notes import note_to_midi
+
+    for position in range(len(line)):
+
+        assert note_to_midi(line[position]) % 12 in voiced[0][2]
+        assert note_to_midi(line[position]) < note_to_midi(
+            pitches[position]
+        )
+
+
+def test_a_dissonant_melody_note_is_left_alone():
+    """
+    A melody note outside its own chord is the composer's
+    dissonance, not ours to repair: it keeps its parallel
+    third rather than being harmonised as something else.
+    """
+
+    from harmony import make_harmony, make_chord_harmony
+
+    # D over a C chord: a deliberate passing dissonance.
+    pitches = ["C4", "D4", "E4"]
+    durations = [1.0, 1.0, 2.0]
+
+    chords, bars = read_chart("| C . . . |")
+
+    voiced = [
+        (start, length, chord_semitones(name))
+        for start, length, name in chords
+    ]
+
+    parallel = make_harmony(pitches, key="C")
+
+    corrected = make_chord_harmony(
+        pitches, durations, voiced, "C", -2,
+        "Thirds, chord-corrected"
+    )
+
+    assert corrected[1] == parallel[1]
+
+
+def test_without_a_chart_every_style_is_parallel_thirds():
+    """
+    The style choice is always safe to make: with no
+    chords to read, every style comes out the same.
+    """
+
+    from music import harmony_line
+
+    pitches = ["C4", "E4", "G4"]
+    durations = [1.0, 1.0, 1.0]
+
+    plain = harmony_line(pitches, durations, "C")
+
+    for style in [
+        "Thirds, chord-corrected",
+        "Chord tones"
+    ]:
+        assert harmony_line(
+            pitches, durations, "C",
+            style=style, chart_text=""
+        ) == plain

@@ -351,7 +351,7 @@ def play_music(
     harmony_choice="Third below",
     chart_text="",
     chords_on=False,
-    harmony_style="Parallel thirds"
+    harmony_style="Thirds, chord-corrected"
 ):
     """
     Build the playback from independent layers.
@@ -692,17 +692,26 @@ def check_transpose(transpose):
 PART_CHOICES = ["Melody", "Harmony"]
 
 
-# How the harmony line chooses its notes. Parallel thirds
-# needs no chart; the rest read the chords and fall back
-# to parallel thirds wherever no chord is sounding. None
-# is more correct than the others: they are different
-# sounds, and the right one is the one that suits the
-# song and the singer.
+# How the harmony line chooses its notes.
+#
+# Corrected thirds lead, because with no chart they are
+# parallel thirds anyway, and with one they are what a
+# harmony singer actually does: shadow the tune, and bend
+# where the third would clash with the chord.
+#
+# Parallel thirds stay because they trust only the key. A
+# mistyped chart makes correction repair notes that were
+# never wrong, and this is the strategy that cannot be
+# misled that way.
+#
+# Chord tones are a different sound rather than a better
+# one: the line follows the harmony instead of shadowing
+# the tune, which is an arranged inner voice rather than a
+# duet partner.
 HARMONY_STYLES = [
-    "Parallel thirds",
     "Thirds, chord-corrected",
-    "Chord tones",
-    "Independent voice"
+    "Parallel thirds",
+    "Chord tones"
 ]
 
 
@@ -742,7 +751,7 @@ def analyse_performance(
     key="C",
     harmony_choice="Third below",
     chart_text="",
-    harmony_style="Parallel thirds"
+    harmony_style="Thirds, chord-corrected"
 ):
     """
     Compare a recording against the target music.
@@ -865,7 +874,7 @@ def harmony_line(
     durations,
     key,
     steps=-2,
-    style="Parallel thirds",
+    style="Thirds, chord-corrected",
     chart_text=""
 ):
     """
@@ -897,7 +906,7 @@ def harmony_line(
 
 
 def part_notes(pitches, part, key, harmony_steps=-2,
-               durations=None, style="Parallel thirds",
+               durations=None, style="Thirds, chord-corrected",
                chart_text=""):
     """
     The notes belonging to a part of the music.
@@ -929,7 +938,7 @@ def make_practice_guide(
     key="C",
     harmony_choice="Third below",
     chart_text="",
-    harmony_style="Parallel thirds"
+    harmony_style="Thirds, chord-corrected"
 ):
     """
     The audio that plays while a performance is recorded.
@@ -1018,7 +1027,7 @@ def show_target_music(
     harmony_on=False,
     harmony_choice="Third below",
     chart_text="",
-    harmony_style="Parallel thirds"
+    harmony_style="Thirds, chord-corrected"
 ):
     """
     Draw the target music as a score-like picture.

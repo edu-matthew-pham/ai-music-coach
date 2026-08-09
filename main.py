@@ -202,12 +202,12 @@ with gr.Blocks(
 
         harmony_style_input = gr.Dropdown(
             HARMONY_STYLES,
-            value="Parallel thirds",
+            value="Thirds, chord-corrected",
             label="Harmony style",
-            info="How the harmony chooses its notes. The "
-                 "chord-aware styles read the chart, and "
-                 "none is more correct than another: pick "
-                 "by ear."
+            info="Corrected thirds shadow the tune and "
+                 "bend where the third would clash. Chord "
+                 "tones follow the chords instead. With "
+                 "no chart, all of them are plain thirds."
         )
 
         chords_input = gr.Checkbox(
@@ -530,7 +530,8 @@ with gr.Blocks(
             durations,
             lyrics,
             bpm,
-            gr.update(value=feedback, visible=True)
+            gr.update(value=feedback, visible=True),
+            ""
         )
 
     midi_upload.upload(
