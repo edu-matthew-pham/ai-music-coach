@@ -98,16 +98,37 @@ def note_to_midi(note):
     return (octave + 1) * 12 + semitone
 
 
-def midi_to_note(midi_number):
+# The keys whose signatures are written in flats. Music in
+# these keys calls the black notes by their flat names: in
+# F major the fourth is Bb, and writing A# there is the
+# same sound spelled in the wrong dialect.
+FLAT_KEYS = {"F", "Bb", "Eb", "Ab", "Db"}
+
+FLAT_NAMES = [
+    "C", "Db", "D", "Eb", "E", "F",
+    "Gb", "G", "Ab", "A", "Bb", "B"
+]
+
+
+def midi_to_note(midi_number, key=None):
     """
     Convert a MIDI number into a note name such as C4.
 
     Decimal MIDI numbers are rounded to the nearest note.
+
+    Given a key written in flats, the black notes go by
+    their flat names: in F major the fourth is Bb, and A#
+    there is the same sound spelled in the wrong dialect.
     """
 
     midi_number = int(round(midi_number))
 
-    pitch = SHARP_NAMES[midi_number % 12]
+    if key in FLAT_KEYS:
+        pitch = FLAT_NAMES[midi_number % 12]
+
+    else:
+        pitch = SHARP_NAMES[midi_number % 12]
+
     octave = (midi_number // 12) - 1
 
     return pitch + str(octave)

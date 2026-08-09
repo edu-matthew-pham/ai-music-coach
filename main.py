@@ -589,7 +589,8 @@ with gr.Blocks(
             harmony_input,
             harmony_choice_input,
             chart_input,
-            harmony_style_input
+            harmony_style_input,
+            bass_input
         ],
         outputs=target_plot
     )

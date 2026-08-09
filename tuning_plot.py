@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from notes import note_to_midi, midi_to_note, is_rest
+from harmony import MAJOR_SCALES
 
 
 # Anything inside this is close enough that a listener would
@@ -30,6 +31,12 @@ COMFORTABLE_CENTS = 15
 
 # Past this the note is nearer a neighbouring semitone.
 SEMITONE_EDGE = 50
+
+
+# Each voice has its own colour, dark enough to read the
+# note name inside its box.
+HARMONY_COLOUR = "#6a1b9a"
+BASS_COLOUR = "#00695c"
 
 
 def make_performance_plot(
@@ -42,7 +49,9 @@ def make_performance_plot(
     title="What you sang, over what was written",
     harmony=None,
     chords=None,
-    bars=None
+    bars=None,
+    bass=None,
+    key=None
 ):
     """
     Draw what was sung over what was written.
@@ -53,9 +62,12 @@ def make_performance_plot(
     entry, a slide between notes, or a wobble is simply
     visible rather than inferred.
 
-    When a harmony line is given, it appears as a second
-    voice in its own colour, sharing the same time axis so
-    the two parts read together the way a duet is printed.
+    A harmony or bass line given alongside appears as a
+    further voice in its own colour, sharing the same time
+    axis so the parts read together the way a score prints
+    them. A bass holds one note through several of the
+    melody's, which is exactly how it looks: long boxes
+    below short ones.
 
     Chords and bar lines are drawn where a lead sheet puts
     them: symbols above the music, bar lines behind it. The
@@ -66,6 +78,7 @@ def make_performance_plot(
     seconds_per_beat = 60 / bpm
 
     figure, axes = plt.subplots(figsize=(8, 4))
+    # Resized once the range of the voices is known.
 
     # The written notes, shifted into the octave actually
     # being sung in, so the line lands on the boxes.
@@ -100,7 +113,7 @@ def make_performance_plot(
         axes.text(
             start_time + length / 2,
             midi,
-            midi_to_note(midi),
+            midi_to_note(midi, key),
             ha="center",
             va="center",
             fontsize=8,
@@ -140,41 +153,49 @@ def make_performance_plot(
         if highest is None or midi > highest:
             highest = midi
 
-    # The harmony, as a second voice under the melody.
-    if harmony is not None:
+    # The other voices, each in its own colour, sharing
+    # the melody's time axis so the parts read together
+    # the way a score prints them.
+    for notes, colour in (
+        (harmony, HARMONY_COLOUR),
+        (bass, BASS_COLOUR)
+    ):
 
-        harmony_start = 0.0
+        if notes is None:
+            continue
 
-        for position in range(len(harmony)):
+        voice_start = 0.0
+
+        for position in range(len(notes)):
 
             length = durations[position] * seconds_per_beat
 
-            if is_rest(harmony[position]):
-                harmony_start += length
+            if is_rest(notes[position]):
+                voice_start += length
                 continue
 
-            midi = note_to_midi(harmony[position]) + transpose
+            midi = note_to_midi(notes[position]) + transpose
 
             axes.broken_barh(
-                [(harmony_start, length)],
+                [(voice_start, length)],
                 (midi - 0.5, 1.0),
-                facecolors="#6a1b9a",
+                facecolors=colour,
                 alpha=0.12,
-                edgecolor="#6a1b9a",
+                edgecolor=colour,
                 linewidth=1
             )
 
             axes.text(
-                harmony_start + length / 2,
+                voice_start + length / 2,
                 midi,
-                midi_to_note(midi),
+                midi_to_note(midi, key),
                 ha="center",
                 va="center",
                 fontsize=8,
-                color="#6a1b9a"
+                color=colour
             )
 
-            harmony_start += length
+            voice_start += length
 
             if midi < lowest:
                 lowest = midi
@@ -246,14 +267,41 @@ def make_performance_plot(
 
     # Label the pitch axis with note names rather than
     # MIDI numbers, since players think in notes.
-    tick_values = range(
-        int(lowest) - 1,
-        int(highest) + 2
-    )
+    #
+    # With a key, the labels are the notes of its scale:
+    # seven to the octave, every one meaningful, and the
+    # axis itself becomes a picture of where the key sits.
+    # Without one, every semitone is named.
+    #
+    # A wide range gets a taller figure rather than fewer
+    # labels, so three voices spread out instead of being
+    # squeezed into the same four inches as one.
+    span = int(highest) - int(lowest)
 
-    axes.set_yticks(list(tick_values))
+    height = 4 + max(0, (span - 14) * 0.15)
+
+    figure.set_size_inches(8, min(height, 9))
+
+    all_values = range(int(lowest) - 1, int(highest) + 2)
+
+    if key in MAJOR_SCALES:
+
+        scale = {
+            note_to_midi(name + "4") % 12
+            for name in MAJOR_SCALES[key]
+        }
+
+        tick_values = [
+            value for value in all_values
+            if value % 12 in scale
+        ]
+
+    else:
+        tick_values = list(all_values)
+
+    axes.set_yticks(tick_values)
     axes.set_yticklabels(
-        [midi_to_note(value) for value in tick_values],
+        [midi_to_note(value, key) for value in tick_values],
         fontsize=8
     )
 

@@ -731,3 +731,129 @@ def test_the_bass_layer_needs_a_chart_too():
             melody_on=False, harmony_on=False, bpm=120,
             chart_text="", bass_on=True
         )
+
+
+def test_the_bass_appears_on_the_picture():
+    """
+    A part you can hear should be a part you can see.
+    """
+
+    from tuning_plot import make_performance_plot
+
+    figure = make_performance_plot(
+        ["C4", "C4", "G4", "G4"],
+        [1.0] * 4,
+        120,
+        None,
+        harmony=["A3", "A3", "E4", "E4"],
+        bass=["C3", "C3", "C3", "C3"]
+    )
+
+    labels = [text.get_text() for text in figure.axes[0].texts]
+
+    assert "C3" in labels
+    assert "A3" in labels
+    assert "C4" in labels
+
+
+def test_each_voice_has_its_own_colour():
+    from tuning_plot import (
+        make_performance_plot,
+        HARMONY_COLOUR,
+        BASS_COLOUR
+    )
+
+    figure = make_performance_plot(
+        ["C4", "C4"],
+        [1.0, 1.0],
+        120,
+        None,
+        harmony=["A3", "A3"],
+        bass=["C3", "C3"]
+    )
+
+    colours = {
+        text.get_color()
+        for text in figure.axes[0].texts
+    }
+
+    assert HARMONY_COLOUR in colours
+    assert BASS_COLOUR in colours
+    assert HARMONY_COLOUR != BASS_COLOUR
+
+
+def test_the_axis_names_the_notes_of_the_key():
+    """
+    With a key, the pitch labels are its scale: seven to
+    the octave, every one meaningful, and the axis itself
+    becomes a picture of where the key sits.
+    """
+
+    from tuning_plot import make_performance_plot
+
+    figure = make_performance_plot(
+        ["C5", "C5"],
+        [1.0, 1.0],
+        120,
+        None,
+        bass=["C3", "C3"],
+        key="C"
+    )
+
+    labels = [
+        text.get_text()
+        for text in figure.axes[0].get_yticklabels()
+    ]
+
+    # White notes only: no sharps anywhere on a C axis.
+    assert "C4" in labels
+    assert all("#" not in label for label in labels)
+
+
+def test_a_wide_range_grows_the_figure():
+    """
+    Three voices spread out rather than being squeezed
+    into the same four inches as one.
+    """
+
+    from tuning_plot import make_performance_plot
+
+    narrow = make_performance_plot(
+        ["C4", "E4"], [1.0, 1.0], 120, None
+    )
+
+    wide = make_performance_plot(
+        ["C5", "C5"], [1.0, 1.0], 120, None,
+        bass=["E2", "E2"]
+    )
+
+    assert wide.get_size_inches()[1] > narrow.get_size_inches()[1]
+
+
+def test_flat_keys_spell_their_notes_in_flats():
+    """
+    In F major the fourth is Bb. An axis saying A# there
+    is the same sound spelled in the wrong dialect.
+    """
+
+    from tuning_plot import make_performance_plot
+
+    figure = make_performance_plot(
+        ["Bb3", "C4"], [1.0, 1.0], 120, None, key="F"
+    )
+
+    labels = [
+        text.get_text()
+        for text in figure.axes[0].get_yticklabels()
+    ]
+
+    assert "Bb3" in labels
+    assert "A#3" not in labels
+
+
+def test_sharp_keys_keep_their_sharps():
+    from notes import midi_to_note
+
+    assert midi_to_note(58, "F") == "Bb3"
+    assert midi_to_note(58, "D") == "A#3"
+    assert midi_to_note(58) == "A#3"

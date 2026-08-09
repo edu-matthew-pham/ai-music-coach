@@ -864,7 +864,8 @@ def analyse_performance(
         transpose,
         lyrics,
         chords=chords,
-        bars=bars
+        bars=bars,
+        key=key
     )
 
     return (
@@ -1074,7 +1075,8 @@ def show_target_music(
     harmony_on=False,
     harmony_choice="Third below",
     chart_text="",
-    harmony_style="Thirds, chord-corrected"
+    harmony_style="Thirds, chord-corrected",
+    bass_on=False
 ):
     """
     Draw the target music as a score-like picture.
@@ -1109,6 +1111,11 @@ def show_target_music(
             chart_text=chart_text
         )
 
+    bass = None
+
+    if bass_on:
+        bass = bass_line(pitches, durations, chart_text)
+
     chords, bars = read_chords(chart_text, durations)
 
     return make_performance_plot(
@@ -1120,7 +1127,9 @@ def show_target_music(
         title="The target music",
         harmony=harmony,
         chords=chords,
-        bars=bars
+        bars=bars,
+        bass=bass,
+        key=key
     )
 
 
