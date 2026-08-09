@@ -210,6 +210,13 @@ with gr.Blocks(
                  "no chart, all of them are plain thirds."
         )
 
+        bass_input = gr.Checkbox(
+            value=False,
+            label="Bass",
+            info="The root of each chord, held. Needs a "
+                 "chord chart."
+        )
+
         chords_input = gr.Checkbox(
             value=False,
             label="Chords",
@@ -266,7 +273,9 @@ with gr.Blocks(
         value="Melody",
         label="Part you are performing",
         info="Sets what the guide plays and what your "
-             "recording is judged against."
+             "recording is judged against. The bass part "
+             "sings the root of each chord, so it needs a "
+             "chord chart."
     )
 
     guide_choice = gr.Radio(
@@ -565,7 +574,8 @@ with gr.Blocks(
             harmony_choice_input,
             chart_input,
             chords_input,
-            harmony_style_input
+            harmony_style_input,
+            bass_input
         ],
         outputs=generated_audio
     ).then(

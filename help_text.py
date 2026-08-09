@@ -106,8 +106,9 @@ at the nearest note in the scale.
 
 ## Singing
 
-**Part** is the line you are performing, melody or
-harmony. It decides both what the guide plays and what
+**Part** is the line you are performing: melody, harmony
+or bass. The bass sings the root of each chord and holds
+it while the tune moves, so it needs a chord chart. It decides both what the guide plays and what
 your recording is judged against, so a harmony singer is
 not marked wrong for singing the harmony.
 

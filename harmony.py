@@ -399,3 +399,68 @@ def make_chord_harmony(
         beat += length
 
     return harmony
+
+
+# Where a bass line sings. Low enough to be heard as the
+# bottom of the harmony rather than as a second tune, and
+# inside what a bass voice can actually reach.
+BASS_LOWEST_MIDI = 40
+BASS_HIGHEST_MIDI = 55
+
+
+def make_bass(pitches, durations, chords):
+    """
+    A bass line: the root of each chord, held.
+
+    A bass part does not follow the melody at all. Where a
+    harmony voice sings a note for every note of the tune,
+    a bass sings one note per chord and holds it while the
+    melody moves above. That is what a bass line is for:
+    it says where the harmony is, which is what lets
+    everyone else hear whether they are in the right place.
+
+    Returned as one entry per melody note, since that is
+    what the rest of the app reads, but consecutive notes
+    over one chord are the same note repeated rather than
+    a line of their own.
+    """
+
+    line = []
+
+    beat = 0.0
+
+    for position in range(len(pitches)):
+
+        pitch = pitches[position]
+
+        length = durations[position]
+
+        if is_rest(pitch):
+            line.append(pitch)
+            beat += length
+            continue
+
+        tones = chord_tones_at(chords, beat)
+
+        if tones is None:
+
+            # Nothing to sing the root of, so the bass
+            # rests rather than inventing a harmony.
+            line.append("R")
+
+        else:
+
+            root = tones[0]
+
+            midi_number = BASS_LOWEST_MIDI + (
+                (root - BASS_LOWEST_MIDI) % 12
+            )
+
+            if midi_number > BASS_HIGHEST_MIDI:
+                midi_number -= 12
+
+            line.append(midi_to_note(midi_number))
+
+        beat += length
+
+    return line

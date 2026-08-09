@@ -21,6 +21,7 @@ from key_detector import (
 from harmony import (
     make_harmony,
     make_chord_harmony,
+    make_bass,
     keys_containing,
     notes_outside,
     MAJOR_SCALES,
@@ -351,7 +352,8 @@ def play_music(
     harmony_choice="Third below",
     chart_text="",
     chords_on=False,
-    harmony_style="Thirds, chord-corrected"
+    harmony_style="Thirds, chord-corrected",
+    bass_on=False
 ):
     """
     Build the playback from independent layers.
@@ -410,6 +412,16 @@ def play_music(
         )
 
         layers.append(harmony_track)
+
+    if bass_on:
+
+        sample_rate, bass_track = make_melody(
+            bass_line(pitches, durations, chart_text),
+            durations,
+            bpm
+        )
+
+        layers.append(bass_track)
 
     if chords_on and chords:
 
@@ -689,7 +701,7 @@ def check_transpose(transpose):
 
 
 # Which line of the music a performance is judged against.
-PART_CHOICES = ["Melody", "Harmony"]
+PART_CHOICES = ["Melody", "Harmony", "Bass"]
 
 
 # How the harmony line chooses its notes.
@@ -774,14 +786,15 @@ def analyse_performance(
         duration_text
     )
 
-    if part == "Harmony":
-        pitches = harmony_line(
+    if part in ("Harmony", "Bass"):
+        pitches = part_notes(
             pitches,
-            durations,
+            part,
             key,
-            steps=read_harmony_choice(harmony_choice),
-            style=harmony_style,
-            chart_text=chart_text
+            read_harmony_choice(harmony_choice),
+            durations,
+            harmony_style,
+            chart_text
         )
 
     elif part != "Melody":
@@ -812,9 +825,9 @@ def analyse_performance(
         describe_summary(summarise(comparisons))
     ]
 
-    if part == "Harmony":
+    if part != "Melody":
         lines.append(
-            "Judged against the harmony part."
+            f"Judged against the {part.lower()} part."
         )
 
     if transpose != 0:
@@ -912,10 +925,10 @@ def part_notes(pitches, part, key, harmony_steps=-2,
     The notes belonging to a part of the music.
     """
 
-    if part == "Harmony":
+    if durations is None:
+        durations = [1.0] * len(pitches)
 
-        if durations is None:
-            durations = [1.0] * len(pitches)
+    if part == "Harmony":
 
         return harmony_line(
             pitches,
@@ -926,7 +939,36 @@ def part_notes(pitches, part, key, harmony_steps=-2,
             chart_text=chart_text
         )
 
+    if part == "Bass":
+
+        return bass_line(pitches, durations, chart_text)
+
     return pitches
+
+
+def bass_line(pitches, durations, chart_text):
+    """
+    The bass part, which needs the chords to exist at all.
+
+    A bass sings the root of the harmony, so without a
+    chart there is nothing for it to sing.
+    """
+
+    if not chart_text or not chart_text.strip():
+        raise MusicInputError(
+            "A bass part sings the root of each chord, so "
+            "it needs a chord chart. Write one in the "
+            "Chords box, such as | C . . . | F . C . |"
+        )
+
+    chords, bars = read_chords(chart_text, durations)
+
+    voiced = [
+        (start, length, chord_semitones(name))
+        for start, length, name in chords
+    ]
+
+    return make_bass(pitches, durations, voiced)
 
 
 def make_practice_guide(
@@ -986,6 +1028,11 @@ def make_practice_guide(
 
     elif guide_choice == "The other part":
 
+        # With more than two parts there is no single
+        # other one, so this means the tune: what a
+        # harmony or bass singer needs in their ears. A
+        # melody singer hears the harmony instead, which
+        # is the same exercise the other way round.
         other = "Harmony" if part == "Melody" else "Melody"
 
         sample_rate, sound = make_melody(

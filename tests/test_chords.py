@@ -592,3 +592,142 @@ def test_without_a_chart_every_style_is_parallel_thirds():
             pitches, durations, "C",
             style=style, chart_text=""
         ) == plain
+
+
+def test_the_bass_sings_the_root_of_each_chord():
+    """
+    A bass part does not follow the melody. It sings one
+    note per chord and holds it while the tune moves, which
+    is what tells everyone else where the harmony is.
+    """
+
+    from harmony import make_bass
+    from notes import note_to_midi
+
+    pitches = ["C4", "C4", "G4", "G4", "A4", "A4", "G4"]
+    durations = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0]
+
+    chords, bars = read_chart("| C . . . | F . C . |")
+
+    voiced = [
+        (start, length, chord_semitones(name))
+        for start, length, name in chords
+    ]
+
+    line = make_bass(pitches, durations, voiced)
+
+    # One note per chord, repeated: C, C, C, C, F, F, C.
+    assert line == [
+        "C3", "C3", "C3", "C3", "F2", "F2", "C3"
+    ]
+
+    # And every note is the root, not just any chord tone.
+    for position in range(len(line)):
+
+        beat = sum(durations[:position])
+
+        for start, length, tones in voiced:
+            if start <= beat < start + length:
+                assert note_to_midi(line[position]) % 12 == tones[0]
+
+
+def test_the_bass_sits_below_the_singer():
+    from harmony import make_bass, BASS_HIGHEST_MIDI
+    from notes import note_to_midi
+
+    chords, bars = read_chart("| G . . . |")
+
+    voiced = [
+        (start, length, chord_semitones(name))
+        for start, length, name in chords
+    ]
+
+    line = make_bass(["G4"] * 4, [1.0] * 4, voiced)
+
+    for note in line:
+        assert note_to_midi(note) <= BASS_HIGHEST_MIDI
+
+
+def test_a_bass_part_needs_chords():
+    """
+    Without a chart there is no root to sing, and saying
+    so is more use than a line of silence.
+    """
+
+    from music import part_notes, MusicInputError
+
+    with pytest.raises(MusicInputError, match="needs a chord chart"):
+        part_notes(
+            ["C4", "E4"], "Bass", "C",
+            durations=[1.0, 1.0], chart_text=""
+        )
+
+
+def test_a_bass_performance_is_judged_against_the_bass():
+    import numpy as np
+
+    from playback import make_melody
+    from music import analyse_performance, load_twinkle_phrase
+
+    pitches, durations, lyrics, key, chart = load_twinkle_phrase()
+
+    rate, sound = make_melody(
+        ["C3", "C3", "C3", "C3", "F2", "F2", "C3", "R"],
+        [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.5, 0.5],
+        120, 8000
+    )
+
+    text, performance, tuning = analyse_performance(
+        (rate, np.array(sound)),
+        pitches, durations, 120,
+        part="Bass", key=key, chart_text=chart
+    )
+
+    assert "7 of 7" in text
+    assert "bass part" in text
+
+
+def test_bass_is_offered_as_a_part():
+    from music import PART_CHOICES
+
+    assert "Bass" in PART_CHOICES
+
+
+def test_bass_is_a_playback_layer_too():
+    """
+    A part you can be judged on is a part you should be
+    able to hear, so bass appears among the layers as well
+    as among the parts.
+    """
+
+    import numpy as np
+
+    from music import play_music, load_twinkle_phrase
+
+    pitches, durations, lyrics, key, chart = load_twinkle_phrase()
+
+    common = dict(
+        melody_on=True, harmony_on=False, bpm=120,
+        metronome=False, chart_text=chart
+    )
+
+    rate, without = play_music(
+        pitches, durations, key, bass_on=False, **common
+    )
+
+    rate, with_bass = play_music(
+        pitches, durations, key, bass_on=True, **common
+    )
+
+    assert not np.allclose(without, with_bass)
+
+
+def test_the_bass_layer_needs_a_chart_too():
+    from music import play_music, MusicInputError
+
+    with pytest.raises(MusicInputError, match="needs a chord chart"):
+        play_music(
+            "C4 C4", "1 1", "C",
+            melody_on=False, harmony_on=False, bpm=120,
+            chart_text="", bass_on=True
+        )
