@@ -173,3 +173,43 @@ def test_a_phrase_ending_mid_beat_still_has_its_chords():
 
     assert piece.beats() == 3.5
     assert piece.chart
+
+
+def test_a_phrase_that_no_longer_exists_is_not_left_chosen():
+    """
+    Joining two lines can leave the chosen phrase numbered
+    past the end of the list.
+    """
+
+    from music import list_phrases, WHOLE_PART
+
+    notes = "C4 C4 G4 G4 A4 A4 G4 R"
+    lengths = "1 1 1 1 1 1 3/2 1/2"
+
+    three = list_phrases(
+        notes, lengths, "Twin- kle\ntwin- kle\nlit- tle star"
+    )
+
+    one = list_phrases(
+        notes, lengths, "Twin- kle twin- kle lit- tle star"
+    )
+
+    assert len(three) == 4
+    assert three[3] not in one
+
+    # And the only thing left to choose is the whole part.
+    assert one == [WHOLE_PART]
+
+
+def test_the_lyrics_are_the_only_copy_of_themselves():
+    """
+    Nothing is saved anywhere. The box holds the words, the
+    words hold the phrasing, and editing one changes the
+    other with nothing in between to fall out of step.
+    """
+
+    import music
+
+    assert not hasattr(music, "remember_lyrics")
+    assert not hasattr(music, "with_saved_lyrics")
+    assert not hasattr(music, "phrase_key")

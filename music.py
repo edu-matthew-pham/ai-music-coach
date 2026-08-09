@@ -1494,6 +1494,15 @@ def list_midi_tracks(file_path):
     ]
 
 
+# The dropdown entry meaning no phrase in particular: the
+# part as it stands in the boxes.
+WHOLE_PART = "Whole part"
+
+
+# The same, for choosing which part of a file to import.
+WHOLE_TRACK = "Whole track"
+
+
 def list_phrases(pitch_text, duration_text, lyric_text):
     """
     The phrases the music in the boxes divides into.
@@ -1592,42 +1601,9 @@ def selected_piece(
     return piece.phrase(number)
 
 
-def phrase_key(track_label, phrase_label):
-    """
-    How a phrase is remembered.
-
-    Lyrics typed for a phrase belong to that phrase of that
-    part, and not to the same number in another part: the
-    third phrase of the bass line is a different stretch of
-    music from the third of the tune.
-    """
-
-    return f"{track_label}|{phrase_label}"
 
 
-def remember_lyrics(saved, track_label, phrase_label, lyric_text):
-    """
-    Keep lyrics typed for a phrase, so its name can show
-    them and so they come back when it is chosen again.
-    """
-
-    kept = dict(saved or {})
-
-    if not track_label or not phrase_label:
-        return kept
-
-    key = phrase_key(track_label, phrase_label)
-
-    if lyric_text and lyric_text.strip():
-        kept[key] = lyric_text.strip()
-
-    else:
-        kept.pop(key, None)
-
-    return kept
-
-
-def list_midi_phrases(file_path, track_label=None, saved=None):
+def list_midi_phrases(file_path, track_label=None):
     """
     Describe the phrases in a track, for a dropdown.
 
@@ -1654,50 +1630,8 @@ def list_midi_phrases(file_path, track_label=None, saved=None):
     except MidiImportError as problem:
         raise MusicInputError(str(problem))
 
-    return [WHOLE_TRACK] + [
-        with_saved_lyrics(label, track_label, saved)
-        for _, label in described
-    ]
+    return [WHOLE_TRACK] + [label for _, label in described]
 
-
-def with_saved_lyrics(label, track_label, saved):
-    """
-    Put any lyrics typed for a phrase into its name.
-
-    A phrase the player has written words for is named by
-    those words, because they are what the player will
-    recognise: their own working text rather than the
-    notes, and their own corrections rather than whatever
-    the file happened to carry.
-    """
-
-    if not saved:
-        return label
-
-    words = saved.get(phrase_key(track_label, label))
-
-    if not words:
-        return label
-
-    from midi_import import join_syllables
-
-    opening = join_syllables(words.split())
-
-    if not opening:
-        return label
-
-    head, marker, tail = label.partition("): ")
-
-    if not marker:
-        return label
-
-    return f"{head}): {opening}"
-
-
-# The dropdown entry meaning no phrase in particular.
-WHOLE_TRACK = "Whole track"
-
-WHOLE_PART = "Whole part"
 
 
 def phrase_number_from(label):

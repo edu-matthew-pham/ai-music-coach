@@ -416,72 +416,7 @@ def test_a_phrase_without_words_is_named_by_its_notes():
     assert "F#4" in " ".join(phrases)
 
 
-def test_typed_lyrics_name_the_phrase_they_belong_to():
-    """
-    A phrase the player has written words for is named by
-    those words: their own working text rather than the
-    notes, and their own corrections rather than whatever
-    the file happened to carry.
-    """
 
-    import os
-
-    from music import (
-        list_midi_tracks,
-        list_midi_phrases,
-        remember_lyrics
-    )
-
-    path = os.path.join(
-        os.path.dirname(__file__),
-        "fixtures", "midi", "o-holy-night-satb.mid"
-    )
-
-    if not os.path.exists(path):
-        pytest.skip("the satb fixture is not present")
-
-    parts = list_midi_tracks(path)
-
-    phrases = list_midi_phrases(path, parts[0])
-
-    saved = remember_lyrics(
-        {},
-        parts[0],
-        phrases[1],
-        "O ho- ly night the stars are bright- ly shin- ing"
-    )
-
-    named = list_midi_phrases(path, parts[0], saved)
-
-    # Hyphenated syllables are put back into words.
-    assert "O holy night" in named[1]
-
-    # And only that phrase is renamed.
-    assert named[2] == phrases[2]
-
-
-def test_lyrics_belong_to_a_phrase_of_a_part():
-    """
-    The third phrase of the bass line is a different
-    stretch of music from the third of the tune.
-    """
-
-    from music import remember_lyrics, phrase_key
-
-    saved = remember_lyrics({}, "0:0 Sax", "Phrase 3", "hello")
-
-    assert phrase_key("0:0 Sax", "Phrase 3") in saved
-    assert phrase_key("0:1 Bass", "Phrase 3") not in saved
-
-
-def test_clearing_the_lyric_box_forgets_them():
-    from music import remember_lyrics
-
-    saved = remember_lyrics({}, "0:0", "Phrase 1", "words here")
-
-    assert saved
-
-    assert not remember_lyrics(saved, "0:0", "Phrase 1", "   ")
 
 
 def test_importing_sets_the_key_the_music_is_in():
@@ -548,3 +483,51 @@ def test_a_minor_piece_is_set_to_its_relative_major():
 
     assert "C minor" in imported[4]
     assert imported[7] == "Eb"
+
+
+def test_typed_lyrics_rename_the_phrases_at_once():
+    """
+    Lyrics need no saving: the box holds them.
+
+    They used to be copied into a store keyed by phrase, so
+    that a phrase could be named by what had been typed for
+    it. That was necessary when the boxes held one phrase
+    and the file held the rest. Now the box holds the whole
+    part and the words in it are the only copy there is, so
+    editing them changes the phrase names by definition.
+    """
+
+    from music import list_phrases
+
+    notes = "C4 C4 G4 G4 A4 A4 G4 R"
+    lengths = "1 1 1 1 1 1 3/2 1/2"
+
+    named = list_phrases(
+        notes, lengths, "Twin- kle twin- kle\nlit- tle star"
+    )
+
+    assert "Twinkle twinkle" in named[1]
+
+    # Rewriting the words renames the phrase, with nothing
+    # saved anywhere.
+    renamed = list_phrases(
+        notes, lengths, "My own words here\nlit- tle star"
+    )
+
+    assert "My own words here" in renamed[1]
+
+
+def test_editing_the_lyrics_changes_how_many_phrases_there_are():
+    from music import list_phrases
+
+    notes = "C4 C4 G4 G4 A4 A4 G4 R"
+    lengths = "1 1 1 1 1 1 3/2 1/2"
+
+    one = list_phrases(notes, lengths, "Twin- kle twin- kle lit- tle star")
+
+    three = list_phrases(
+        notes, lengths, "Twin- kle\ntwin- kle\nlit- tle star"
+    )
+
+    assert len(one) == 1
+    assert len(three) == 4

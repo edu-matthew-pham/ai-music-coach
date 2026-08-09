@@ -25,7 +25,6 @@ from music import (
     list_phrases,
     selected_piece,
     phrase_number_from,
-    remember_lyrics,
     play_music,
     show_harmony,
     analyse_single_note,
@@ -79,11 +78,6 @@ with gr.Blocks(
     )
 
     chart_notes_state = gr.State(None)
-
-    # Lyrics the player has typed, kept per phrase so that
-    # the phrase list can name them and so they come back
-    # when a phrase is chosen again.
-    saved_lyrics_state = gr.State({})
 
     with gr.Accordion("How to use this", open=False):
         gr.Markdown(HELP_TEXT)
@@ -420,10 +414,20 @@ with gr.Blocks(
 
         labels = list_phrases(pitch_text, duration_text, lyric_text)
 
+        # A phrase that no longer exists cannot stay
+        # chosen: joining two lines can leave the last
+        # phrase numbered past the end.
         if chosen not in labels:
             chosen = labels[0]
 
-        return gr.update(choices=labels, value=chosen)
+        # And music divided for the first time needs the
+        # dropdown to appear, having had nothing to show
+        # until now.
+        return gr.update(
+            choices=labels,
+            value=chosen,
+            visible=len(labels) > 1
+        )
 
     lyric_input.blur(
         fn=phrases_now,
@@ -528,7 +532,7 @@ with gr.Blocks(
 
         return tuple(gr.update() for _ in range(count))
 
-    def import_track(file_path, track_label, saved_lyrics=None):
+    def import_track(file_path, track_label):
         """
         Import a part, whole.
 
@@ -571,7 +575,7 @@ with gr.Blocks(
             )
         )
 
-    def import_and_show(file_path, saved_lyrics=None):
+    def import_and_show(file_path):
         """
         Import a file, offering its tracks and phrases.
         """
@@ -581,7 +585,7 @@ with gr.Blocks(
 
         tracks = list_midi_tracks(file_path)
 
-        results = import_track(file_path, tracks[0], saved_lyrics)
+        results = import_track(file_path, tracks[0])
 
         return results + (
             gr.update(
@@ -593,13 +597,13 @@ with gr.Blocks(
 
     midi_upload.upload(
         fn=guard(import_and_show),
-        inputs=[midi_upload, saved_lyrics_state],
+        inputs=midi_upload,
         outputs=music_outputs + [phrase_input, track_input]
     )
 
     track_input.change(
         fn=guard(import_track),
-        inputs=[midi_upload, track_input, saved_lyrics_state],
+        inputs=[midi_upload, track_input],
         outputs=music_outputs + [phrase_input]
     )
 
