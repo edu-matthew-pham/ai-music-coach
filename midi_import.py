@@ -129,14 +129,96 @@ def snap_to_beat(beats):
     return best
 
 
-def read_notes(midi_file, track_number=None):
+# The channel every General MIDI file reserves for
+# percussion. The numbers on it name drums rather than
+# pitches, so a bass drum and a cymbal read as two notes
+# a fifth apart. It is described as what it is and left
+# available: a drum part is worth practising, and this app
+# will not always be only for singers.
+DRUM_CHANNEL = 9
+
+
+# What the General MIDI numbers mean. A file rarely names
+# its parts, but it almost always says which instrument
+# plays each one, and "Alto Sax" tells a player more about
+# what they are choosing than "channel 4" ever could.
+GM_INSTRUMENTS = [
+    "Grand Piano", "Bright Piano", "Electric Grand",
+    "Honky-tonk Piano", "Electric Piano", "Electric Piano 2",
+    "Harpsichord", "Clavinet",
+    "Celesta", "Glockenspiel", "Music Box", "Vibraphone",
+    "Marimba", "Xylophone", "Tubular Bells", "Dulcimer",
+    "Drawbar Organ", "Percussive Organ", "Rock Organ",
+    "Church Organ", "Reed Organ", "Accordion", "Harmonica",
+    "Tango Accordion",
+    "Nylon Guitar", "Steel Guitar", "Jazz Guitar",
+    "Clean Guitar", "Muted Guitar", "Overdriven Guitar",
+    "Distortion Guitar", "Guitar Harmonics",
+    "Acoustic Bass", "Finger Bass", "Pick Bass",
+    "Fretless Bass", "Slap Bass", "Slap Bass 2",
+    "Synth Bass", "Synth Bass 2",
+    "Violin", "Viola", "Cello", "Double Bass",
+    "Tremolo Strings", "Pizzicato Strings", "Harp", "Timpani",
+    "String Ensemble", "String Ensemble 2", "Synth Strings",
+    "Synth Strings 2", "Choir Aahs", "Voice Oohs",
+    "Synth Voice", "Orchestra Hit",
+    "Trumpet", "Trombone", "Tuba", "Muted Trumpet",
+    "French Horn", "Brass Section", "Synth Brass",
+    "Synth Brass 2",
+    "Soprano Sax", "Alto Sax", "Tenor Sax", "Baritone Sax",
+    "Oboe", "English Horn", "Bassoon", "Clarinet",
+    "Piccolo", "Flute", "Recorder", "Pan Flute",
+    "Blown Bottle", "Shakuhachi", "Whistle", "Ocarina",
+    "Square Lead", "Sawtooth Lead", "Calliope Lead",
+    "Chiff Lead", "Charang Lead", "Voice Lead",
+    "Fifths Lead", "Bass and Lead",
+    "New Age Pad", "Warm Pad", "Polysynth Pad", "Choir Pad",
+    "Bowed Pad", "Metallic Pad", "Halo Pad", "Sweep Pad",
+    "Rain", "Soundtrack", "Crystal", "Atmosphere",
+    "Brightness", "Goblins", "Echoes", "Sci-fi",
+    "Sitar", "Banjo", "Shamisen", "Koto", "Kalimba",
+    "Bagpipe", "Fiddle", "Shanai",
+    "Tinkle Bell", "Agogo", "Steel Drums", "Woodblock",
+    "Taiko Drum", "Melodic Tom", "Synth Drum", "Reverse Cymbal",
+    "Guitar Fret Noise", "Breath Noise", "Seashore",
+    "Bird Tweet", "Telephone Ring", "Helicopter",
+    "Applause", "Gunshot"
+]
+
+
+def instrument_name(program, channel=None):
+    """
+    What to call a part, from its instrument number.
+    """
+
+    if channel == DRUM_CHANNEL:
+        return "Drums"
+
+    if program is None:
+        return "Unnamed"
+
+    if 0 <= program < len(GM_INSTRUMENTS):
+        return GM_INSTRUMENTS[program]
+
+    return f"Instrument {program}"
+
+
+def read_notes(midi_file, track_number=None, channel=None):
     """
     Collect every note in the file with its absolute start
     time and length, in beats.
 
-    track_number picks a single track. Left as None, every
-    track is read together, which suits a file holding one
-    line of music and not much else.
+    track_number picks a single track and channel picks a
+    single instrument within it. Either left as None means
+    take everything.
+
+    Both are needed because files divide their parts two
+    different ways. A file written by a notation program
+    usually gives each voice its own track. A file written
+    by a sequencer often puts everything on one track and
+    separates the instruments by channel, which is how a
+    band arrangement usually arrives. Reading only tracks
+    finds one part in such a file: all of them at once.
 
     Returns a list of (start_beats, length_beats, midi_number)
     and the first tempo found, as beats per minute.
@@ -161,6 +243,15 @@ def read_notes(midi_file, track_number=None):
         time_ticks = 0
         sounding = {}
 
+        # Which channel each message belongs to, when only
+        # one is wanted.
+        def on_wanted_channel(message):
+
+            if channel is None:
+                return True
+
+            return getattr(message, "channel", None) == channel
+
         for message in track:
 
             time_ticks += message.time
@@ -168,7 +259,7 @@ def read_notes(midi_file, track_number=None):
             if message.type == "set_tempo" and bpm is None:
                 bpm = round(mido.tempo2bpm(message.tempo))
 
-            elif not wanted:
+            elif not wanted or not on_wanted_channel(message):
                 continue
 
             elif message.type == "note_on" and message.velocity > 0:
@@ -286,6 +377,71 @@ def read_all_notes(path):
     ]
 
     return pitches, durations
+
+
+def describe_parts(path):
+    """
+    Summarise every part a file holds, likeliest tune first.
+
+    Returns a list of (identifier, description), where the
+    identifier says which track and channel the part lives
+    on. The description is what a player reads when
+    choosing, so it names the instrument and its range
+    rather than a number.
+    """
+
+    try:
+        midi_file = mido.MidiFile(path)
+
+    except Exception:
+        raise MidiImportError(
+            "That file could not be read as MIDI."
+        )
+
+    parts = rank_parts(midi_file, find_parts(midi_file))
+
+    described = []
+
+    for part in parts:
+
+        identifier = f"{part['track']}:{part['channel']}"
+
+        text = describe_part(part)
+
+        if part["likely_melody"] and not described:
+            text += " - probably the tune"
+
+        elif not part["single_line"]:
+            text += " - chords"
+
+        elif part.get("density", 0) > MOST_NOTES_PER_BEAT:
+            text += " - too busy to sing"
+
+        described.append((identifier, text))
+
+    return described
+
+
+def read_part_choice(identifier):
+    """
+    Turn a part identifier back into track and channel.
+    """
+
+    if identifier is None:
+        return None, None
+
+    text = str(identifier)
+
+    if ":" not in text:
+        return None, None
+
+    track, _, channel = text.partition(":")
+
+    try:
+        return int(track), int(channel)
+
+    except ValueError:
+        return None, None
 
 
 def describe_tracks(path):
@@ -655,7 +811,7 @@ def read_time_signature(midi_file):
 
 
 def import_midi(path, maximum_notes=None, track_number=None,
-                phrase_number=None):
+                phrase_number=None, channel=None):
     """
     Turn a MIDI file into pitch, duration and lyric text.
 
@@ -672,7 +828,7 @@ def import_midi(path, maximum_notes=None, track_number=None,
             "That file could not be read as MIDI."
         )
 
-    notes, bpm = read_notes(midi_file, track_number)
+    notes, bpm = read_notes(midi_file, track_number, channel)
 
     if len(notes) == 0:
         raise MidiImportError(
@@ -821,7 +977,7 @@ def read_chart_text(midi_file, notes, span, beats_per_bar=4):
     ), within
 
 
-def describe_phrases(path, track_number=None):
+def describe_phrases(path, track_number=None, channel=None):
     """
     Summarise the phrases a track divides into.
 
@@ -836,7 +992,7 @@ def describe_phrases(path, track_number=None):
             "That file could not be read as MIDI."
         )
 
-    notes, bpm = read_notes(midi_file, track_number)
+    notes, bpm = read_notes(midi_file, track_number, channel)
 
     if len(notes) == 0:
         raise MidiImportError(
@@ -973,3 +1129,225 @@ def read_lyric_text(midi_file, melody, track_number=None):
     syllables = lyrics_for(melody, events)
 
     return " ".join(syllables)
+
+
+def find_parts(midi_file):
+    """
+    Every separate part in a file, however it divides them.
+
+    Files divide their parts two different ways. A notation
+    program gives each voice its own track. A sequencer
+    often puts everything on one track and separates the
+    instruments by channel, which is how band and pop
+    arrangements usually arrive. Looking only at tracks
+    finds one part in such a file, containing all of them
+    at once, which is why a whole arrangement can import as
+    an unsingable tangle.
+
+    Returns a list of dictionaries, one per part, with the
+    track and channel that identify it and enough about its
+    contents to choose by.
+    """
+
+    programs = {}
+
+    found = {}
+
+    for position in range(len(midi_file.tracks)):
+
+        track = midi_file.tracks[position]
+
+        for message in track:
+
+            if message.type == "program_change":
+                programs[(position, message.channel)] = (
+                    message.program
+                )
+
+            if message.type != "note_on" or message.velocity == 0:
+                continue
+
+            channel = getattr(message, "channel", 0)
+
+            key = (position, channel)
+
+            if key not in found:
+                found[key] = []
+
+            found[key].append(message.note)
+
+    parts = []
+
+    for (position, channel) in sorted(found):
+
+        numbers = found[(position, channel)]
+
+        parts.append({
+            "track": position,
+            "channel": channel,
+            "notes": len(numbers),
+            "lowest": min(numbers),
+            "highest": max(numbers),
+            "average": sum(numbers) / len(numbers),
+            "program": programs.get((position, channel)),
+            "name": instrument_name(
+                programs.get((position, channel)),
+                channel
+            ),
+            "percussion": channel == DRUM_CHANNEL
+        })
+
+    return parts
+
+
+def describe_part(part, most_notes=1):
+    """
+    One line describing a part, for choosing between them.
+    """
+
+    pieces = [part["name"]]
+
+    if part["percussion"]:
+        pieces.append("percussion, not pitched")
+
+    else:
+        pieces.append(
+            midi_to_note(part["lowest"])
+            + " to "
+            + midi_to_note(part["highest"])
+        )
+
+    pieces.append(f"{part['notes']} notes")
+
+    return ", ".join(pieces)
+
+
+def measure_part(midi_file, part):
+    """
+    How singable a part is, and how like a melody.
+
+    Two measurements, because one is not enough. How often
+    the part sounds two notes at once tells a chord part
+    from a single line. How many notes it plays to the beat
+    tells a tune from an arpeggiated accompaniment, which
+    is also one note at a time and otherwise looks exactly
+    like a melody.
+
+    Returns (overlap, notes per beat).
+    """
+
+    notes, bpm = read_notes(
+        midi_file,
+        track_number=part["track"],
+        channel=part["channel"]
+    )
+
+    if not notes:
+        return 0.0, 0.0
+
+    span = (
+        max(start + length for start, length, n in notes)
+        - min(start for start, length, n in notes)
+    )
+
+    density = len(notes) / span if span else 0.0
+
+    overlapping = 0
+
+    for position in range(len(notes)):
+
+        start, length, number = notes[position]
+
+        for other in notes[position + 1:]:
+
+            if other[0] >= start + length:
+                break
+
+            if other[0] < start + length:
+                overlapping += 1
+                break
+
+    return overlapping / len(notes), density
+
+
+# How much of a part may overlap itself before it stops
+# being a single line. A little is ordinary: notes ring
+# into each other, and a player holds one while starting
+# the next.
+SINGLE_LINE_LIMIT = 0.2
+
+
+# How many notes to the beat a part may have and still be
+# a tune someone sings.
+#
+# This is the signal that tells a melody from an
+# arpeggiated accompaniment, which the single line test
+# cannot: an arpeggio is one note at a time too, and looks
+# exactly like a melody until you count them. A sung line
+# rarely passes two notes to the beat for long, while a
+# broken chord figure runs at three or four without
+# pausing. Measured over a real hymn, the voices sit under
+# one note per beat and the piano reduction at nearly
+# three.
+MOST_NOTES_PER_BEAT = 2.0
+
+
+def rank_parts(midi_file, parts):
+    """
+    Order parts by how likely each is to be the tune.
+
+    Nothing is hidden. A guess about which part is the
+    melody is only a guess, and a file may well be imported
+    to practise the bass line or the inner voice. So the
+    likeliest is offered first and the rest stay where they
+    can be chosen.
+    """
+
+    measured = []
+
+    for part in parts:
+
+        overlap, density = measure_part(midi_file, part)
+
+        single_line = overlap <= SINGLE_LINE_LIMIT
+
+        singable = density <= MOST_NOTES_PER_BEAT
+
+        # A tune is a single line, in a comfortable
+        # register, with enough notes to be worth singing.
+        score = 0.0
+
+        if part["percussion"]:
+            score -= 10
+
+        if single_line:
+            score += 3
+
+        if singable:
+            score += 3
+
+        if 55 <= part["average"] <= 75:
+            score += 2
+
+        if part["notes"] >= 12:
+            score += 1
+
+        measured.append(
+            (score, part, single_line, overlap, density)
+        )
+
+    measured.sort(key=lambda entry: -entry[0])
+
+    ordered = []
+
+    for score, part, single_line, overlap, density in measured:
+
+        described = dict(part)
+        described["single_line"] = single_line
+        described["overlap"] = overlap
+        described["density"] = density
+        described["likely_melody"] = score >= 8
+
+        ordered.append(described)
+
+    return ordered

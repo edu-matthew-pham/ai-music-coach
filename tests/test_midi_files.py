@@ -211,3 +211,127 @@ def test_the_soprano_line_of_o_holy_night():
 
     # The whole line, not a truncated part of it.
     assert len(pitches.split()) > 120
+
+
+def test_a_file_that_divides_by_channel_finds_its_parts():
+    """
+    A notation program gives each voice its own track. A
+    sequencer often puts everything on one track and
+    separates the instruments by channel, which is how band
+    and pop arrangements usually arrive. Looking only at
+    tracks finds one part in such a file, containing all of
+    them at once, and the import is an unsingable tangle.
+    """
+
+    import os
+
+    from music import list_midi_tracks
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "d_ML_10791.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the band arrangement fixture is absent")
+
+    parts = list_midi_tracks(path)
+
+    assert len(parts) > 5
+
+    # Named by instrument, since a file rarely names its
+    # parts but almost always says what plays them.
+    joined = " ".join(parts)
+
+    assert "Alto Sax" in joined
+    assert "Bass" in joined
+
+
+def test_the_likeliest_tune_is_offered_first():
+    """
+    Nothing is hidden, but the part most likely to be the
+    tune is easiest to reach.
+    """
+
+    import os
+
+    from music import list_midi_tracks
+
+    for name, expected in [
+        ("d_ML_10791.mid", "Alto Sax"),
+        ("d_FR1924.mid", "Pan Flute"),
+        ("o-holy-night-satb.mid", "Pan Flute")
+    ]:
+
+        path = os.path.join(
+            os.path.dirname(__file__),
+            "fixtures", "midi", name
+        )
+
+        if not os.path.exists(path):
+            continue
+
+        parts = list_midi_tracks(path)
+
+        assert expected in parts[0], f"{name}: got {parts[0]}"
+        assert "probably the tune" in parts[0]
+
+
+def test_an_arpeggiated_accompaniment_is_not_mistaken_for_a_tune():
+    """
+    An arpeggio is one note at a time too, and looks
+    exactly like a melody until the notes are counted. A
+    sung line rarely passes two notes to the beat for long,
+    while a broken chord figure runs at three or four.
+    """
+
+    import os
+
+    from music import list_midi_tracks
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "o-holy-night-satb.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the satb fixture is not present")
+
+    parts = list_midi_tracks(path)
+
+    busy = [label for label in parts if "too busy" in label]
+
+    assert busy
+
+    # And it is not the first thing offered.
+    assert "too busy" not in parts[0]
+
+
+def test_percussion_is_described_rather_than_hidden():
+    """
+    A drum part is worth practising, and this app will not
+    always be only for singers. It is labelled for what it
+    is and left available.
+    """
+
+    import os
+
+    from music import list_midi_tracks
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "d_ML_10791.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the band arrangement fixture is absent")
+
+    parts = list_midi_tracks(path)
+
+    drums = [label for label in parts if "Drums" in label]
+
+    assert drums
+    assert "not pitched" in drums[0]
+
+    # But not put forward as something to sing.
+    assert "Drums" not in parts[0]

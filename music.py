@@ -1348,7 +1348,7 @@ def list_midi_tracks(file_path):
     number of the track chosen by default.
     """
 
-    from midi_import import describe_tracks, MidiImportError
+    from midi_import import describe_parts, MidiImportError
 
     if file_path is None:
         raise MusicInputError(
@@ -1356,12 +1356,19 @@ def list_midi_tracks(file_path):
         )
 
     try:
-        described = describe_tracks(file_path)
+        described = describe_parts(file_path)
 
     except MidiImportError as problem:
         raise MusicInputError(str(problem))
 
-    return [label for _, label in described]
+    # The identifier is carried in the label so that the
+    # dropdown needs no state of its own, and so that a
+    # player can see which part of the file they are
+    # looking at.
+    return [
+        f"{identifier}  {text}"
+        for identifier, text in described
+    ]
 
 
 def list_midi_phrases(file_path, track_label=None):
@@ -1380,9 +1387,12 @@ def list_midi_phrases(file_path, track_label=None):
         )
 
     try:
+        track, channel = track_number_from(track_label)
+
         described = describe_phrases(
             file_path,
-            track_number_from(track_label)
+            track,
+            channel
         )
 
     except MidiImportError as problem:
@@ -1415,17 +1425,31 @@ def phrase_number_from(label):
 
 def track_number_from(label):
     """
-    Read the track number back out of a dropdown label.
+    Read the track and channel back out of a label.
+
+    Returns (track, channel). Labels from before parts were
+    separated by channel say only a track number, which
+    still reads correctly with no channel.
     """
 
     if label is None:
-        return None
+        return None, None
 
+    from midi_import import read_part_choice
+
+    first = str(label).split()[0] if str(label).split() else ""
+
+    track, channel = read_part_choice(first)
+
+    if track is not None:
+        return track, channel
+
+    # An older label, or one written by hand.
     try:
-        return int(label.split()[1])
+        return int(str(label).split()[1]), None
 
     except (IndexError, ValueError):
-        return None
+        return None, None
 
 
 def import_midi_file(
@@ -1464,7 +1488,8 @@ def import_midi_file(
         ) = (
             import_midi(
                 file_path,
-                track_number=track_number_from(track_label),
+                track_number=track_number_from(track_label)[0],
+                channel=track_number_from(track_label)[1],
                 phrase_number=phrase_number_from(phrase_label)
             )
         )
@@ -1478,7 +1503,13 @@ def import_midi_file(
         source = "every track together"
 
     else:
-        source = f"track {track_number_from(track_label)}"
+        track, channel = track_number_from(track_label)
+
+        source = f"track {track}"
+
+        if channel is not None:
+            source = str(track_label).split("  ", 1)[-1]
+            source = source.split(",")[0]
 
     phrase_number = phrase_number_from(phrase_label)
 
