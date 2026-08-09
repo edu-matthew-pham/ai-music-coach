@@ -94,7 +94,7 @@ with gr.Blocks(
     )
 
     detect_chords_button = gr.Button(
-        "Detect chords",
+        "Suggest chords",
         size="sm"
     )
 
@@ -400,7 +400,8 @@ with gr.Blocks(
         inputs=[
             chart_notes_state,
             pitch_input,
-            duration_input
+            duration_input,
+            key_input
         ],
         outputs=chart_input
     )

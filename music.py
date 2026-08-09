@@ -1167,7 +1167,8 @@ def key_setting_for(key_name):
     return None
 
 
-def suggest_chords(chart_notes, pitch_text, duration_text):
+def suggest_chords(chart_notes, pitch_text, duration_text,
+                   key="C", harmony_key=None):
     """
     Read the chords again from the music that was imported.
 
@@ -1179,33 +1180,95 @@ def suggest_chords(chart_notes, pitch_text, duration_text):
 
     from chord_detector import chart_from_notes, explain_empty_chart
 
-    if not chart_notes:
-        raise MusicInputError(
-            "Chords are read from music with more than one "
-            "voice, so there is nothing to read here. "
-            "Import a file with several parts, or write a "
-            "chart by hand."
-        )
-
     pitches, durations = read_music(pitch_text, duration_text)
 
     total = sum(durations)
 
-    from midi_import import spelling_key
+    if chart_notes:
 
-    chart = chart_from_notes(
-        chart_notes,
-        total,
-        4,
-        key=spelling_key(chart_notes)
+        from midi_import import spelling_key
+
+        chart = chart_from_notes(
+            chart_notes,
+            total,
+            4,
+            key=spelling_key(chart_notes)
+        )
+
+        if chart:
+            return chart
+
+    # No harmony to read, so fall back to what the melody
+    # implies. A weaker answer, and worth having: a tune on
+    # its own does not state its harmony, but it does
+    # narrow it, and a suggested chart is somewhere to
+    # start editing from.
+    return suggest_chords_for_melody(
+        pitches, durations, key, harmony_key
+    )
+
+
+def suggest_chords_for_melody(
+    pitches,
+    durations,
+    key="C",
+    harmony_key=None
+):
+    """
+    Chords that would fit a melody, as a starting point.
+    """
+
+    from chord_detector import suggest_chart_from_melody
+
+    if sum(durations) < 4:
+        raise MusicInputError(
+            "There is not enough music here to suggest "
+            "chords for. A bar is the least that can be "
+            "harmonised."
+        )
+
+    setting = harmony_key or key
+
+    chart = suggest_chart_from_melody(
+        pitches,
+        durations,
+        setting,
+        minor=sounds_minor(pitches, durations)
     )
 
     if not chart:
         raise MusicInputError(
-            explain_empty_chart(chart_notes, total)
+            "No chords could be suggested for this music."
         )
 
     return chart
+
+
+def sounds_minor(pitches, durations):
+    """
+    Whether a melody sounds minor rather than major.
+
+    A minor key uses the same seven chords as its relative
+    major and hears a different one as home, so which it is
+    decides where every cadence falls.
+    """
+
+    from key_detector import detect_key
+
+    sung = [pitch for pitch in pitches if not is_rest(pitch)]
+
+    lengths = [
+        durations[position]
+        for position in range(len(pitches))
+        if not is_rest(pitches[position])
+    ]
+
+    if not sung:
+        return False
+
+    best, score = detect_key(sung, lengths)[0]
+
+    return best.endswith("minor")
 
 
 def suggest_key(pitch_text, duration_text):

@@ -80,10 +80,16 @@ halfway through the first. The bars set the metre
 themselves: three slots to a bar is three four.
 
 Importing a file fills the chart in for you, read from
-every voice sounding together. **Detect chords** reads it
-again, which is worth doing after editing the music. A
-file holding only a melody gives no chords, because a
-single line does not say what the harmony is.
+every voice sounding together.
+
+**Suggest chords** fills it for any music in the boxes.
+Where several voices are sounding it reads what the
+harmony actually is. Where there is only a melody it
+suggests what would fit, which is a weaker answer worth
+having: a tune does not state its harmony, but the notes
+on the strong beats narrow it, and the key offers only
+seven chords to choose between. Either way the chart is
+yours to edit.
 
 Switch **Chords** on in the playback section to hear the
 chart strummed underneath, voiced below the melody so it

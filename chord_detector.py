@@ -709,3 +709,325 @@ def asides_for(notes, chords, key=None):
             asides[round(float(start), 3)] = "  ".join(parts)
 
     return asides
+
+
+# The chords a key offers, as scale degrees and quality.
+# Diatonic harmony in one line: triads built on each note
+# of the major scale, which is where nearly all the chords
+# in nearly all songs come from.
+DIATONIC = [
+    (0, ""),
+    (2, "m"),
+    (4, "m"),
+    (5, ""),
+    (7, ""),
+    (9, "m"),
+    (11, "dim")
+]
+
+
+# What a note on the downbeat is worth against one passing
+# by. A melody note's weight is its length, and where it
+# falls matters as much as how long it lasts: the ear takes
+# the note on the beat as the harmony and hears the rest as
+# decoration.
+DOWNBEAT_WEIGHT = 2.0
+ON_BEAT_WEIGHT = 1.3
+
+
+# The chords a song reaches for first. Tonic, subdominant
+# and dominant carry most of western harmony between them,
+# and when a melody fits several chords equally - which it
+# often does, since a single note belongs to three of the
+# seven - these are the likelier answer. Without this the
+# choice falls to whichever was tried first, which is not
+# a musical reason.
+PRIMARY_BONUS = 0.25
+
+# Which degrees those are depends on where home is. A minor
+# key uses the same seven chords as its relative major and
+# hears a different one as the tonic: D minor and F major
+# share every note, but the first leans on Dm, Gm and Am
+# where the second leans on F, Bb and C. Taking the major
+# as home in a minor song puts every cadence in the wrong
+# place.
+PRIMARY_DEGREES = (0, 5, 7)
+MINOR_PRIMARY_DEGREES = (9, 2, 4)
+
+TONIC_DEGREE = 0
+MINOR_TONIC_DEGREE = 9
+
+
+# The tonic pulls harder at the ends of a phrase: music
+# starts at home and returns there, and the last chord of
+# a tune is the tonic far more often than not.
+CADENCE_BONUS = 0.4
+
+
+# How much better a split bar has to be before it is worth
+# two chords instead of one. Harmony usually changes at the
+# bar, and a chart that changes every other beat is harder
+# to read and rarely more true.
+SPLIT_MARGIN = 1.25
+
+
+def chords_of_key(key):
+    """
+    The chords a major key offers, tonic first.
+    """
+
+    from notes import note_to_midi
+
+    tonic = note_to_midi(key + "4") % 12
+
+    return [
+        (
+            (tonic + degree) % 12,
+            quality
+        )
+        for degree, quality in DIATONIC
+    ]
+
+
+def weigh_melody(pitches, durations, start, end, beats_per_bar=4):
+    """
+    How much each pitch class matters over a stretch of
+    melody.
+
+    Length and position together: a note on the downbeat
+    counts for more than one slipping past on an offbeat,
+    because that is how the ear decides which notes are the
+    harmony and which are decoration.
+    """
+
+    from notes import note_to_midi, is_rest
+
+    weights = [0.0] * 12
+
+    beat = 0.0
+
+    for position in range(len(pitches)):
+
+        length = durations[position]
+
+        if beat >= end:
+            break
+
+        overlap = min(end, beat + length) - max(start, beat)
+
+        if overlap > 0 and not is_rest(pitches[position]):
+
+            where = beat % beats_per_bar
+
+            if where == 0:
+                strength = DOWNBEAT_WEIGHT
+
+            elif where == int(where):
+                strength = ON_BEAT_WEIGHT
+
+            else:
+                strength = 1.0
+
+            weights[note_to_midi(pitches[position]) % 12] += (
+                overlap * strength
+            )
+
+        beat += length
+
+    return weights
+
+
+def fit_chord(weights, candidates, key=None, place=None,
+              minor=False):
+    """
+    The chord of the key that best fits what the melody
+    does over a stretch.
+
+    place is "first", "last" or None, which shifts the
+    balance toward the tonic at the ends of a phrase.
+
+    Returns (name, score).
+    """
+
+    best = None
+    best_score = None
+
+    total = sum(weights)
+
+    if total <= QUIET_BEAT:
+        return None, 0.0
+
+    for position in range(len(candidates)):
+
+        root, quality = candidates[position]
+
+        tones = {
+            (root + interval) % 12
+            for interval in QUALITIES[quality]
+        }
+
+        score = 0.0
+
+        for semitone in range(12):
+
+            if semitone in tones:
+                score += weights[semitone]
+
+            else:
+                score -= OUTSIDE_PENALTY * weights[semitone]
+
+        degree = DIATONIC[position][0]
+
+        primaries = (
+            MINOR_PRIMARY_DEGREES if minor else PRIMARY_DEGREES
+        )
+
+        tonic = MINOR_TONIC_DEGREE if minor else TONIC_DEGREE
+
+        # The chord a step below the tonic in a minor key
+        # is the one that leads home, as the dominant does
+        # in a major one.
+        leading = 4 if minor else 7
+
+        if degree in primaries:
+            score += PRIMARY_BONUS * total
+
+        if place in ("first", "last") and degree == tonic:
+            score += CADENCE_BONUS * total
+
+        if place == "before last" and degree == leading:
+            score += CADENCE_BONUS * total
+
+        if best_score is None or score > best_score:
+            best_score = score
+            best = note_name(root, key) + quality
+
+    return best, best_score
+
+
+def suggest_chart_from_melody(
+    pitches,
+    durations,
+    key,
+    beats_per_bar=4,
+    minor=False
+):
+    """
+    Suggest chords that would fit a melody.
+
+    This is a different question from reading the chords
+    off a piece of polyphonic music, and a weaker one. A
+    melody does not state its harmony; it implies one, and
+    more than one answer is usually defensible. What makes
+    the guess reasonable rather than arbitrary is that the
+    melody constrains it heavily once the key is known:
+
+    - the chords are the seven the key offers, not any of
+      the sixty a detector must weigh
+    - a note on the downbeat counts for more than one
+      slipping past, because that is how the ear decides
+      which notes are harmony and which are decoration
+    - tonic, subdominant and dominant are likelier than
+      the rest, which is what settles the frequent ties
+    - phrases begin and end at home
+
+    One chord to the bar, split in two only where a single
+    chord leaves the bar badly explained. Real harmony
+    changes at the bar far more often than not, and a chart
+    that changes every other beat is harder to read and
+    rarely more true.
+    """
+
+    total = sum(durations)
+
+    bars = int(round(total / beats_per_bar))
+
+    if bars < 1:
+        return ""
+
+    candidates = chords_of_key(key)
+
+    tokens = []
+
+    for bar in range(bars):
+
+        start = bar * beats_per_bar
+
+        if bar == 0:
+            place = "first"
+
+        elif bar == bars - 1:
+            place = "last"
+
+        elif bar == bars - 2:
+            place = "before last"
+
+        else:
+            place = None
+
+        whole = weigh_melody(
+            pitches, durations, start,
+            start + beats_per_bar, beats_per_bar
+        )
+
+        one_chord, one_score = fit_chord(
+            whole, candidates, key, place, minor
+        )
+
+        half = beats_per_bar / 2
+
+        first_half = weigh_melody(
+            pitches, durations, start, start + half, beats_per_bar
+        )
+
+        second_half = weigh_melody(
+            pitches, durations, start + half,
+            start + beats_per_bar, beats_per_bar
+        )
+
+        first_name, first_score = fit_chord(
+            first_half, candidates, key, None, minor
+        )
+
+        second_name, second_score = fit_chord(
+            second_half, candidates, key, place, minor
+        )
+
+        split_better = (
+            first_name
+            and second_name
+            and first_name != second_name
+            and first_score + second_score
+            > one_score * SPLIT_MARGIN
+        )
+
+        bar_tokens = []
+
+        if split_better:
+            bar_tokens.append(first_name)
+            bar_tokens += ["."] * (int(half) - 1)
+            bar_tokens.append(second_name)
+            bar_tokens += ["."] * (int(beats_per_bar - half) - 1)
+
+        elif one_chord:
+            bar_tokens.append(one_chord)
+            bar_tokens += ["."] * (int(beats_per_bar) - 1)
+
+        else:
+            # Nothing sounding: hold whatever came before.
+            bar_tokens = ["."] * int(beats_per_bar)
+
+        tokens += bar_tokens
+
+    if not tokens or tokens[0] == ".":
+        return ""
+
+    lines = []
+
+    for position in range(0, len(tokens), int(beats_per_bar)):
+
+        lines.append(
+            " ".join(tokens[position:position + int(beats_per_bar)])
+        )
+
+    return "| " + " | ".join(lines) + " |"

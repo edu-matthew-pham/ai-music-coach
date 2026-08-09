@@ -1285,8 +1285,144 @@ def test_the_spelling_key_is_read_from_the_music():
     assert spelling_key(notes) == "Bb"
 
 
-def test_detecting_chords_needs_more_than_one_voice():
+def test_reading_and_suggesting_are_different_answers():
+    """
+    Reading chords off several voices says what the
+    harmony is. Suggesting them from a melody says what
+    would fit. The second is a weaker claim, and worth
+    having where the first cannot be made.
+    """
+
+    import mido
+
+    from midi_import import read_notes
+    from music import suggest_chords
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "o-holy-night-satb.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the satb fixture is not present")
+
+    notes, bpm = read_notes(mido.MidiFile(path))
+
+    within = [
+        (start, length, number)
+        for start, length, number in notes
+        if start < 8
+    ]
+
+    melody = "D4 " * 8
+    lengths = "1 " * 8
+
+    read = suggest_chords(within, melody, lengths, "D")
+
+    suggested = suggest_chords(None, melody, lengths, "D")
+
+    # Both give a chart, and they need not agree: one is
+    # what sounded, the other what would fit.
+    assert read.startswith("|")
+    assert suggested.startswith("|")
+
+
+def test_a_melody_implies_chords_even_alone():
+    """
+    A melody does not state its harmony, but it does
+    narrow it: the notes on the strong beats are usually
+    the chord, and the key offers only seven to choose
+    between.
+    """
+
+    from music import suggest_chords, load_twinkle_phrase
+
+    pitches, durations, lyrics, key, chart = load_twinkle_phrase()
+
+    suggested = suggest_chords(None, pitches, durations, key)
+
+    # The same chords a person wrote by hand.
+    assert suggested == chart
+
+
+def test_a_minor_melody_is_harmonised_from_its_own_tonic():
+    """
+    D minor and F major share every note and lean on
+    different chords. Taking the major as home in a minor
+    song puts every cadence in the wrong place.
+    """
+
+    from music import suggest_chords, load_wellerman_phrase
+
+    pitches, durations, lyrics, key, chart = load_wellerman_phrase()
+
+    suggested = suggest_chords(None, pitches, durations, key)
+
+    assert suggested == chart
+
+    # And the mode is worked out, not assumed.
+    from music import sounds_minor, read_music
+
+    pitch_list, duration_list = read_music(pitches, durations)
+
+    assert sounds_minor(pitch_list, duration_list)
+
+
+def test_a_strong_beat_counts_for_more_than_a_passing_note():
+    """
+    The ear takes the note on the beat as the harmony and
+    hears the rest as decoration.
+    """
+
+    from chord_detector import weigh_melody
+    from notes import note_to_midi
+
+    # C on the downbeat, D slipping past between beats.
+    weights = weigh_melody(
+        ["C4", "D4", "E4", "F4"],
+        [1.0, 0.5, 0.5, 2.0],
+        0, 4
+    )
+
+    assert weights[note_to_midi("C4") % 12] > weights[
+        note_to_midi("D4") % 12
+    ]
+
+
+def test_only_the_chords_of_the_key_are_offered():
+    from chord_detector import chords_of_key, note_name
+
+    names = [
+        note_name(root) + quality
+        for root, quality in chords_of_key("C")
+    ]
+
+    assert names == [
+        "C", "Dm", "Em", "F", "G", "Am", "Bdim"
+    ]
+
+
+def test_a_bar_is_split_only_when_one_chord_will_not_do():
+    """
+    Harmony changes at the bar far more often than not, and
+    a chart that changes every other beat is harder to read
+    and rarely more true.
+    """
+
+    from chord_detector import suggest_chart_from_melody
+
+    # A bar that plainly sits on one chord.
+    steady = suggest_chart_from_melody(
+        ["C4", "E4", "G4", "E4"],
+        [1.0, 1.0, 1.0, 1.0],
+        "C"
+    )
+
+    assert steady == "| C . . . |"
+
+
+def test_there_must_be_a_bar_to_harmonise():
     from music import suggest_chords, MusicInputError
 
-    with pytest.raises(MusicInputError, match="more than one"):
+    with pytest.raises(MusicInputError, match="least that can be"):
         suggest_chords(None, "C4 E4", "1 1")
