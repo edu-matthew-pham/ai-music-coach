@@ -365,8 +365,9 @@ def play_music(
 
     # Read now so a mistake in the chart is reported when
     # the music is generated, rather than later when
-    # something tries to use it.
-    read_chords(chart_text, durations)
+    # something tries to use it. The bars also tell the
+    # metronome where the downbeats are.
+    chords, bars = read_chords(chart_text, durations)
 
     sample_rate = 8000
 
@@ -418,7 +419,8 @@ def play_music(
             sound,
             sum(durations),
             bpm,
-            sample_rate
+            sample_rate,
+            bars=bars
         )
 
     audio_data = np.array(
@@ -893,11 +895,14 @@ def make_practice_guide(
             f"'{guide_choice}' is not a guide option."
         )
 
+    chords, bars = read_chords(chart_text, durations)
+
     sound = add_metronome(
         sound,
         sum(durations),
         bpm,
-        sample_rate
+        sample_rate,
+        bars=bars
     )
 
     sound = make_count_in(bpm, sample_rate) + list(sound)

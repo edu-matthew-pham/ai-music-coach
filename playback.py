@@ -18,8 +18,16 @@ CLICK_FREQUENCY = 1500
 CLICK_SECONDS = 0.03
 CLICK_SHARE_OF_BEAT = 0.1
 
+# The first beat of a bar gets a higher, louder tick, the
+# way a metronome marks the downbeat. Without it a run of
+# clicks says how fast but not where, and a singer counting
+# a phrase in has nothing to count from.
+DOWNBEAT_FREQUENCY = 2200
+DOWNBEAT_LOUDER = 1.8
 
-def make_click(bpm=120, sample_rate=8000, loud=1.0):
+
+def make_click(bpm=120, sample_rate=8000, loud=1.0,
+               frequency=CLICK_FREQUENCY):
     """
     One metronome click filling one beat.
 
@@ -46,7 +54,7 @@ def make_click(bpm=120, sample_rate=8000, loud=1.0):
         fade = 1 - (sample_number / click_samples)
 
         value = math.sin(
-            2 * math.pi * CLICK_FREQUENCY * time
+            2 * math.pi * frequency * time
         )
 
         sound.append(value * fade * loud)
@@ -72,17 +80,29 @@ def make_count_in(bpm=120, sample_rate=8000):
     return sound
 
 
-def add_metronome(sound, total_beats, bpm=120, sample_rate=8000):
+def add_metronome(sound, total_beats, bpm=120, sample_rate=8000,
+                  bars=None):
     """
     Lay quiet clicks under an existing piece of music.
 
     The clicks are softer than the count-in, so they keep
     time without competing with the notes.
+
+    Given the bars, the first beat of each is marked with a
+    higher, louder tick. That is what turns a stream of
+    clicks into a bar you can count: the same information a
+    conductor's downbeat carries.
     """
 
     combined = list(sound)
 
     seconds_per_beat = 60 / bpm
+
+    downbeats = set()
+
+    if bars:
+        for bar_start, bar_length in bars:
+            downbeats.add(round(bar_start, 3))
 
     for beat in range(int(total_beats)):
 
@@ -90,10 +110,16 @@ def add_metronome(sound, total_beats, bpm=120, sample_rate=8000):
             beat * seconds_per_beat * sample_rate
         )
 
+        on_a_downbeat = round(float(beat), 3) in downbeats
+
         click = make_click(
             bpm,
             sample_rate,
-            loud=0.3
+            loud=0.3 * (DOWNBEAT_LOUDER if on_a_downbeat else 1),
+            frequency=(
+                DOWNBEAT_FREQUENCY if on_a_downbeat
+                else CLICK_FREQUENCY
+            )
         )
 
         for offset in range(len(click)):

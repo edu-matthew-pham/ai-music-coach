@@ -586,7 +586,8 @@ with gr.Blocks(
             guide_choice,
             part_input,
             key_input,
-            harmony_choice_input
+            harmony_choice_input,
+            chart_input
         ],
         outputs=guide_audio
     )

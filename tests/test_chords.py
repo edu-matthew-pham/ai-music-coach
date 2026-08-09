@@ -236,3 +236,80 @@ def test_a_picture_without_chords_is_unchanged():
     )
 
     assert len(figure.axes[0].lines) == 0
+
+
+def test_the_downbeat_is_marked():
+    """
+    A run of clicks says how fast but not where. Marking
+    the first beat of each bar is what lets a singer count
+    a phrase in.
+    """
+
+    import numpy as np
+
+    from playback import add_metronome
+
+    silence = [0.0] * int(8 * 0.5 * 8000)
+
+    clicks = np.array(
+        add_metronome(
+            silence, 8, 120, 8000,
+            bars=[(0.0, 4.0), (4.0, 4.0)]
+        )
+    )
+
+    def loudest_at(beat):
+        start = int(beat * 0.5 * 8000)
+        return float(np.max(np.abs(clicks[start:start + 200])))
+
+    for downbeat in (0, 4):
+        for ordinary in (1, 2, 3):
+            assert loudest_at(downbeat) > loudest_at(ordinary)
+
+
+def test_bars_of_three_accent_every_third_beat():
+    import numpy as np
+
+    from playback import add_metronome
+
+    silence = [0.0] * int(6 * 0.5 * 8000)
+
+    clicks = np.array(
+        add_metronome(
+            silence, 6, 120, 8000,
+            bars=[(0.0, 3.0), (3.0, 3.0)]
+        )
+    )
+
+    def loudest_at(beat):
+        start = int(beat * 0.5 * 8000)
+        return float(np.max(np.abs(clicks[start:start + 200])))
+
+    assert loudest_at(3) > loudest_at(2)
+    assert loudest_at(3) > loudest_at(4)
+
+
+def test_without_a_chart_every_click_is_the_same():
+    """
+    Music with no chart has no bars, so nothing is
+    accented and the metronome behaves as it always did.
+    """
+
+    import numpy as np
+
+    from playback import add_metronome
+
+    silence = [0.0] * int(4 * 0.5 * 8000)
+
+    clicks = np.array(
+        add_metronome(silence, 4, 120, 8000)
+    )
+
+    loudest = [
+        float(np.max(np.abs(
+            clicks[int(beat * 0.5 * 8000):int(beat * 0.5 * 8000) + 200]
+        )))
+        for beat in range(4)
+    ]
+
+    assert max(loudest) - min(loudest) < 0.01
