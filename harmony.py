@@ -1,6 +1,11 @@
 # harmony.py
 
-from notes import NOTE_SEMITONES, note_to_midi, is_rest
+from notes import (
+    NOTE_SEMITONES,
+    note_to_midi,
+    midi_to_note,
+    is_rest
+)
 
 
 # Every major key, each spelled the way its key signature
@@ -242,5 +247,170 @@ def make_harmony(pitches, key="C", steps=-2):
         )
 
         harmony.append(harmony_note)
+
+    return harmony
+
+
+def is_chord_tone(midi_number, chord_tones):
+    """
+    Whether a note belongs to the chord underneath it.
+    """
+
+    return midi_number % 12 in chord_tones
+
+
+def nearest_chord_tone_below(midi_number, chord_tones):
+    """
+    The closest chord tone strictly below a note.
+
+    Where a harmony voice sings when it draws from the
+    chord rather than from parallel motion.
+    """
+
+    candidate = midi_number - 1
+
+    while candidate > midi_number - 13:
+
+        if candidate % 12 in chord_tones:
+            return candidate
+
+        candidate -= 1
+
+    return midi_number - 12
+
+
+def chord_tones_at(chords, beat):
+    """
+    The pitch classes of the chord sounding at a moment,
+    or None when nothing is.
+    """
+
+    for start, length, tones in chords:
+
+        if start <= beat < start + length:
+            return tones
+
+    return None
+
+
+def make_chord_harmony(
+    pitches,
+    durations,
+    chords,
+    key="C",
+    steps=-2,
+    style="Thirds, chord-corrected"
+):
+    """
+    A harmony line that knows the chords.
+
+    Three ways of choosing each note, none more correct
+    than the others - they are different sounds:
+
+    Thirds, chord-corrected: parallel thirds as usual,
+    except where the third lands outside the chord, when
+    the nearest chord tone below the melody is taken
+    instead. First principles: in diatonic music the third
+    below a melody note usually is a chord tone, because
+    triads are stacked thirds. The departures are exactly
+    the moments a duet singer would bend their line to
+    avoid a clash, so this is the duet sound with the sour
+    moments repaired.
+
+    Chord tones: every note drawn from the chord, nearest
+    below the melody. The line follows the harmony rather
+    than shadowing the tune, which is the sound of an
+    arranged inner voice.
+
+    Independent voice: chord tones, but preferring to stay
+    put. A common tone held while the melody moves is what
+    makes the harmony sound like a second singer with
+    their own line. Where the previous note has to move,
+    it moves as little as possible. First principles: this
+    is elementary voice leading - retain common tones,
+    otherwise step - which is how chorale inner voices
+    have been written for centuries.
+
+    Notes with no chord under them fall back to the
+    parallel third, and a melody note that is itself
+    outside the chord keeps its parallel third too, since
+    correcting an intentional dissonance would flatten
+    what the composer wrote.
+    """
+
+    harmony = []
+
+    beat = 0.0
+
+    previous = None
+
+    for position in range(len(pitches)):
+
+        pitch = pitches[position]
+
+        length = durations[position]
+
+        if is_rest(pitch):
+            harmony.append(pitch)
+            beat += length
+            continue
+
+        melody_midi = note_to_midi(pitch)
+
+        tones = chord_tones_at(chords, beat)
+
+        parallel = note_to_midi(
+            move_in_scale(pitch, key, steps)
+        )
+
+        if tones is None:
+            chosen = parallel
+
+        elif style == "Chord tones":
+            chosen = nearest_chord_tone_below(
+                melody_midi, tones
+            )
+
+        elif style == "Independent voice":
+
+            if (
+                previous is not None
+                and is_chord_tone(previous, tones)
+                and previous < melody_midi
+            ):
+                # The old note still fits the new chord:
+                # hold it while the melody moves.
+                chosen = previous
+
+            else:
+                chosen = nearest_chord_tone_below(
+                    melody_midi, tones
+                )
+
+        else:
+
+            # Thirds, corrected at the clashes. A melody
+            # note outside its own chord is left with its
+            # parallel third: the dissonance is the
+            # composer's, not ours to repair.
+            melody_in_chord = is_chord_tone(
+                melody_midi, tones
+            )
+
+            if melody_in_chord and not is_chord_tone(
+                parallel, tones
+            ):
+                chosen = nearest_chord_tone_below(
+                    melody_midi, tones
+                )
+
+            else:
+                chosen = parallel
+
+        harmony.append(midi_to_note(chosen))
+
+        previous = chosen
+
+        beat += length
 
     return harmony

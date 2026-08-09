@@ -14,6 +14,7 @@ from music import (
     PART_CHOICES,
     GUIDE_CHOICES,
     HARMONY_CHOICES,
+    HARMONY_STYLES,
     make_practice_guide,
     show_target_music,
     load_wellerman_phrase,
@@ -197,6 +198,16 @@ with gr.Blocks(
             list(HARMONY_CHOICES),
             value="Third below",
             label="Harmony interval"
+        )
+
+        harmony_style_input = gr.Dropdown(
+            HARMONY_STYLES,
+            value="Parallel thirds",
+            label="Harmony style",
+            info="How the harmony chooses its notes. The "
+                 "chord-aware styles read the chart, and "
+                 "none is more correct than another: pick "
+                 "by ear."
         )
 
         chords_input = gr.Checkbox(
@@ -552,7 +563,8 @@ with gr.Blocks(
             metronome_input,
             harmony_choice_input,
             chart_input,
-            chords_input
+            chords_input,
+            harmony_style_input
         ],
         outputs=generated_audio
     ).then(
@@ -565,7 +577,8 @@ with gr.Blocks(
             key_input,
             harmony_input,
             harmony_choice_input,
-            chart_input
+            chart_input,
+            harmony_style_input
         ],
         outputs=target_plot
     )
@@ -595,7 +608,8 @@ with gr.Blocks(
             part_input,
             key_input,
             harmony_choice_input,
-            chart_input
+            chart_input,
+            harmony_style_input
         ],
         outputs=guide_audio
     )
@@ -634,7 +648,8 @@ with gr.Blocks(
             part_input,
             key_input,
             harmony_choice_input,
-            chart_input
+            chart_input,
+            harmony_style_input
         ],
         outputs=[
             feedback_output,

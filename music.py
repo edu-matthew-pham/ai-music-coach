@@ -20,6 +20,7 @@ from key_detector import (
 )
 from harmony import (
     make_harmony,
+    make_chord_harmony,
     keys_containing,
     notes_outside,
     MAJOR_SCALES,
@@ -349,7 +350,8 @@ def play_music(
     metronome=True,
     harmony_choice="Third below",
     chart_text="",
-    chords_on=False
+    chords_on=False,
+    harmony_style="Parallel thirds"
 ):
     """
     Build the playback from independent layers.
@@ -392,10 +394,13 @@ def play_music(
 
     if harmony_on:
 
-        harmony = make_harmony(
+        harmony = harmony_line(
             pitches,
-            key=key,
-            steps=read_harmony_choice(harmony_choice)
+            durations,
+            key,
+            steps=read_harmony_choice(harmony_choice),
+            style=harmony_style,
+            chart_text=chart_text
         )
 
         sample_rate, harmony_track = make_melody(
@@ -687,6 +692,20 @@ def check_transpose(transpose):
 PART_CHOICES = ["Melody", "Harmony"]
 
 
+# How the harmony line chooses its notes. Parallel thirds
+# needs no chart; the rest read the chords and fall back
+# to parallel thirds wherever no chord is sounding. None
+# is more correct than the others: they are different
+# sounds, and the right one is the one that suits the
+# song and the singer.
+HARMONY_STYLES = [
+    "Parallel thirds",
+    "Thirds, chord-corrected",
+    "Chord tones",
+    "Independent voice"
+]
+
+
 # The intervals a harmony line can be built at, as scale
 # positions relative to the melody. More will join these:
 # sixths, octaves, and anything else a step count reaches.
@@ -722,7 +741,8 @@ def analyse_performance(
     part="Melody",
     key="C",
     harmony_choice="Third below",
-    chart_text=""
+    chart_text="",
+    harmony_style="Parallel thirds"
 ):
     """
     Compare a recording against the target music.
@@ -746,10 +766,13 @@ def analyse_performance(
     )
 
     if part == "Harmony":
-        pitches = make_harmony(
+        pitches = harmony_line(
             pitches,
-            key=key,
-            steps=read_harmony_choice(harmony_choice)
+            durations,
+            key,
+            steps=read_harmony_choice(harmony_choice),
+            style=harmony_style,
+            chart_text=chart_text
         )
 
     elif part != "Melody":
@@ -837,16 +860,61 @@ GUIDE_CHOICES = [
 ]
 
 
-def part_notes(pitches, part, key, harmony_steps=-2):
+def harmony_line(
+    pitches,
+    durations,
+    key,
+    steps=-2,
+    style="Parallel thirds",
+    chart_text=""
+):
+    """
+    Build the harmony in the chosen style.
+
+    Styles that read the chords take the chart; with no
+    chart, every style comes out as parallel thirds, so
+    the choice is always safe to make.
+    """
+
+    if style == "Parallel thirds" or not chart_text.strip():
+        return make_harmony(pitches, key=key, steps=steps)
+
+    chords, bars = read_chords(chart_text, durations)
+
+    voiced = [
+        (start, length, chord_semitones(name))
+        for start, length, name in chords
+    ]
+
+    return make_chord_harmony(
+        pitches,
+        durations,
+        voiced,
+        key=key,
+        steps=steps,
+        style=style
+    )
+
+
+def part_notes(pitches, part, key, harmony_steps=-2,
+               durations=None, style="Parallel thirds",
+               chart_text=""):
     """
     The notes belonging to a part of the music.
     """
 
     if part == "Harmony":
-        return make_harmony(
+
+        if durations is None:
+            durations = [1.0] * len(pitches)
+
+        return harmony_line(
             pitches,
-            key=key,
-            steps=harmony_steps
+            durations,
+            key,
+            steps=harmony_steps,
+            style=style,
+            chart_text=chart_text
         )
 
     return pitches
@@ -860,7 +928,8 @@ def make_practice_guide(
     part="Melody",
     key="C",
     harmony_choice="Third below",
-    chart_text=""
+    chart_text="",
+    harmony_style="Parallel thirds"
 ):
     """
     The audio that plays while a performance is recorded.
@@ -899,7 +968,8 @@ def make_practice_guide(
         sample_rate, sound = make_melody(
             part_notes(
                 pitches, part, key,
-                read_harmony_choice(harmony_choice)
+                read_harmony_choice(harmony_choice),
+                durations, harmony_style, chart_text
             ),
             durations,
             bpm
@@ -912,7 +982,8 @@ def make_practice_guide(
         sample_rate, sound = make_melody(
             part_notes(
                 pitches, other, key,
-                read_harmony_choice(harmony_choice)
+                read_harmony_choice(harmony_choice),
+                durations, harmony_style, chart_text
             ),
             durations,
             bpm
@@ -946,7 +1017,8 @@ def show_target_music(
     key="C",
     harmony_on=False,
     harmony_choice="Third below",
-    chart_text=""
+    chart_text="",
+    harmony_style="Parallel thirds"
 ):
     """
     Draw the target music as a score-like picture.
@@ -972,10 +1044,13 @@ def show_target_music(
     harmony = None
 
     if harmony_on:
-        harmony = make_harmony(
+        harmony = harmony_line(
             pitches,
-            key=key,
-            steps=read_harmony_choice(harmony_choice)
+            durations,
+            key,
+            steps=read_harmony_choice(harmony_choice),
+            style=harmony_style,
+            chart_text=chart_text
         )
 
     chords, bars = read_chords(chart_text, durations)
