@@ -44,7 +44,7 @@ def test_a_minor_melody_names_its_key():
 
 
 def test_the_wellerman_is_in_d_minor():
-    pitches, durations, lyrics, key = load_wellerman_phrase()
+    pitches, durations, lyrics, key, chart = load_wellerman_phrase()
 
     pitch_list, duration_list = read_music(pitches, durations)
 
@@ -54,7 +54,7 @@ def test_the_wellerman_is_in_d_minor():
 
 
 def test_twinkle_sounds_like_c():
-    pitches, durations, lyrics, key = load_twinkle_phrase()
+    pitches, durations, lyrics, key, chart = load_twinkle_phrase()
 
     pitch_list, duration_list = read_music(pitches, durations)
 
@@ -80,7 +80,7 @@ def test_a_near_tie_is_named_as_a_pair():
     an answer.
     """
 
-    pitches, durations, lyrics, key = load_twinkle_phrase()
+    pitches, durations, lyrics, key, chart = load_twinkle_phrase()
 
     pitch_list, duration_list = read_music(pitches, durations)
 
@@ -125,7 +125,7 @@ def test_the_key_report_ranks_candidates():
 
     from music import suggest_key
 
-    pitches, durations, lyrics, key = load_wellerman_phrase()
+    pitches, durations, lyrics, key, chart = load_wellerman_phrase()
 
     report = suggest_key(pitches, durations)
 
@@ -267,7 +267,7 @@ def test_a_detected_minor_key_names_a_key_setting():
 def test_the_report_names_the_setting_to_choose():
     from music import suggest_key
 
-    pitches, durations, lyrics, key = load_wellerman_phrase()
+    pitches, durations, lyrics, key, chart = load_wellerman_phrase()
 
     report = suggest_key(pitches, durations)
 
@@ -283,7 +283,7 @@ def test_the_report_names_every_setting_that_fits():
 
     from music import suggest_key
 
-    pitches, durations, lyrics, key = load_wellerman_phrase()
+    pitches, durations, lyrics, key, chart = load_wellerman_phrase()
 
     report = suggest_key(pitches, durations)
 

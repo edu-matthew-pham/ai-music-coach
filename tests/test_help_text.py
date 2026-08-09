@@ -42,7 +42,7 @@ def test_the_example_in_the_guide_is_real_music():
 
     assert "Twinkle" in HELP_TEXT
 
-    pitches, durations, lyrics, key = load_twinkle_phrase()
+    pitches, durations, lyrics, key, chart = load_twinkle_phrase()
 
     pitch_list, duration_list = read_music(pitches, durations)
 
@@ -125,3 +125,26 @@ def test_the_interface_ignores_events_with_no_file():
         body = interface[start:start + 600]
 
         assert "is None" in body, handler
+
+
+def test_the_guide_explains_the_chart_syntax():
+    """
+    Neither the bar lines nor the dots are guessable, so
+    the guide has to show them, and what it shows has to
+    parse.
+    """
+
+    from chords import read_chart
+
+    assert "Chords" in HELP_TEXT
+    assert "| Dm" in HELP_TEXT
+
+    for example in [
+        "| Dm .  Bb . | F  .  .  . |",
+        "| Dm .  .    | F  .  .    |"
+    ]:
+        assert example in HELP_TEXT
+
+        chords, bars = read_chart(example)
+
+        assert len(chords) > 0

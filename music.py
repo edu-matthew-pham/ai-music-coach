@@ -213,6 +213,54 @@ def read_beats(text):
     return value
 
 
+def read_chords(chart_text, durations=None):
+    """
+    Read the chord chart, checked against the music.
+
+    A chart and a melody are separate sequences over one
+    clock, so they need not line up note for note, but they
+    do have to last the same time. When they do not, one of
+    them is wrong, and saying which bar the count reaches
+    is more use than saying the totals differ.
+
+    Returns (chords, bars), both empty when no chart is
+    given, since chords are optional.
+    """
+
+    from chords import read_chart, ChartError
+
+    if chart_text is None or chart_text.strip() == "":
+        return [], []
+
+    try:
+        chords, bars = read_chart(chart_text)
+
+    except ChartError as problem:
+        raise MusicInputError(str(problem))
+
+    if durations is None:
+        return chords, bars
+
+    music_beats = sum(durations)
+
+    chart_length = 0.0
+
+    if bars:
+        last_start, last_length = bars[-1]
+        chart_length = last_start + last_length
+
+    if abs(chart_length - music_beats) > 0.01:
+
+        raise MusicInputError(
+            f"The chart covers {chart_length:g} beats in "
+            f"{len(bars)} bars, but the music lasts "
+            f"{music_beats:g} beats. They have to be the "
+            f"same length."
+        )
+
+    return chords, bars
+
+
 def sung_count(pitches):
     """
     How many of these entries are actually sung.
@@ -296,7 +344,8 @@ def play_music(
     harmony_on=False,
     bpm=120,
     metronome=True,
-    harmony_choice="Third below"
+    harmony_choice="Third below",
+    chart_text=""
 ):
     """
     Build the playback from independent layers.
@@ -313,6 +362,11 @@ def play_music(
     )
 
     bpm = check_bpm(bpm)
+
+    # Read now so a mistake in the chart is reported when
+    # the music is generated, rather than later when
+    # something tries to use it.
+    read_chords(chart_text, durations)
 
     sample_rate = 8000
 
@@ -852,7 +906,8 @@ def show_target_music(
     lyric_text="",
     key="C",
     harmony_on=False,
-    harmony_choice="Third below"
+    harmony_choice="Third below",
+    chart_text=""
 ):
     """
     Draw the target music as a score-like picture.
@@ -1216,7 +1271,14 @@ def load_twinkle_phrase():
         "Twin- kle twin- kle lit- tle star"
     )
 
-    return pitches, durations, lyrics, "C"
+    # Two bars of four. The tune sits on C until the
+    # rising sixth, which the F chord underneath is what
+    # makes that moment sound like an arrival.
+    chart = (
+        "| C . . . | F . C . |"
+    )
+
+    return pitches, durations, lyrics, "C", chart
 
 
 def load_wellerman_phrase():
@@ -1233,15 +1295,26 @@ def load_wellerman_phrase():
     # the dominant above. The line ends with a rest, which
     # is where a singer breathes before the next line.
     pitches = (
-        "A3 D4 D4 D4 D4 F4 A4 A4 A4 R"
+        "A3 D4 D4 D4 D4 F4 A4 A4 A4"
     )
 
+    # Eight beats: two bars of four. Checked against a
+    # published arrangement, which writes the same rhythm
+    # with these note values and runs the line straight on
+    # without a rest, the next line arriving on the bar.
     durations = (
-        "1/2 1/2 1/4 1/4 1/2 1/2 1/2 1/2 1 3/2"
+        "1 1 1/2 1/2 1 1 1 1 1"
     )
 
     lyrics = (
         "There once was a ship that put to sea"
     )
 
-    return pitches, durations, lyrics, "F"
+    # The whole line sits on the tonic minor, which is
+    # part of why a crowd can join in without knowing the
+    # song: there is nothing to follow but the tune.
+    chart = (
+        "| Dm . . . | Dm . . . |"
+    )
+
+    return pitches, durations, lyrics, "F", chart

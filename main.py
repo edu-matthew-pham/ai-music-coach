@@ -89,6 +89,15 @@ with gr.Blocks(
              "beat, 1/3 a triplet. Decimals work too."
     )
 
+    chart_input = gr.Textbox(
+        label="Chords (optional)",
+        value="",
+        info="A chart in bars of beats, as in "
+             "| Dm . Bb . | F . . . |  Each token is one "
+             "beat and a dot holds the chord on. The bars "
+             "set the metre, so | C . . | is three four."
+    )
+
     lyric_input = gr.Textbox(
         label="Lyrics (optional)",
         value="Twin- kle twin- kle lit- tle star",
@@ -389,6 +398,7 @@ with gr.Blocks(
         duration_input,
         lyric_input,
         key_input,
+        chart_input,
         midi_upload,
         track_input,
         phrase_input,
@@ -405,12 +415,16 @@ with gr.Blocks(
         outputs=example_outputs
     )
 
+    # An imported file brings no chords, so the chart is
+    # cleared rather than left describing music that has
+    # been replaced.
     music_outputs = [
         pitch_input,
         duration_input,
         lyric_input,
         bpm_input,
-        import_feedback
+        import_feedback,
+        chart_input
     ]
 
     def unchanged(count):
@@ -454,6 +468,7 @@ with gr.Blocks(
             lyrics,
             bpm,
             gr.update(value=feedback, visible=True),
+            "",
             gr.update(
                 choices=phrases,
                 value=chosen,
@@ -528,7 +543,8 @@ with gr.Blocks(
             harmony_input,
             bpm_input,
             metronome_input,
-            harmony_choice_input
+            harmony_choice_input,
+            chart_input
         ],
         outputs=generated_audio
     ).then(
@@ -540,7 +556,8 @@ with gr.Blocks(
             lyric_input,
             key_input,
             harmony_input,
-            harmony_choice_input
+            harmony_choice_input,
+            chart_input
         ],
         outputs=target_plot
     )

@@ -113,7 +113,7 @@ def test_melody_and_harmony_mix_together():
 
 
 def test_load_twinkle_phrase():
-    pitches, durations, lyrics, key = load_twinkle_phrase()
+    pitches, durations, lyrics, key, chart = load_twinkle_phrase()
 
     # The phrase ends with a rest: somewhere to breathe
     # before the line repeats.
@@ -138,7 +138,7 @@ def test_load_wellerman_phrase_is_playable_and_harmonisable():
     )
     from harmony import make_harmony
 
-    pitches, durations, lyrics, key = load_wellerman_phrase()
+    pitches, durations, lyrics, key, chart = load_wellerman_phrase()
 
     pitch_list, duration_list = read_music(pitches, durations)
 
@@ -381,7 +381,7 @@ def test_every_example_is_complete_and_singable():
 
     for loader in (load_twinkle_phrase, load_wellerman_phrase):
 
-        pitches, durations, lyrics, key = loader()
+        pitches, durations, lyrics, key, chart = loader()
 
         pitch_list, duration_list = read_music(
             pitches, durations
@@ -419,7 +419,7 @@ def test_examples_fill_whole_bars():
 
     for loader in (load_twinkle_phrase, load_wellerman_phrase):
 
-        pitches, durations, lyrics, key = loader()
+        pitches, durations, lyrics, key, chart = loader()
 
         pitch_list, duration_list = read_music(
             pitches, durations
@@ -434,8 +434,8 @@ def test_examples_fill_whole_bars():
 
 def test_examples_return_everything_the_boxes_need():
     """
-    An example fills the pitch, duration and lyric boxes
-    and sets the key. The interface appends its own
+    An example fills the pitch, duration, lyric and chord
+    boxes and sets the key. The interface appends its own
     updates to clear any imported file, so the count here
     is what that wiring depends on.
     """
@@ -446,9 +446,58 @@ def test_examples_return_everything_the_boxes_need():
 
         values = loader()
 
-        assert len(values) == 4
+        assert len(values) == 5
 
-        pitches, durations, lyrics, key = values
+        pitches, durations, lyrics, key, chart = values
 
         assert len(pitches.split()) == len(durations.split())
         assert key in MAJOR_SCALES
+
+
+def test_every_example_brings_a_chart_that_fits_it():
+    """
+    An example is a whole piece of music, chords included,
+    and a chart that did not match its melody would be a
+    worked example of the mistake.
+    """
+
+    from music import (
+        load_wellerman_phrase,
+        read_music,
+        read_chords
+    )
+
+    for loader in (load_twinkle_phrase, load_wellerman_phrase):
+
+        pitches, durations, lyrics, key, chart = loader()
+
+        pitch_list, duration_list = read_music(
+            pitches, durations
+        )
+
+        # Raises if the chart and the music disagree.
+        chords, bars = read_chords(chart, duration_list)
+
+        assert len(chords) > 0
+        assert len(bars) > 0
+
+
+def test_the_wellerman_line_is_two_bars_of_four():
+    """
+    Checked against a published arrangement: the line runs
+    eight beats and the next line arrives on the bar, with
+    no rest between. Written as two bars of three it would
+    put the downbeat in a different place each time round.
+    """
+
+    from music import load_wellerman_phrase, read_music, read_chords
+
+    pitches, durations, lyrics, key, chart = load_wellerman_phrase()
+
+    pitch_list, duration_list = read_music(pitches, durations)
+
+    assert sum(duration_list) == 8.0
+
+    chords, bars = read_chords(chart, duration_list)
+
+    assert bars == [(0.0, 4.0), (4.0, 4.0)]

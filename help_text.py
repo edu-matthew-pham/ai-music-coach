@@ -66,6 +66,24 @@ Anything the import fills in can be edited by hand
 afterwards. The boxes are the music; the file is only how
 it got there.
 
+## Chords
+
+The **Chords** box is optional, and written in bars of
+beats:
+
+    | Dm .  Bb . | F  .  .  . |
+    | Dm .  .    | F  .  .    |
+
+Each token is one beat and a dot holds the chord on, so
+the first line is two bars of four with a chord change
+halfway through the first. The bars set the metre
+themselves: three slots to a bar is three four.
+
+The chart has to last as long as the music, but it does
+not have to line up with it note for note. A chord covers
+many notes, and a syncopated melody crosses the bar lines
+freely.
+
 ## Keys and harmony
 
 **Detect key** reads the notes and tells you what key they
