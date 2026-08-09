@@ -167,3 +167,72 @@ def test_a_syncopated_melody_needs_no_alignment():
 def test_chart_beats_counts_the_whole_chart():
     assert chart_beats("| C . . . | G . . . |") == 8.0
     assert chart_beats("") == 0.0
+
+
+def test_chord_symbols_are_drawn_above_the_music():
+    """
+    A chart belongs above the notes, as a lead sheet
+    prints it.
+    """
+
+    from tuning_plot import make_performance_plot
+
+    chords, bars = read_chart("| C . . . | F . C . |")
+
+    figure = make_performance_plot(
+        ["C4", "E4", "G4", "C5", "G4", "E4", "C4", "C4"],
+        [1.0] * 8,
+        120,
+        None,
+        chords=chords,
+        bars=bars
+    )
+
+    axes = figure.axes[0]
+
+    labels = [text.get_text() for text in axes.texts]
+
+    assert labels.count("C") >= 2
+    assert "F" in labels
+
+    # Above the highest note, not among the boxes.
+    lowest, highest = axes.get_ylim()
+
+    for text in axes.texts:
+        if text.get_text() in ("C", "F"):
+            assert text.get_position()[1] > highest - 2
+
+
+def test_bar_lines_are_drawn_for_every_bar():
+    from tuning_plot import make_performance_plot
+
+    chords, bars = read_chart("| C . . . | F . . . | G . . . |")
+
+    figure = make_performance_plot(
+        ["C4"] * 12,
+        [1.0] * 12,
+        120,
+        None,
+        chords=chords,
+        bars=bars
+    )
+
+    axes = figure.axes[0]
+
+    # One at the start of each bar and one at the end.
+    assert len(axes.lines) >= len(bars) + 1
+
+
+def test_a_picture_without_chords_is_unchanged():
+    """
+    Chords are optional, and music without them draws
+    exactly as it did before.
+    """
+
+    from tuning_plot import make_performance_plot
+
+    figure = make_performance_plot(
+        ["C4", "E4"], [1.0, 1.0], 120, None
+    )
+
+    assert len(figure.axes[0].lines) == 0

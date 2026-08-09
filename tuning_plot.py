@@ -40,7 +40,9 @@ def make_performance_plot(
     transpose=0,
     lyrics=None,
     title="What you sang, over what was written",
-    harmony=None
+    harmony=None,
+    chords=None,
+    bars=None
 ):
     """
     Draw what was sung over what was written.
@@ -54,6 +56,11 @@ def make_performance_plot(
     When a harmony line is given, it appears as a second
     voice in its own colour, sharing the same time axis so
     the two parts read together the way a duet is printed.
+
+    Chords and bar lines are drawn where a lead sheet puts
+    them: symbols above the music, bar lines behind it. The
+    melody is not obliged to agree with either, since a
+    note may begin off the beat and run across a change.
     """
 
     seconds_per_beat = 60 / bpm
@@ -194,7 +201,48 @@ def make_performance_plot(
             highest = max(highest, float(np.max(sung)))
 
     axes.set_xlim(0, start_time)
-    axes.set_ylim(lowest - 2, highest + 2)
+
+    # Room above the music for the chord symbols.
+    headroom = 4 if chords else 2
+
+    axes.set_ylim(lowest - 2, highest + headroom)
+
+    # Bar lines behind everything, faint enough to read
+    # the music through.
+    if bars:
+        for bar_start, bar_length in bars:
+            axes.axvline(
+                bar_start * seconds_per_beat,
+                color="#90a4ae",
+                linewidth=0.8,
+                linestyle="-",
+                alpha=0.5,
+                zorder=0
+            )
+
+        last_start, last_length = bars[-1]
+
+        axes.axvline(
+            (last_start + last_length) * seconds_per_beat,
+            color="#90a4ae",
+            linewidth=0.8,
+            alpha=0.5,
+            zorder=0
+        )
+
+    # Chord symbols above the music, at the moment each
+    # chord arrives, as a lead sheet prints them.
+    if chords:
+        for chord_start, chord_length, name in chords:
+            axes.text(
+                chord_start * seconds_per_beat + 0.05,
+                highest + headroom - 1,
+                name,
+                fontsize=9,
+                fontweight="bold",
+                color="#37474f",
+                va="center"
+            )
 
     # Label the pitch axis with note names rather than
     # MIDI numbers, since players think in notes.

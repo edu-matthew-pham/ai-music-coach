@@ -691,7 +691,8 @@ def analyse_performance(
     lyric_text="",
     part="Melody",
     key="C",
-    harmony_choice="Third below"
+    harmony_choice="Third below",
+    chart_text=""
 ):
     """
     Compare a recording against the target music.
@@ -778,13 +779,17 @@ def analyse_performance(
 
     trace = trace_performance(audio)
 
+    chords, bars = read_chords(chart_text, durations)
+
     performance_plot = make_performance_plot(
         pitches,
         durations,
         bpm,
         trace,
         transpose,
-        lyrics
+        lyrics,
+        chords=chords,
+        bars=bars
     )
 
     return (
@@ -824,7 +829,8 @@ def make_practice_guide(
     guide_choice,
     part="Melody",
     key="C",
-    harmony_choice="Third below"
+    harmony_choice="Third below",
+    chart_text=""
 ):
     """
     The audio that plays while a performance is recorded.
@@ -939,6 +945,8 @@ def show_target_music(
             steps=read_harmony_choice(harmony_choice)
         )
 
+    chords, bars = read_chords(chart_text, durations)
+
     return make_performance_plot(
         pitches,
         durations,
@@ -946,7 +954,9 @@ def show_target_music(
         trace=None,
         lyrics=lyrics,
         title="The target music",
-        harmony=harmony
+        harmony=harmony,
+        chords=chords,
+        bars=bars
     )
 
 

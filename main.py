@@ -624,7 +624,8 @@ with gr.Blocks(
             lyric_input,
             part_input,
             key_input,
-            harmony_choice_input
+            harmony_choice_input,
+            chart_input
         ],
         outputs=[
             feedback_output,
