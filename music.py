@@ -1651,6 +1651,16 @@ def import_midi_file(
             "is left empty."
         )
 
+    # The key setting the detected key calls for, so that
+    # harmony, the chord spelling and the pitch axis all
+    # start from the right place. Everything else the
+    # import fills is set from the file; leaving this one
+    # behind means the music arrives in the wrong key
+    # until someone notices.
+    detected = detect_key(all_pitches, all_durations)[0][0]
+
+    key_setting = key_setting_for(detected)
+
     if chart_text:
 
         lines.append(
@@ -1689,7 +1699,9 @@ def import_midi_file(
         lyric_text,
         bpm,
         " ".join(lines),
-        chart_text
+        chart_text,
+        chart_notes,
+        key_setting
     )
 
 

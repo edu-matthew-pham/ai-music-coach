@@ -78,7 +78,16 @@ def test_real_file_imports_into_playable_music(path):
 
     assert len(labels) > 0
 
-    pitches, durations, lyrics, bpm, feedback, chart = (
+    (
+        pitches,
+        durations,
+        lyrics,
+        bpm,
+        feedback,
+        chart,
+        chart_notes,
+        key
+        ) = (
         import_midi_file(path, labels[0])
     )
 
@@ -148,7 +157,16 @@ def test_every_phrase_of_a_real_file_imports(path):
 
     for label in phrases:
 
-        pitches, durations, lyrics, bpm, feedback, chart = (
+        (
+            pitches,
+            durations,
+            lyrics,
+            bpm,
+            feedback,
+            chart,
+            chart_notes,
+            key
+            ) = (
             import_midi_file(path, tracks[0], label)
         )
 
@@ -452,3 +470,69 @@ def test_clearing_the_lyric_box_forgets_them():
     assert saved
 
     assert not remember_lyrics(saved, "0:0", "Phrase 1", "   ")
+
+
+def test_importing_sets_the_key_the_music_is_in():
+    """
+    Everything else the import fills is set from the file.
+    Leaving the key behind means the harmony, the chord
+    spelling and the pitch axis all work from the wrong
+    place until someone notices.
+    """
+
+    import os
+
+    from music import list_midi_tracks, import_midi_file
+    from harmony import MAJOR_SCALES
+
+    expected = {
+        "o-holy-night-satb.mid": "D",
+        "d_ML_10791.mid": "Eb",
+        "d_FR1924.mid": "Bb"
+    }
+
+    for name, key in expected.items():
+
+        path = os.path.join(
+            os.path.dirname(__file__),
+            "fixtures", "midi", name
+        )
+
+        if not os.path.exists(path):
+            continue
+
+        parts = list_midi_tracks(path)
+
+        imported = import_midi_file(path, parts[0])
+
+        assert imported[7] == key, f"{name}: got {imported[7]}"
+
+        # And it is a key the app can actually be set to.
+        assert imported[7] in MAJOR_SCALES
+
+
+def test_a_minor_piece_is_set_to_its_relative_major():
+    """
+    The key setting names a signature, so a piece in C
+    minor arrives as E flat major: the same seven notes,
+    and the setting harmony is built from.
+    """
+
+    import os
+
+    from music import list_midi_tracks, import_midi_file
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "d_ML_10791.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the band arrangement fixture is absent")
+
+    parts = list_midi_tracks(path)
+
+    imported = import_midi_file(path, parts[0])
+
+    assert "C minor" in imported[4]
+    assert imported[7] == "Eb"

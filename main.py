@@ -526,7 +526,9 @@ with gr.Blocks(
         lyric_input,
         bpm_input,
         import_feedback,
-        chart_input
+        chart_input,
+        key_input,
+        chart_notes_state
     ]
 
     def unchanged(count):
@@ -562,9 +564,16 @@ with gr.Blocks(
         # first phrase.
         chosen = phrases[0] if len(phrases) == 2 else phrases[1]
 
-        pitches, durations, lyrics, bpm, feedback, chart = (
-            import_midi_file(file_path, track_label, chosen)
-        )
+        (
+            pitches,
+            durations,
+            lyrics,
+            bpm,
+            feedback,
+            chart,
+            chart_notes,
+            key
+        ) = import_midi_file(file_path, track_label, chosen)
 
         return (
             pitches,
@@ -573,6 +582,8 @@ with gr.Blocks(
             bpm,
             gr.update(value=feedback, visible=True),
             chart,
+            key,
+            chart_notes,
             gr.update(
                 choices=phrases,
                 value=chosen,
@@ -605,10 +616,17 @@ with gr.Blocks(
         if file_path is None or phrase_label is None:
             return unchanged(len(music_outputs))
 
-        pitches, durations, lyrics, bpm, feedback, chart = (
-            import_midi_file(
-                file_path, track_label, phrase_label
-            )
+        (
+            pitches,
+            durations,
+            lyrics,
+            bpm,
+            feedback,
+            chart,
+            chart_notes,
+            key
+        ) = import_midi_file(
+            file_path, track_label, phrase_label
         )
 
         return (
@@ -617,7 +635,9 @@ with gr.Blocks(
             lyrics,
             bpm,
             gr.update(value=feedback, visible=True),
-            chart
+            chart,
+            key,
+            chart_notes
         )
 
     midi_upload.upload(

@@ -60,9 +60,9 @@ def returned_counts(function):
 
 # Each handler, and how many outputs it is wired to.
 HANDLERS = {
-    "import_and_show": 8,
-    "import_track": 7,
-    "reimport_phrase": 6
+    "import_and_show": 10,
+    "import_track": 9,
+    "reimport_phrase": 8
 }
 
 
@@ -88,7 +88,7 @@ def test_handlers_return_what_they_are_wired_to(name, expected):
 # interface has to unpack exactly this many, and a mistake
 # here is invisible until someone presses the control.
 RETURN_COUNTS = {
-    "import_midi_file": 6,
+    "import_midi_file": 8,
     "list_midi_tracks": 1,
     "list_midi_phrases": 1
 }
@@ -179,7 +179,7 @@ def test_the_music_outputs_list_is_the_length_expected():
                 isinstance(target, ast.Name)
                 and target.id == "music_outputs"
             ):
-                assert len(node.value.elts) == 6
+                assert len(node.value.elts) == 8
 
                 return
 

@@ -250,7 +250,16 @@ def test_import_feedback_does_not_claim_harmony_is_unavailable():
         if "Pan Flute" in label or "Grand Piano" in label
     ]
 
-    pitches, durations, lyrics, bpm, feedback, chart = (
+    (
+        pitches,
+        durations,
+        lyrics,
+        bpm,
+        feedback,
+        chart,
+        chart_notes,
+        key
+        ) = (
         import_midi_file(path, chromatic[0])
     )
 
