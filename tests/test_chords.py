@@ -616,9 +616,12 @@ def test_the_bass_sings_the_root_of_each_chord():
 
     line = make_bass(pitches, durations, voiced)
 
-    # One note per chord, repeated: C, C, C, C, F, F, C.
+    # One note per chord, repeated. The F is above the C
+    # rather than below it: a fourth up is a shorter
+    # journey than a fifth down, and it keeps the line off
+    # the floor of the range.
     assert line == [
-        "C3", "C3", "C3", "C3", "F2", "F2", "C3"
+        "C3", "C3", "C3", "C3", "F3", "F3", "C3"
     ]
 
     # And every note is the root, not just any chord tone.
@@ -672,7 +675,7 @@ def test_a_bass_performance_is_judged_against_the_bass():
     pitches, durations, lyrics, key, chart = load_twinkle_phrase()
 
     rate, sound = make_melody(
-        ["C3", "C3", "C3", "C3", "F2", "F2", "C3", "R"],
+        ["C3", "C3", "C3", "C3", "F3", "F3", "C3", "R"],
         [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.5, 0.5],
         120, 8000
     )
@@ -857,3 +860,66 @@ def test_sharp_keys_keep_their_sharps():
     assert midi_to_note(58, "F") == "Bb3"
     assert midi_to_note(58, "D") == "A#3"
     assert midi_to_note(58) == "A#3"
+
+
+def test_the_bass_moves_by_the_shortest_step():
+    """
+    A bass line walks. Anchoring each root independently
+    from the bottom of the range produces leaps nobody
+    would write.
+    """
+
+    from harmony import bass_octave_for
+    from notes import note_to_midi, midi_to_note
+
+    # From C3, the F above is nearer than the F below.
+    from_c = bass_octave_for(
+        note_to_midi("F4") % 12,
+        note_to_midi("C3")
+    )
+
+    assert midi_to_note(from_c) == "F3"
+
+    # From A3, the same F is nearer below.
+    from_a = bass_octave_for(
+        note_to_midi("F4") % 12,
+        note_to_midi("A3")
+    )
+
+    assert midi_to_note(from_a) == "F3"
+
+
+def test_the_bass_stays_in_a_range_people_can_sing():
+    """
+    A line that drops to F2 because the arithmetic allowed
+    it asks for a note most people cannot support, and one
+    the detector can barely hear.
+    """
+
+    from harmony import (
+        make_bass,
+        BASS_LOWEST_MIDI,
+        BASS_HIGHEST_MIDI
+    )
+    from notes import note_to_midi
+
+    for chart in [
+        "| C . G . | Am . F . |",
+        "| G . D . | Em . C . |",
+        "| Bb . F . | Eb . Bb . |"
+    ]:
+
+        chords, bars = read_chart(chart)
+
+        voiced = [
+            (start, length, chord_semitones(name))
+            for start, length, name in chords
+        ]
+
+        beats = int(sum(length for start, length in bars))
+
+        line = make_bass(["C4"] * beats, [1.0] * beats, voiced)
+
+        for note in line:
+            assert BASS_LOWEST_MIDI <= note_to_midi(note)
+            assert note_to_midi(note) <= BASS_HIGHEST_MIDI

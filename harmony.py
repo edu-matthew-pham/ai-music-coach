@@ -401,11 +401,56 @@ def make_chord_harmony(
     return harmony
 
 
-# Where a bass line sings. Low enough to be heard as the
-# bottom of the harmony rather than as a second tune, and
-# inside what a bass voice can actually reach.
-BASS_LOWEST_MIDI = 40
-BASS_HIGHEST_MIDI = 55
+# Where a bass line sings: G2 to A3.
+#
+# Low enough to be heard as the bottom of the harmony
+# rather than as a second tune, but a working range rather
+# than the extremes. A bass can reach E2, and singing
+# there is another matter; a line that drops to F2 because
+# the arithmetic allowed it asks for a note most people
+# cannot support, and one the detector can barely hear.
+BASS_LOWEST_MIDI = 43
+BASS_HIGHEST_MIDI = 57
+
+# Where the line starts before it has anywhere to move
+# from. Middle of the range, so it has room either way.
+BASS_HOME_MIDI = 48
+
+
+def bass_octave_for(root, previous=None):
+    """
+    Which octave of a root note the bass should sing.
+
+    Whichever is nearest the note before it. A bass line
+    moves by the smallest interval it can: from C, an F a
+    fourth above is a shorter journey than an F a fifth
+    below, and it keeps the line off the floor of the
+    range. Anchoring each root independently from the
+    bottom of the range instead produces leaps nobody
+    would write and notes lower than most voices reach.
+    """
+
+    target = BASS_HOME_MIDI if previous is None else previous
+
+    candidates = []
+
+    midi_number = BASS_LOWEST_MIDI + (
+        (root - BASS_LOWEST_MIDI) % 12
+    )
+
+    while midi_number <= BASS_HIGHEST_MIDI:
+        candidates.append(midi_number)
+        midi_number += 12
+
+    if not candidates:
+        return BASS_LOWEST_MIDI + (
+            (root - BASS_LOWEST_MIDI) % 12
+        )
+
+    return min(
+        candidates,
+        key=lambda value: abs(value - target)
+    )
 
 
 def make_bass(pitches, durations, chords):
@@ -423,11 +468,17 @@ def make_bass(pitches, durations, chords):
     what the rest of the app reads, but consecutive notes
     over one chord are the same note repeated rather than
     a line of their own.
+
+    Each root is sung in whichever octave sits closest to
+    the note before it, so the line walks rather than
+    leaping about the range.
     """
 
     line = []
 
     beat = 0.0
+
+    previous = None
 
     for position in range(len(pitches)):
 
@@ -450,16 +501,14 @@ def make_bass(pitches, durations, chords):
 
         else:
 
-            root = tones[0]
-
-            midi_number = BASS_LOWEST_MIDI + (
-                (root - BASS_LOWEST_MIDI) % 12
+            midi_number = bass_octave_for(
+                tones[0],
+                previous
             )
 
-            if midi_number > BASS_HIGHEST_MIDI:
-                midi_number -= 12
-
             line.append(midi_to_note(midi_number))
+
+            previous = midi_number
 
         beat += length
 
