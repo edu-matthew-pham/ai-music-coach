@@ -336,28 +336,6 @@ def test_phrases_break_where_the_music_rests(tmp_path):
     assert "5 notes" in described[0][1]
 
 
-def test_a_phrase_imports_on_its_own(tmp_path):
-    path = make_gapped_file(
-        str(tmp_path / "two_phrases.mid"),
-        [
-            [60, 62, 64, 65],
-            [72, 74, 76, 77]
-        ]
-    )
-
-    pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(
-        path,
-        phrase_number=1
-    )
-
-    # The phrase is padded out to the bars around it, so
-    # its chords, bar lines and downbeats have somewhere
-    # to sit. The rests are the count before it and the
-    # breath after.
-    assert "C5 D5 E5 F5" in pitches
-    assert pitches.startswith("R")
-    assert pitches.endswith("R")
-
 
 def test_short_phrases_are_joined_to_the_next(tmp_path):
     """
@@ -380,15 +358,6 @@ def test_short_phrases_are_joined_to_the_next(tmp_path):
     assert len(described) == 1
     assert "7 notes" in described[0][1]
 
-
-def test_asking_for_a_phrase_that_is_not_there(tmp_path):
-    path = make_gapped_file(
-        str(tmp_path / "one.mid"),
-        [[60, 62, 64, 65]]
-    )
-
-    with pytest.raises(MidiImportError, match="not in this music"):
-        import_midi(path, phrase_number=9)
 
 
 def test_nothing_is_lost_when_a_track_is_split(tmp_path):
@@ -595,53 +564,6 @@ def test_each_voice_keeps_its_own_words(tmp_path):
 
     assert lower == "Ah ah ah"
 
-
-def test_a_phrase_keeps_only_its_own_words(tmp_path):
-    """
-    Lifting one phrase out of a piece must lift its words
-    with it, not the words of the whole song.
-    """
-
-    midi_file = mido.MidiFile(ticks_per_beat=480)
-
-    # Four notes, since a shorter phrase would be folded
-    # into the one after it.
-    track = write_voice(
-        midi_file,
-        [(60, 1), (62, 1), (64, 1), (65, 1)],
-        ["There", "once", "was", "a"]
-    )
-
-    # A rest, then a second phrase with its own words.
-    for position, (number, word) in enumerate(
-        [(65, "put"), (67, "to"), (69, "sea"), (71, "now")]
-    ):
-        track.append(
-            mido.MetaMessage(
-                "lyrics",
-                text=word,
-                time=480 if position == 0 else 0
-            )
-        )
-        track.append(
-            mido.Message(
-                "note_on", note=number, velocity=80, time=0
-            )
-        )
-        track.append(
-            mido.Message(
-                "note_off", note=number, velocity=0, time=480
-            )
-        )
-
-    path = str(tmp_path / "phrases.mid")
-    midi_file.save(path)
-
-    pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(
-        path, phrase_number=1
-    )
-
-    assert lyrics == "put to sea now"
 
 
 def test_unmatched_lyrics_are_left_out(tmp_path):
@@ -949,3 +871,68 @@ def test_every_note_in_a_real_file_is_read():
     )
 
     assert len(ours) == theirs
+
+
+def test_importing_brings_the_whole_part():
+    """
+    The import used to cut the music into phrases, which
+    meant the phrasing was decided before anyone could see
+    it and could not be changed afterwards without loading
+    the file again.
+    """
+
+    import os
+
+    from midi_import import import_midi
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "o-holy-night-satb.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the satb fixture is not present")
+
+    pitches, durations, lyrics, bpm, chart, notes = import_midi(
+        path, track_number=1
+    )
+
+    # The soprano line entire, not one phrase of it.
+    assert len(pitches.split()) > 100
+
+
+def test_the_phrasing_guess_is_written_as_line_breaks():
+    """
+    Where the splitter thinks the phrases fall is written
+    into the lyrics, where it can be corrected by pressing
+    Enter. Nothing reads the guess again afterwards.
+    """
+
+    import os
+
+    from midi_import import import_midi
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "d_ML_10791.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the band arrangement fixture is absent")
+
+    pitches, durations, lyrics, bpm, chart, notes = import_midi(
+        path, track_number=0, channel=0
+    )
+
+    assert "\n" in lyrics
+
+    # And the syllables still match the sung notes, since
+    # a line break is only whitespace.
+    from music import read_music
+    from notes import is_rest
+
+    pitch_list, duration_list = read_music(pitches, durations)
+
+    sung = len([p for p in pitch_list if not is_rest(p)])
+
+    assert len(lyrics.split()) == sung

@@ -22,6 +22,8 @@ from music import (
     import_midi_file,
     list_midi_tracks,
     list_midi_phrases,
+    list_phrases,
+    selected_piece,
     phrase_number_from,
     remember_lyrics,
     play_music,
@@ -117,9 +119,13 @@ with gr.Blocks(
     lyric_input = gr.Textbox(
         label="Lyrics (optional)",
         value="Twin- kle twin- kle lit- tle star",
+        lines=5,
+        max_lines=20,
         info="One syllable per note. A trailing hyphen "
              "joins a word across notes, _ holds a "
-             "syllable through another note."
+             "syllable through another note. Each line is "
+             "a phrase: press Enter to divide one, "
+             "Backspace to join two."
     )
 
     with gr.Row():
@@ -177,9 +183,9 @@ with gr.Blocks(
     phrase_input = gr.Dropdown(
         [],
         label="Which phrase to practise",
-        info="A long piece is divided where the music "
-             "rests. Pick a phrase, or take the whole "
-             "track at once.",
+        info="Each line of the lyrics is a phrase. Press "
+             "Enter in the lyrics to add one, or "
+             "Backspace to join two.",
         visible=False
     )
 
@@ -402,53 +408,32 @@ with gr.Blocks(
             visible=True
         )
 
-    def keep_lyrics(saved, file_path, track_label, phrase_label,
-                    lyric_text):
+    def phrases_now(pitch_text, duration_text, lyric_text,
+                    chosen):
         """
-        Remember what has been typed, and name the phrase
-        by it.
+        Rebuild the phrase list from the boxes.
+
+        A line break added to the lyrics adds a phrase the
+        moment it is typed, so the list follows the words
+        rather than the file.
         """
 
-        kept = remember_lyrics(
-            saved, track_label, phrase_label, lyric_text
-        )
+        labels = list_phrases(pitch_text, duration_text, lyric_text)
 
-        if file_path is None or track_label is None:
-            return kept, gr.update()
+        if chosen not in labels:
+            chosen = labels[0]
 
-        try:
-            phrases = list_midi_phrases(
-                file_path, track_label, kept
-            )
-
-        except MusicInputError:
-            return kept, gr.update()
-
-        # The chosen phrase keeps its place in the list
-        # even though its name has changed.
-        chosen = phrase_label
-
-        if phrase_label in phrases:
-            chosen = phrase_label
-
-        else:
-            number = phrase_number_from(phrase_label)
-
-            if number is not None and number + 1 < len(phrases):
-                chosen = phrases[number + 1]
-
-        return kept, gr.update(choices=phrases, value=chosen)
+        return gr.update(choices=labels, value=chosen)
 
     lyric_input.blur(
-        fn=keep_lyrics,
+        fn=phrases_now,
         inputs=[
-            saved_lyrics_state,
-            midi_upload,
-            track_input,
-            phrase_input,
-            lyric_input
+            pitch_input,
+            duration_input,
+            lyric_input,
+            phrase_input
         ],
-        outputs=[saved_lyrics_state, phrase_input]
+        outputs=phrase_input
     )
 
     detect_chords_button.click(
@@ -545,24 +530,17 @@ with gr.Blocks(
 
     def import_track(file_path, track_label, saved_lyrics=None):
         """
-        Import a track, and offer the phrases it holds.
+        Import a part, whole.
 
-        A whole piece is more than anyone practises at
-        once, so it arrives divided where the music rests,
-        with the first phrase loaded.
+        The boxes hold all of it, with the phrasing written
+        into the lyrics as line breaks. The dropdown below
+        is a view on that: choosing a phrase cuts to it
+        without reloading anything, and pressing Enter in
+        the lyrics changes where the phrases fall.
         """
 
         if file_path is None:
             return unchanged(len(music_outputs) + 1)
-
-        phrases = list_midi_phrases(
-            file_path, track_label, saved_lyrics
-        )
-
-        # Take the whole track when it is short enough to
-        # be one phrase anyway, otherwise start with the
-        # first phrase.
-        chosen = phrases[0] if len(phrases) == 2 else phrases[1]
 
         (
             pitches,
@@ -573,7 +551,9 @@ with gr.Blocks(
             chart,
             chart_notes,
             key
-        ) = import_midi_file(file_path, track_label, chosen)
+        ) = import_midi_file(file_path, track_label)
+
+        phrases = list_phrases(pitches, durations, lyrics)
 
         return (
             pitches,
@@ -586,8 +566,8 @@ with gr.Blocks(
             chart_notes,
             gr.update(
                 choices=phrases,
-                value=chosen,
-                visible=len(phrases) > 2
+                value=phrases[0],
+                visible=len(phrases) > 1
             )
         )
 
@@ -611,35 +591,6 @@ with gr.Blocks(
             ),
         )
 
-    def reimport_phrase(file_path, track_label, phrase_label):
-
-        if file_path is None or phrase_label is None:
-            return unchanged(len(music_outputs))
-
-        (
-            pitches,
-            durations,
-            lyrics,
-            bpm,
-            feedback,
-            chart,
-            chart_notes,
-            key
-        ) = import_midi_file(
-            file_path, track_label, phrase_label
-        )
-
-        return (
-            pitches,
-            durations,
-            lyrics,
-            bpm,
-            gr.update(value=feedback, visible=True),
-            chart,
-            key,
-            chart_notes
-        )
-
     midi_upload.upload(
         fn=guard(import_and_show),
         inputs=[midi_upload, saved_lyrics_state],
@@ -652,11 +603,12 @@ with gr.Blocks(
         outputs=music_outputs + [phrase_input]
     )
 
-    phrase_input.change(
-        fn=guard(reimport_phrase),
-        inputs=[midi_upload, track_input, phrase_input],
-        outputs=music_outputs
-    )
+    # Choosing a phrase changes nothing in the boxes. It
+    # is a view on the music already there, and the
+    # handlers below cut to it when they run. Reloading the
+    # file here is what made phrasing unfixable: the
+    # dropdown was the only way to see a phrase and the
+    # file was the only thing that decided them.
 
     generate_button.click(
         fn=guard(play_music),
@@ -688,7 +640,8 @@ with gr.Blocks(
             chart_input,
             harmony_style_input,
             bass_input,
-            chart_notes_state
+            chart_notes_state,
+            phrase_input
         ],
         outputs=target_plot
     )
@@ -759,7 +712,8 @@ with gr.Blocks(
             key_input,
             harmony_choice_input,
             chart_input,
-            harmony_style_input
+            harmony_style_input,
+            phrase_input
         ],
         outputs=[
             feedback_output,

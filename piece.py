@@ -262,7 +262,11 @@ class Piece:
         if not chords:
             return ""
 
-        length = int(round(closed - opened))
+        # Rounded up, since a chart has to cover the music
+        # it sits over and is written in whole beats.
+        import math
+
+        length = int(math.ceil(closed - opened - 0.01))
 
         if length <= 0:
             return ""

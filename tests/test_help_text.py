@@ -113,13 +113,12 @@ def test_the_interface_ignores_events_with_no_file():
 
     # Every handler that takes a file guards against its
     # absence before asking the music layer for anything.
-    assert interface.count("if file_path is None") >= 3
+    assert interface.count("if file_path is None") >= 2
 
     # And the guard comes before the work in each case.
     for handler in [
         "def import_and_show",
-        "def import_track",
-        "def reimport_phrase"
+        "def import_track"
     ]:
         start = interface.index(handler)
         body = interface[start:start + 600]

@@ -3,6 +3,7 @@
 import numpy as np
 
 from chords import chord_semitones
+from piece import Piece
 from playback import (
     make_melody,
     make_accompaniment,
@@ -254,7 +255,16 @@ def read_chords(chart_text, durations=None):
         last_start, last_length = bars[-1]
         chart_length = last_start + last_length
 
-    if abs(chart_length - music_beats) > 0.01:
+    # A chart is written in whole beats, and music does not
+    # have to end on one: a phrase closing on the second
+    # half of a beat still sits under a chord that lasts
+    # the whole of it. So the chart may run past the end of
+    # the music by up to a beat, and may not fall short of
+    # it at all.
+    if (
+        chart_length < music_beats - 0.01
+        or chart_length >= music_beats + 1
+    ):
 
         raise MusicInputError(
             f"The chart covers {chart_length:g} beats in "
@@ -452,7 +462,9 @@ def play_music(
     chart_text="",
     chords_on=False,
     harmony_style="Thirds, chord-corrected",
-    bass_on=False
+    bass_on=False,
+    lyric_text="",
+    phrase_label=None
 ):
     """
     Build the playback from independent layers.
@@ -463,10 +475,14 @@ def play_music(
     silence that looks like a failure.
     """
 
-    pitches, durations = read_music(
-        pitch_text,
-        duration_text
+    piece = selected_piece(
+        pitch_text, duration_text, lyric_text, key,
+        chart_text, phrase_label
     )
+
+    pitches = piece.pitches
+    durations = piece.durations
+    chart_text = piece.chart
 
     bpm = check_bpm(bpm)
 
@@ -862,7 +878,8 @@ def analyse_performance(
     key="C",
     harmony_choice="Third below",
     chart_text="",
-    harmony_style="Thirds, chord-corrected"
+    harmony_style="Thirds, chord-corrected",
+    phrase_label=None
 ):
     """
     Compare a recording against the target music.
@@ -880,10 +897,15 @@ def analyse_performance(
             "Record or upload a performance first."
         )
 
-    pitches, durations = read_music(
-        pitch_text,
-        duration_text
+    piece = selected_piece(
+        pitch_text, duration_text, lyric_text, key,
+        chart_text, phrase_label
     )
+
+    pitches = piece.pitches
+    durations = piece.durations
+    chart_text = piece.chart
+    lyric_text = piece.lyrics or ""
 
     if part in ("Harmony", "Bass"):
         pitches = part_notes(
@@ -1176,7 +1198,8 @@ def show_target_music(
     chart_text="",
     harmony_style="Thirds, chord-corrected",
     bass_on=False,
-    chart_notes=None
+    chart_notes=None,
+    phrase_label=None
 ):
     """
     Draw the target music as a score-like picture.
@@ -1187,17 +1210,18 @@ def show_target_music(
     voice, the way a duet is printed.
     """
 
-    pitches, durations = read_music(
-        pitch_text,
-        duration_text
+    piece = selected_piece(
+        pitch_text, duration_text, lyric_text, key,
+        chart_text, phrase_label
     )
+
+    pitches = piece.pitches
+    durations = piece.durations
+    chart_text = piece.chart
 
     bpm = check_bpm(bpm)
 
-    lyrics = read_lyrics(
-        lyric_text,
-        sung_count(pitches)
-    )
+    lyrics = read_lyrics(piece.lyrics or "", piece.sung())
 
     harmony = None
 
@@ -1470,6 +1494,104 @@ def list_midi_tracks(file_path):
     ]
 
 
+def list_phrases(pitch_text, duration_text, lyric_text):
+    """
+    The phrases the music in the boxes divides into.
+
+    Read from the boxes rather than from the file, because
+    the boxes are what the player has been correcting. A
+    line break added to the lyrics adds a phrase here the
+    moment it is typed.
+    """
+
+    from piece import Piece
+
+    try:
+        piece = Piece.read(pitch_text, duration_text, lyric_text)
+
+    except MusicInputError:
+        return [WHOLE_PART]
+
+    found = piece.phrases()
+
+    if len(found) <= 1:
+        return [WHOLE_PART]
+
+    labels = [WHOLE_PART]
+
+    lines = [
+        line for line in (lyric_text or "").split("\n")
+        if line.strip()
+    ]
+
+    for position in range(len(found)):
+
+        first, last = found[position]
+
+        if position < len(lines):
+
+            from midi_import import join_syllables
+
+            opening = join_syllables(lines[position].split())
+
+        else:
+            opening = " ".join(piece.pitches[first:first + 5])
+
+        labels.append(
+            f"Phrase {position + 1}: {opening}"
+        )
+
+    return labels
+
+
+def phrase_chosen(label):
+    """
+    Which phrase a dropdown label refers to, or None for
+    the whole part.
+    """
+
+    if label is None or label == WHOLE_PART:
+        return None
+
+    try:
+        return int(str(label).split()[1].rstrip(":")) - 1
+
+    except (IndexError, ValueError):
+        return None
+
+
+def selected_piece(
+    pitch_text,
+    duration_text,
+    lyric_text="",
+    key="C",
+    chart_text="",
+    phrase_label=None
+):
+    """
+    The music being worked on: the whole part, or one
+    phrase of it.
+
+    Everything the app does to a stretch of music goes
+    through here, so that the notes, the words under them
+    and the chords over them are always cut to the same
+    place.
+    """
+
+    from piece import Piece
+
+    piece = Piece.read(
+        pitch_text, duration_text, lyric_text, key, chart_text
+    )
+
+    number = phrase_chosen(phrase_label)
+
+    if number is None:
+        return piece
+
+    return piece.phrase(number)
+
+
 def phrase_key(track_label, phrase_label):
     """
     How a phrase is remembered.
@@ -1575,6 +1697,8 @@ def with_saved_lyrics(label, track_label, saved):
 # The dropdown entry meaning no phrase in particular.
 WHOLE_TRACK = "Whole track"
 
+WHOLE_PART = "Whole part"
+
 
 def phrase_number_from(label):
     """
@@ -1625,8 +1749,7 @@ def track_number_from(label):
 
 def import_midi_file(
     file_path,
-    track_label=None,
-    phrase_label=None
+    track_label=None
 ):
     """
     Fill the music boxes from an uploaded MIDI file.
@@ -1660,8 +1783,7 @@ def import_midi_file(
             import_midi(
                 file_path,
                 track_number=track_number_from(track_label)[0],
-                channel=track_number_from(track_label)[1],
-                phrase_number=phrase_number_from(phrase_label)
+                channel=track_number_from(track_label)[1]
             )
         )
 
@@ -1681,11 +1803,6 @@ def import_midi_file(
         if channel is not None:
             source = str(track_label).split("  ", 1)[-1]
             source = source.split(",")[0]
-
-    phrase_number = phrase_number_from(phrase_label)
-
-    if phrase_number is not None:
-        source += f", phrase {phrase_number + 1}"
 
     lines = [
         f"Imported {note_count} notes from {source} "

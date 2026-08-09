@@ -20,7 +20,7 @@ import pytest
 from midi_import import (
     describe_tracks,
     import_midi,
-    BEAT_FRACTIONS
+    WRITABLE_LENGTHS as BEAT_FRACTIONS
 )
 from music import (
     import_midi_file,
@@ -44,11 +44,16 @@ MIDI_FILES = sorted(
 
 def allowed_duration(text):
     """
-    Whether a duration is one the importer can produce.
+    Whether a duration is one that can be written down.
 
     The text is read back with the app's own parser, so a
     length written as a fraction is checked the same way
     the music boxes would read it.
+
+    Checked against everything writable rather than against
+    the plain lengths a recording is rounded to: five
+    quarters of a beat is a crotchet tied to a quaver, and
+    a quantised part is full of them.
     """
 
     value = read_beats(text)
@@ -148,32 +153,39 @@ def test_every_phrase_of_a_real_file_imports(path):
     stand on its own as music the app can use.
     """
 
+    from piece import Piece
+
     tracks = list_midi_tracks(path)
 
-    phrases = list_midi_phrases(path, tracks[0])
+    (
+        pitches,
+        durations,
+        lyrics,
+        bpm,
+        feedback,
+        chart,
+        chart_notes,
+        key
+    ) = import_midi_file(path, tracks[0])
 
-    # The whole track, plus at least one phrase.
-    assert len(phrases) >= 2
+    # The import brings the whole part, and the phrases
+    # are the lines of the lyrics within it.
+    whole = Piece.read(pitches, durations, lyrics, key, chart)
 
-    for label in phrases:
+    assert len(whole.phrases()) >= 1
 
-        (
-            pitches,
-            durations,
-            lyrics,
-            bpm,
-            feedback,
-            chart,
-            chart_notes,
-            key
-            ) = (
-            import_midi_file(path, tracks[0], label)
-        )
+    for number in range(len(whole.phrases())):
 
-        pitch_list = pitches.split()
+        phrase = whole.phrase(number)
 
-        assert len(pitch_list) > 0
-        assert len(pitch_list) == len(durations.split())
+        assert len(phrase.pitches) > 0
+
+        # A phrase is a piece in its own right: as many
+        # lengths as notes, and its own words and chords.
+        assert len(phrase.pitches) == len(phrase.durations)
+
+        if phrase.lyrics:
+            assert len(phrase.lyrics.split()) == phrase.sung()
 
 
 def test_o_holy_night_divides_into_singable_phrases():

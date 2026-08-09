@@ -949,7 +949,7 @@ def test_a_phrase_is_padded_to_whole_bars():
     for phrase in range(6):
 
         pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(
-            path, track_number=1, phrase_number=phrase
+            path, track_number=1
         )
 
         pitch_list, duration_list = read_music(pitches, durations)
@@ -978,7 +978,7 @@ def test_an_imported_chart_fits_its_music():
     for phrase in range(8):
 
         pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(
-            path, track_number=1, phrase_number=phrase
+            path, track_number=1
         )
 
         pitch_list, duration_list = read_music(pitches, durations)
@@ -1006,7 +1006,7 @@ def test_chords_come_from_every_voice_not_the_one_sung():
         pytest.skip("the satb fixture is not present")
 
     pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(
-        path, track_number=1, phrase_number=0
+        path, track_number=1
     )
 
     chords, bars = read_chart(chart)

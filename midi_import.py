@@ -94,6 +94,86 @@ def beats_from_seconds(seconds, bpm):
 # compound time leans on dotted values, and leaving them
 # out does not merely round one note: the error repeats
 # and the phrase drifts out of time.
+# The longest a single note or rest may be, in beats.
+#
+# Longer silences are written as bars of rest instead,
+# which is what a singer counting through an instrumental
+# verse actually counts. Nobody writes fourteen and a
+# quarter beats of nothing as one mark, and nobody could
+# read it.
+LONGEST_LENGTH = 8
+
+
+def written_lengths():
+    """
+    Every note length that can be written down.
+
+    Built from the rules rather than listed, because a
+    list is always missing something. Five quarters of a
+    beat looks like an odd number until you notice it is a
+    crotchet tied to a quaver, which is written constantly
+    and was simply absent from the list we had.
+
+    The rules are few. A note is a whole, half, quarter,
+    eighth or sixteenth of a beat, doubled up to four
+    beats. Any of those may be dotted, which adds half
+    again, or double dotted, which adds three quarters.
+    Any may be a triplet, which takes two thirds of the
+    time. And any two may be tied together, which is how
+    everything else in music gets written.
+    """
+
+    plain = [
+        1 / 4, 1 / 2, 1.0, 2.0, 4.0, 8.0,
+        1 / 8, 1 / 16
+    ]
+
+    values = set()
+
+    for length in plain:
+
+        values.add(length)
+
+        # Dotted, and double dotted.
+        values.add(length * 1.5)
+        values.add(length * 1.75)
+
+        # Triplets: three in the time of two.
+        values.add(length * 2 / 3)
+
+    # Whole beats, up to the longest single mark.
+    for beats in range(1, LONGEST_LENGTH + 1):
+        values.add(float(beats))
+
+    # Tied pairs, which is how a length that is not itself
+    # a note value gets written.
+    tied = set()
+
+    for first in values:
+        for second in values:
+
+            if first + second <= LONGEST_LENGTH:
+                tied.add(first + second)
+
+    return sorted(values | tied)
+
+
+# Two different questions, kept apart.
+#
+# What a length may be, when someone types it or a file
+# holds it, is anything that can be written down: five
+# quarters of a beat is a crotchet tied to a quaver, and
+# refusing it would be refusing ordinary notation.
+WRITABLE_LENGTHS = written_lengths()
+
+
+# What a length is rounded to, when a recorded performance
+# has to be cleaned up, is a much shorter list. Rounding to
+# everything writable rounds to nothing at all: a note
+# played at 0.98 beats would find some tied triplet within
+# a thousandth of it and stay crooked. These are the plain
+# lengths music is mostly made of, and rounding to them is
+# what turns a performance back into a score.
 BEAT_FRACTIONS = [
     # Triplets.
     1 / 3, 2 / 3, 4 / 3, 8 / 3,
@@ -111,8 +191,143 @@ BEAT_FRACTIONS = [
     2.0, 2.75, 3.0, 3.5,
 
     # Whole notes and longer.
-    4.0, 6.0, 7.0, 8.0
+    4.0, 5.0, 6.0, 7.0, 8.0
 ]
+
+
+# The grids a player might have been aiming at. A piece is
+# written on one of them: sixteenths, or triplets, or plain
+# eighths. Allowing all of them at once is what produces
+# lengths like a sixth of a beat, which nobody writes.
+GRIDS = [1 / 4, 1 / 3, 1 / 2]
+
+# How much better a less usual grid has to fit before it is
+# believed.
+CLEARLY_BETTER = 0.5
+
+
+def find_grid(melody):
+    """
+    Work out what the player was aiming at.
+
+    A recorded file holds a performance, not a score: its
+    notes fall at 1.15 and 1.70 beats because a person
+    played them. What was written can be recovered, because
+    the misses are small and scattered around the intended
+    positions rather than anywhere at all - so the grid
+    that the notes sit nearest to is the one the music was
+    written on.
+    """
+
+    if len(melody) < 2:
+        return GRIDS[0]
+
+    opening = melody[0][0]
+
+    missed = {}
+
+    for grid in GRIDS:
+
+        missed[grid] = sum(
+            abs(
+                (start - opening) / grid
+                - round((start - opening) / grid)
+            ) * grid
+            for start, length, number in melody
+        ) / len(melody)
+
+    plain = GRIDS[0]
+
+    best = plain
+
+    for grid in GRIDS[1:]:
+
+        # The plain grid is preferred unless another fits
+        # clearly better. Most music is not in triplets,
+        # and a handful of notes can sit near enough to any
+        # grid by chance: reading triplets into a piece
+        # that has none rewrites its rhythm.
+        if missed[grid] < missed[best] * CLEARLY_BETTER:
+            best = grid
+
+    return best
+
+
+# How far a file's note lengths may sit from written ones
+# before it is treated as a performance rather than a
+# score.
+WRITTEN_ENOUGH = 0.01
+
+
+def already_written(melody):
+    """
+    Whether a file holds notation or a performance.
+
+    A file written by a notation program has exact lengths
+    already: a dotted quaver is a dotted quaver. A file
+    recorded by a person does not, and its lengths sit a
+    little either side of what was meant.
+
+    The difference matters because putting a written file
+    on a grid can only damage it. Music mixes triplets with
+    plain lengths freely, and one grid cannot hold both, so
+    a bar of triplets inside a straight piece would be
+    rewritten as something nobody played. Left alone, it
+    survives exactly.
+    """
+
+    if not melody:
+        return True
+
+    missed = sum(
+        min(abs(length - written) for written in BEAT_FRACTIONS)
+        for start, length, number in melody
+    ) / len(melody)
+
+    return missed <= WRITTEN_ENOUGH
+
+
+def quantise(melody, grid=None):
+    """
+    Put a performance back onto the grid it was written on.
+
+    Each note begins at the nearest grid point and lasts
+    until the next one begins, so every length is a whole
+    number of grid steps and the part adds up exactly.
+
+    This is what rounding each length on its own could not
+    do. Those roundings are all small and all independent,
+    so they accumulate: a hundred and sixty of them leave
+    the Wellerman a third of a beat short of where its bars
+    say it should end, and no bar line after the first one
+    falls where it belongs. Fixing the positions instead of
+    the lengths fixes both at once.
+    """
+
+    if not melody:
+        return melody
+
+    if grid is None:
+        grid = find_grid(melody)
+
+    opening = melody[0][0]
+
+    placed = []
+
+    for start, length, number in melody:
+
+        at = round((start - opening) / grid) * grid + opening
+
+        ends = round((start + length - opening) / grid) * grid + opening
+
+        # A note too short to survive the rounding still
+        # has to be heard, and is given one step.
+        if ends <= at:
+            ends = at + grid
+
+        placed.append((at, ends - at, number))
+
+    return placed
 
 
 def snap_to_beat(beats):
@@ -744,7 +959,30 @@ def lyrics_with_line_breaks(melody, phrases, syllables):
     return "\n".join(lines)
 
 
-def notes_to_text(melody, span=None):
+def write_rest(durations, pitches, silence, beats_per_bar=4):
+    """
+    Write a silence out as rests.
+
+    A long silence is bars of rest, not one enormous
+    number. Nobody writes fourteen and a quarter beats of
+    nothing as a single mark, and nobody could read it: a
+    singer counting through an instrumental verse counts
+    bars, and the box should say what they would count.
+    """
+
+    left = silence
+
+    while left > beats_per_bar + 0.001:
+        pitches.append(REST)
+        durations.append(beats_per_bar)
+        left -= beats_per_bar
+
+    if left > 0:
+        pitches.append(REST)
+        durations.append(left)
+
+
+def notes_to_text(melody, span=None, beats_per_bar=4):
     """
     Turn a list of notes into pitch and duration text.
 
@@ -759,6 +997,24 @@ def notes_to_text(melody, span=None):
     the last note is where they breathe.
     """
 
+    # A performance is put back on the grid it was written
+    # on. Notation is left exactly as it is.
+    written = already_written(melody)
+
+    if not written:
+        melody = quantise(melody)
+
+    def as_length(beats):
+        """
+        Once a performance is on the grid its lengths are
+        exact, and rounding them again to the nearest
+        written value undoes the work: a note of five
+        quarters is a real length even though it is not one
+        of the handful with a name.
+        """
+
+        return snap_to_beat(beats) if written else beats
+
     pitches = []
     durations = []
 
@@ -769,9 +1025,12 @@ def notes_to_text(melody, span=None):
         span_start, span_end = span
 
         if melody[0][0] > span_start:
-            pitches.append(REST)
-            durations.append(
-                snap_to_beat(melody[0][0] - span_start)
+
+            write_rest(
+                durations,
+                pitches,
+                snap_to_beat(melody[0][0] - span_start),
+                beats_per_bar
             )
 
     for start, length, midi_number in melody:
@@ -779,11 +1038,13 @@ def notes_to_text(melody, span=None):
         gap = start - previous_end
 
         if gap >= SHORTEST_REST:
-            pitches.append(REST)
-            durations.append(snap_to_beat(gap))
+
+            write_rest(
+                durations, pitches, as_length(gap), beats_per_bar
+            )
 
         pitches.append(midi_to_note(midi_number))
-        durations.append(snap_to_beat(length))
+        durations.append(as_length(length))
 
         previous_end = start + length
 
@@ -803,8 +1064,10 @@ def notes_to_text(melody, span=None):
         remaining = wanted - so_far
 
         if remaining >= SHORTEST_REST:
-            pitches.append(REST)
-            durations.append(remaining)
+
+            write_rest(
+                durations, pitches, remaining, beats_per_bar
+            )
 
         elif remaining and durations:
             durations[-1] += remaining
@@ -858,7 +1121,7 @@ def read_time_signature(midi_file):
 
 
 def import_midi(path, maximum_notes=None, track_number=None,
-                phrase_number=None, channel=None):
+                channel=None):
     """
     Turn a MIDI file into pitch, duration and lyric text.
 
@@ -884,34 +1147,20 @@ def import_midi(path, maximum_notes=None, track_number=None,
 
     melody = keep_melody(notes)
 
-    if phrase_number is not None:
-
-        phrases = split_into_phrases(
-            melody,
-            read_time_signature(midi_file),
-            bpm
-        )
-
-        if phrase_number < 0 or phrase_number >= len(phrases):
-            raise MidiImportError(
-                "That phrase is not in this music."
-            )
-
-        melody = phrases[phrase_number]
-
-        # A phrase is padded out to the bars around it, so
-        # that its chords, bar lines and downbeats all have
-        # somewhere to sit.
-        span = bar_span(melody, read_time_signature(midi_file))
-
-    else:
-        span = None
+    # The whole part comes back. It used to be cut into
+    # phrases here, which meant the phrasing was decided
+    # before anyone could see it and could not be changed
+    # afterwards without loading the file again. Now the
+    # guess is written into the lyrics as line breaks,
+    # where it can be corrected by pressing Enter.
+    span = None
 
     if maximum_notes is not None:
         melody = melody[:maximum_notes]
-        span = None
 
-    pitch_text, duration_text = notes_to_text(melody, span)
+    pitch_text, duration_text = notes_to_text(
+        melody, span, read_time_signature(midi_file)
+    )
 
     lyric_text = read_lyric_text(
         midi_file,
@@ -919,9 +1168,41 @@ def import_midi(path, maximum_notes=None, track_number=None,
         track_number
     )
 
+    guessed = split_into_phrases(
+        melody,
+        read_time_signature(midi_file),
+        bpm
+    )
+
+    if lyric_text:
+
+        lyric_text = lyrics_with_line_breaks(
+            melody,
+            guessed,
+            lyric_text.split()
+        )
+
     # Chords come from every voice sounding together, not
     # from the one being sung.
     all_notes, all_bpm = read_notes(midi_file)
+
+    # The chart has to be exactly as long as the music in
+    # the boxes, and the boxes hold lengths rounded to
+    # something singable. A played file drifts, so its
+    # notes add up to a little less or more than the
+    # ground they cover, and a chart measured against the
+    # file rather than against the boxes will not fit.
+    if span is None and melody:
+
+        from fractions import Fraction
+
+        from music import read_beats
+
+        written = sum(
+            read_beats(length) for length in duration_text.split()
+        )
+
+        span = (melody[0][0], melody[0][0] + written)
 
     chart_text, chart_notes = read_chart_text(
         midi_file,
@@ -986,13 +1267,21 @@ def read_chart_text(midi_file, notes, span, beats_per_bar=4):
     holds no chords, while the four parts of a hymn spell
     one out on every beat.
 
-    Only for a phrase, since that is what has been padded
-    to whole bars, and a chart has to fit the music it is
-    written above.
+    A chart has to fit the music written above it, so the
+    span decides how much is read. With no span it covers
+    the part entire, which is what the boxes now hold: the
+    phrases are cut from it afterwards, chart and all.
     """
 
     if span is None:
-        return "", []
+
+        if not notes:
+            return "", []
+
+        span = (
+            min(start for start, length, n in notes),
+            max(start + length for start, length, n in notes)
+        )
 
     from chord_detector import chart_from_notes
 

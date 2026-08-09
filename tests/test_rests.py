@@ -236,3 +236,60 @@ def test_every_way_in_reads_fractions():
     )
 
     assert "3 of 3" in text
+
+
+def test_a_long_silence_is_written_as_bars_of_rest():
+    """
+    Nobody writes fourteen and a quarter beats of nothing
+    as one mark, and nobody could read it. A singer
+    counting through an instrumental verse counts bars, and
+    the box should say what they would count.
+    """
+
+    from midi_import import write_rest
+
+    durations = []
+    pitches = []
+
+    write_rest(durations, pitches, 14.25, 4)
+
+    # Three whole bars and what is left of a fourth.
+    assert durations == [4, 4, 4, 2.25]
+    assert pitches == ["R"] * 4
+
+
+def test_a_short_silence_stays_one_rest():
+    from midi_import import write_rest
+
+    durations = []
+    pitches = []
+
+    write_rest(durations, pitches, 1.5, 4)
+
+    assert durations == [1.5]
+
+
+def test_no_imported_length_is_longer_than_a_bar():
+    import os
+
+    from midi_import import import_midi
+
+    from fractions import Fraction
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "d_ML_10791.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the band arrangement fixture is absent")
+
+    pitches, durations, lyrics, bpm, chart, notes = import_midi(
+        path, track_number=0, channel=0
+    )
+
+    longest = max(
+        float(Fraction(text)) for text in durations.split()
+    )
+
+    assert longest <= 4

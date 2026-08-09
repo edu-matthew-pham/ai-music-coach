@@ -61,8 +61,7 @@ def returned_counts(function):
 # Each handler, and how many outputs it is wired to.
 HANDLERS = {
     "import_and_show": 10,
-    "import_track": 9,
-    "reimport_phrase": 8
+    "import_track": 9
 }
 
 
