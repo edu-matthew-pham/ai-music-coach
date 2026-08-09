@@ -277,6 +277,105 @@ def sung_count(pitches):
     ])
 
 
+def lyric_line_breaks(lyric_text):
+    """
+    Which syllable each line of the lyrics begins on.
+
+    A line of a song is a phrase. Nothing in a MIDI file
+    says reliably where those fall - some files have no
+    rests, some are not written to bars at all - but anyone
+    who knows the song can see it at a glance, and typing
+    it is a keystroke.
+
+    So the phrase boundaries live in the lyrics box, as the
+    line breaks a person would type anyway:
+
+        There once was a ship that put to sea
+        The name of the ship was the Bil- ly o' Tea
+
+    Returns the syllable numbers where lines begin, not
+    counting the first. Empty when there is one line or no
+    lyrics, which means one phrase.
+    """
+
+    if not lyric_text:
+        return []
+
+    breaks = []
+
+    counted = 0
+
+    lines = lyric_text.split("\n")
+
+    for position in range(len(lines)):
+
+        syllables = lines[position].split()
+
+        if not syllables:
+            continue
+
+        if counted:
+            breaks.append(counted)
+
+        counted += len(syllables)
+
+    return breaks
+
+
+def phrases_from_lyrics(pitches, durations, lyric_text):
+    """
+    Where each phrase begins and ends, from the lyrics.
+
+    Returns a list of (first note, last note) pairs, one
+    per line of the lyrics. With no lyrics, or one line,
+    the whole thing is a single phrase.
+
+    Syllables are counted against sung notes, so a rest
+    between two lines belongs to the line it follows: the
+    breath at the end of a phrase is part of that phrase,
+    not the start of the next.
+    """
+
+    if not pitches:
+        return []
+
+    breaks = lyric_line_breaks(lyric_text)
+
+    if not breaks:
+        return [(0, len(pitches) - 1)]
+
+    # Syllable numbers count only sung notes, while the
+    # music counts rests too.
+    sung_to_note = [
+        position for position in range(len(pitches))
+        if not is_rest(pitches[position])
+    ]
+
+    starts = [0]
+
+    for syllable in breaks:
+
+        if syllable < len(sung_to_note):
+            starts.append(sung_to_note[syllable])
+
+    phrases = []
+
+    for position in range(len(starts)):
+
+        first = starts[position]
+
+        if position + 1 < len(starts):
+            last = starts[position + 1] - 1
+
+        else:
+            last = len(pitches) - 1
+
+        if last >= first:
+            phrases.append((first, last))
+
+    return phrases
+
+
 def read_lyrics(lyric_text, note_count):
     """
     Turn a lyrics textbox into one syllable per note.

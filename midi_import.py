@@ -697,6 +697,53 @@ def bar_span(phrase, beats_per_bar=4):
     return start, start + bars * beats_per_bar
 
 
+def lyrics_with_line_breaks(melody, phrases, syllables):
+    """
+    Write the lyrics out with a line break per phrase.
+
+    The splitter's guess at the phrasing, written where it
+    can be corrected. Nothing downstream reads the guess
+    again: from here the line breaks are the phrasing, and
+    changing one changes the music it divides.
+    """
+
+    if not syllables:
+        return ""
+
+    starts = set()
+
+    counted = 0
+
+    for phrase in phrases:
+
+        if counted:
+            starts.add(counted)
+
+        counted += len([
+            note for note in phrase
+            if True
+        ])
+
+    lines = []
+
+    current = []
+
+    for position in range(len(syllables)):
+
+        if position in starts and current:
+            lines.append(" ".join(current))
+            current = []
+
+        syllable = syllables[position]
+
+        current.append(syllable if syllable else HELD_SYLLABLE)
+
+    if current:
+        lines.append(" ".join(current))
+
+    return "\n".join(lines)
+
+
 def notes_to_text(melody, span=None):
     """
     Turn a list of notes into pitch and duration text.
@@ -1003,9 +1050,9 @@ def describe_phrases(path, track_number=None, channel=None):
 
     beats_per_bar = read_time_signature(midi_file)
 
-    phrases = split_into_phrases(melody, beats_per_bar, bpm)
-
     events = read_lyric_events(midi_file, track_number)
+
+    phrases = split_into_phrases(melody, beats_per_bar, bpm)
 
     described = []
 
@@ -1415,3 +1462,384 @@ def rank_parts(midi_file, parts):
         ordered.append(described)
 
     return ordered
+
+
+# Splitting a line of music into phrases.
+#
+# No single sign of a phrase ending is reliable. A rest is
+# the clearest, and legato arrangements have none at all. A
+# bar line is always there and knows nothing about where a
+# line of the song began. Lyrics are the strongest evidence
+# there is, and most files carry none.
+#
+# So the signs vote. A boundary has to be agreed on by more
+# than one before the music is cut there, and where they
+# disagree the phrase runs on. That is the right way to be
+# wrong: a phrase too long is still practisable - sing it,
+# breathe where you need to - while a phrase cut mid-line
+# is unusable and teaches a shape the song does not have.
+
+# What each sign is worth. A rest counts most because a
+# breath is what a phrase ending actually is; the rest are
+# corroboration.
+REST_EVIDENCE = 3.0
+LONG_NOTE_EVIDENCE = 2.0
+LYRIC_GAP_EVIDENCE = 2.5
+FOUR_BAR_EVIDENCE = 1.5
+TWO_BAR_EVIDENCE = 0.75
+
+# The least a boundary must show before it can be used at
+# all. One weak sign is not evidence of anything.
+SOME_EVIDENCE = 2.0
+
+# How close two boundaries have to be before they are
+# treated as the same one, as a fraction of a phrase.
+CLOSE_ENOUGH = 0.45
+
+# How far up its own file's boundaries a break has to sit.
+STANDS_OUT_SHARE = 0.5
+
+# How long a phrase should be, in seconds of singing.
+#
+# The threshold for cutting cannot be a fixed score,
+# because how much evidence a file offers is a property of
+# the file. A quantised hymn has rests and bar lines
+# agreeing at every line ending and scores six; a recorded
+# line has no rests and no bar lines and scores five at its
+# clearest break and nothing anywhere else. A number that
+# suits one silences the other.
+#
+# So the boundaries are ranked and the strongest taken:
+# as many as it takes to leave phrases of a length someone
+# can practise. The music decides where the cuts fall and
+# this decides how many.
+TARGET_PHRASE_SECONDS = 11
+
+# A note counts as long, and a gap as a rest, relative to
+# what is ordinary in this piece rather than by a fixed
+# number of beats. A crotchet is a long note in a piece of
+# semiquavers and a short one in a piece of minims.
+# What counts as long or as a gap is decided by where it
+# stands among the rest of the piece, not by a multiple of
+# the middle value.
+#
+# A multiple works where the music is varied and fails at
+# both extremes. In a hymn of even crotchets nothing is
+# ever long enough; in a slow ballad of held notes every
+# single note passes, and a measure that fires everywhere
+# says as little as one that never fires. Asking instead
+# which lengths are unusual for this piece gives the same
+# answer in both.
+UNUSUAL_SHARE = 0.9
+
+# Rests are measured from one note beginning to the next,
+# not from where a note stops sounding.
+#
+# Sequenced files shorten every note a little so that
+# repeated notes can be heard apart, which leaves a gap
+# after all of them. Measuring silence finds a rest
+# everywhere and phrases nowhere. What actually marks a
+# break is the next note arriving late: the pulse carrying
+# on with nothing on it.
+
+# How near a bar line a note must fall to count as being
+# on it, as a fraction of a bar. Played music drifts, and
+# a downbeat sung a little late is still a downbeat.
+BAR_TOLERANCE = 0.08
+
+
+# Past this a phrase is too long to practise whatever the
+# evidence says, and the best boundary available is taken.
+UNWIELDY_SECONDS = 30
+
+# And below this it is not worth offering on its own.
+LEAST_PHRASE_NOTES = 3
+
+
+def typical_length(melody):
+    """
+    The ordinary note length in a piece of music.
+
+    Used to judge what counts as a long note or a real
+    rest, since both are relative: a crotchet is long in a
+    piece of semiquavers and short in a piece of minims.
+    """
+
+    lengths = sorted(length for start, length, n in melody)
+
+    if not lengths:
+        return 1.0
+
+    return lengths[len(lengths) // 2]
+
+
+def unusually_large(values, share=UNUSUAL_SHARE):
+    """
+    The size a value must reach to be unusual here.
+
+    Everything is judged against the piece it belongs to.
+    """
+
+    ordered = sorted(values)
+
+    if not ordered:
+        return 0.0
+
+    place = min(
+        len(ordered) - 1,
+        int(len(ordered) * share)
+    )
+
+    return ordered[place]
+
+
+def typical_spacing(melody):
+    """
+    The ordinary distance from one note to the next.
+
+    The pulse of the music as written, which is what tells
+    a rest from a note merely played short.
+    """
+
+    if len(melody) < 2:
+        return 1.0
+
+    spacings = sorted(
+        melody[position][0] - melody[position - 1][0]
+        for position in range(1, len(melody))
+    )
+
+    return spacings[len(spacings) // 2] or 1.0
+
+
+def gather_evidence(melody, beats_per_bar, lyric_times=None):
+    """
+    How strongly each note is preceded by a phrase ending.
+
+    Returns a list of scores, one per note, saying how much
+    the signs agree that a new phrase begins there.
+    """
+
+    if len(melody) < 2:
+        return [0.0] * len(melody)
+
+    lengths = [length for start, length, n in melody]
+
+    spacings = [
+        melody[position][0] - melody[position - 1][0]
+        for position in range(1, len(melody))
+    ]
+
+    long_note = unusually_large(lengths)
+    real_rest = unusually_large(spacings)
+
+    # Where everything is the same size nothing is unusual,
+    # and the measure should stay quiet rather than fire at
+    # every note. A piece of even crotchets has no long
+    # notes in it, however the numbers are sliced.
+    if long_note <= typical_length(melody) * 1.05:
+        long_note = None
+
+    if real_rest <= typical_spacing(melody) * 1.05:
+        real_rest = None
+
+    # A short line has too few gaps for a share of them to
+    # mean anything, and one plain rest in ten notes is
+    # still a phrase ending. Below that, the largest gap
+    # speaks for itself if it is clearly larger.
+    if real_rest is None and len(spacings) >= 2:
+
+        largest = max(spacings)
+
+        if largest >= typical_spacing(melody) * 1.6:
+            real_rest = largest
+
+    first_bar_start = (
+        int(melody[0][0] // beats_per_bar) * beats_per_bar
+    )
+
+    scores = [0.0] * len(melody)
+
+    for position in range(1, len(melody)):
+
+        start = melody[position][0]
+
+        previous_start, previous_length, n = melody[position - 1]
+
+        previous_end = previous_start + previous_length
+
+        score = 0.0
+
+        # A breath: the next note arriving later than the
+        # pulse would have it.
+        if real_rest and start - previous_start >= real_rest:
+            score += REST_EVIDENCE
+
+        # A note held at the end of a line.
+        if long_note and previous_length >= long_note:
+            score += LONG_NOTE_EVIDENCE
+
+        # A gap in the words, where there are words.
+        if lyric_times:
+
+            before = [
+                time for time in lyric_times if time <= previous_end
+            ]
+
+            after = [time for time in lyric_times if time >= start]
+
+            if (
+                real_rest
+                and before
+                and after
+                and after[0] - before[-1] >= real_rest
+            ):
+                score += LYRIC_GAP_EVIDENCE
+
+        # Falling on a bar line, and how regular a one.
+        from_start = start - first_bar_start
+
+        # Played files are not quantised: a downbeat sung
+        # a fraction late is still a downbeat, and asking
+        # for exactness finds bar lines only in music
+        # typed by a machine.
+        on_bar = abs(
+            from_start / beats_per_bar
+            - round(from_start / beats_per_bar)
+        ) < BAR_TOLERANCE
+
+        if on_bar:
+
+            bars_in = round(from_start / beats_per_bar)
+
+            if bars_in % 4 == 0:
+                score += FOUR_BAR_EVIDENCE
+
+            elif bars_in % 2 == 0:
+                score += TWO_BAR_EVIDENCE
+
+        scores[position] = score
+
+    return scores
+
+
+def split_by_agreement(
+    melody,
+    beats_per_bar=4,
+    bpm=120,
+    lyric_times=None
+):
+    """
+    Divide a line into phrases where the signs agree.
+
+    NOT IN USE. Kept because the measurements in it are
+    sound and the failure is worth recording.
+
+    Inclusive by default: the music is only cut where more
+    than one sign of an ending falls together. The idea is
+    right and the thresholds are not. Every setting that
+    suits one file spoils another - a quantised hymn agrees
+    at six where a recorded line agrees at five and is
+    silent everywhere else, a slow ballad of held notes
+    makes every note look like an ending, and judging by
+    what is unusual for the piece only moves the problem to
+    how many boundaries the piece happens to have.
+
+    What the attempt did establish, and what any second
+    attempt should keep:
+
+    - rests must be measured from one note beginning to
+      the next, not from where a note stops sounding, or
+      sequenced files show a rest after every note
+    - played files are not quantised, so bar lines have to
+      be matched loosely or they never match at all
+    - some files have no rests and no bar alignment
+      whatever, and their phrases can only come from the
+      words or from nothing
+    - the signs genuinely do agree at real line endings;
+      it is choosing among them that is unsolved
+    """
+
+    if len(melody) == 0:
+        return []
+
+    scores = gather_evidence(melody, beats_per_bar, lyric_times)
+
+    total_beats = (
+        melody[-1][0] + melody[-1][1] - melody[0][0]
+    )
+
+    target = beats_from_seconds(TARGET_PHRASE_SECONDS, bpm)
+
+    # Two boundaries close together are the same ending
+    # seen twice: the rest before the last note of a line
+    # and the bar line after it both point at one break.
+    # Taking the stronger and setting aside its neighbours
+    # keeps phrases evenly sized, which taking the highest
+    # scores alone does not - they arrive in clusters and
+    # leave long stretches uncut between them.
+    apart = target * CLOSE_ENOUGH
+
+    # A boundary has to stand out among this file's own
+    # boundaries, not reach a fixed score. One file agrees
+    # at six and another at five, and neither number means
+    # anything outside the piece it came from.
+    speaking = [
+        scores[position]
+        for position in range(1, len(melody))
+        if scores[position] >= SOME_EVIDENCE
+    ]
+
+    if not speaking:
+        return [melody]
+
+    stands_out = unusually_large(speaking, STANDS_OUT_SHARE)
+
+    offered = [
+        (scores[position], position)
+        for position in range(1, len(melody))
+        if scores[position] >= max(SOME_EVIDENCE, stands_out)
+    ]
+
+    offered.sort(reverse=True)
+
+    chosen = []
+
+    for score, position in offered:
+
+        where = melody[position][0]
+
+        if any(
+            abs(where - melody[taken][0]) < apart
+            for taken in chosen
+        ):
+            continue
+
+        chosen.append(position)
+
+    chosen = sorted(chosen)
+
+    phrases = []
+
+    current = [melody[0]]
+
+    for position in range(1, len(melody)):
+
+        if (
+            position in chosen
+            and len(current) >= LEAST_PHRASE_NOTES
+        ):
+            phrases.append(current)
+            current = []
+
+        current.append(melody[position])
+
+    if current:
+
+        if phrases and len(current) < LEAST_PHRASE_NOTES:
+            phrases[-1] += current
+
+        else:
+            phrases.append(current)
+
+    return phrases
