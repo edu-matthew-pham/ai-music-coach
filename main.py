@@ -628,7 +628,9 @@ with gr.Blocks(
             chart_input,
             chords_input,
             harmony_style_input,
-            bass_input
+            bass_input,
+            lyric_input,
+            phrase_input
         ],
         outputs=generated_audio
     ).then(

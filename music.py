@@ -1291,7 +1291,7 @@ def key_setting_for(key_name):
 
 
 def suggest_chords(chart_notes, pitch_text, duration_text,
-                   key="C", harmony_key=None):
+                   key="C"):
     """
     Read the chords again from the music that was imported.
 
@@ -1326,16 +1326,13 @@ def suggest_chords(chart_notes, pitch_text, duration_text,
     # its own does not state its harmony, but it does
     # narrow it, and a suggested chart is somewhere to
     # start editing from.
-    return suggest_chords_for_melody(
-        pitches, durations, key, harmony_key
-    )
+    return suggest_chords_for_melody(pitches, durations, key)
 
 
 def suggest_chords_for_melody(
     pitches,
     durations,
-    key="C",
-    harmony_key=None
+    key="C"
 ):
     """
     Chords that would fit a melody, as a starting point.
@@ -1350,12 +1347,10 @@ def suggest_chords_for_melody(
             "harmonised."
         )
 
-    setting = harmony_key or key
-
     chart = suggest_chart_from_melody(
         pitches,
         durations,
-        setting,
+        key,
         minor=sounds_minor(pitches, durations)
     )
 

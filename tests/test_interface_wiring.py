@@ -183,3 +183,97 @@ def test_the_music_outputs_list_is_the_length_expected():
                 return
 
     pytest.fail("music_outputs was not found")
+
+
+def test_every_handler_is_given_as_many_inputs_as_it_takes():
+    """
+    A function wired to fewer inputs than it has parameters
+    runs perfectly well: the missing ones take their
+    defaults, and the feature they control quietly does
+    nothing.
+
+    That is how the phrase selection came to be ignored by
+    playback. The arguments were added to the function and
+    to two of the three places that call it, and the third
+    kept working, kept passing its tests, and kept playing
+    the whole part when a phrase had been chosen. Nothing
+    failed, which is what made it hard to see.
+    """
+
+    import inspect
+
+    import music
+
+    tree = parsed_interface()
+
+    checked = 0
+
+    for node in ast.walk(tree):
+
+        if not isinstance(node, ast.Call):
+            continue
+
+        # An event wiring: something.click(fn=..., inputs=...)
+        handler = None
+        inputs = None
+
+        for keyword in node.keywords:
+
+            if keyword.arg == "fn":
+                handler = keyword.value
+
+            elif keyword.arg == "inputs":
+                inputs = keyword.value
+
+        if handler is None or inputs is None:
+            continue
+
+        # Unwrap guard(...) around the handler.
+        if isinstance(handler, ast.Call):
+
+            if not handler.args:
+                continue
+
+            handler = handler.args[0]
+
+        name = getattr(handler, "id", None)
+
+        if name is None or not hasattr(music, name):
+            continue
+
+        function = getattr(music, name)
+
+        if not callable(function):
+            continue
+
+        # How many the interface sends.
+        if isinstance(inputs, ast.List):
+            sent = len(inputs.elts)
+
+        else:
+            sent = 1
+
+        signature = inspect.signature(function)
+
+        takes = len(signature.parameters)
+
+        required = len([
+            parameter
+            for parameter in signature.parameters.values()
+            if parameter.default is inspect.Parameter.empty
+        ])
+
+        checked += 1
+
+        assert sent >= required, (
+            f"{name} needs {required} inputs but is wired "
+            f"to {sent}"
+        )
+
+        assert sent == takes, (
+            f"{name} takes {takes} arguments but is wired "
+            f"to {sent}: the last {takes - sent} would "
+            f"silently keep their defaults"
+        )
+
+    assert checked >= 4
