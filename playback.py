@@ -2,7 +2,7 @@
 
 import math
 
-from notes import note_to_frequency, is_rest
+from notes import note_to_frequency, is_rest, midi_to_frequency
 
 
 # How many beats of clicks are played before the music, so
@@ -134,6 +134,236 @@ def add_metronome(sound, total_beats, bpm=120, sample_rate=8000,
     return combined
 
 
+# Where the accompaniment sits. Chords in the singer's own
+# octave muddy the line they are meant to support, so they
+# are voiced below it, in a guitar's range.
+CHORD_LOWEST_MIDI = 40
+CHORD_HIGHEST_MIDI = 64
+
+# A strummed chord does not sound all at once: the pick
+# crosses the strings, and that small stagger is most of
+# what makes it sound plucked rather than pressed.
+STRUM_SECONDS = 0.018
+
+# A string still ringing when the chord changes has to be
+# damped rather than cut, or the waveform jumps and the
+# change arrives with a click on it. This is a hand landing
+# on the strings: brief, and the reason a chord change
+# sounds like a chord change rather than a fault.
+CHORD_RELEASE_SECONDS = 0.02
+
+
+# How a plucked string decays, and the harmonics that give
+# it a body rather than the hollow tone of a bare sine.
+PLUCK_DECAY = 1.1
+PLUCK_HARMONICS = [
+    (1, 1.0),
+    (2, 0.4),
+    (3, 0.22),
+    (4, 0.12),
+    (5, 0.06)
+]
+
+
+def make_pluck(frequency, seconds, sample_rate=8000, loud=1.0):
+    """
+    One plucked string.
+
+    A sine alone sounds like a test tone. A string sounds
+    like a string because it starts loud and dies away, and
+    because it sounds several harmonics at once, quieter
+    the higher they go.
+    """
+
+    samples = int(seconds * sample_rate)
+
+    sound = []
+
+    for sample_number in range(samples):
+
+        time = sample_number / sample_rate
+
+        # Dying away is what makes it a pluck rather than
+        # a held note.
+        fade = math.exp(-PLUCK_DECAY * time)
+
+        value = 0.0
+
+        for multiple, strength in PLUCK_HARMONICS:
+
+            value += strength * math.sin(
+                2 * math.pi * frequency * multiple * time
+            )
+
+        sound.append(loud * fade * value / 2.2)
+
+    return sound
+
+
+def voice_chord(semitones):
+    """
+    Choose which notes of a chord to actually sound.
+
+    A chord is a set of pitch classes, not pitches. Voicing
+    it means picking an octave for each, low enough to sit
+    under a singer and spread enough not to sound muddy.
+    """
+
+    voiced = []
+
+    previous = CHORD_LOWEST_MIDI
+
+    for semitone in semitones:
+
+        # Take the next note of the chord above the last
+        # one, so the chord opens upward rather than
+        # bunching at the bottom.
+        midi_number = previous + (
+            (semitone - previous) % 12
+        )
+
+        if midi_number == previous:
+            midi_number += 12
+
+        if midi_number > CHORD_HIGHEST_MIDI:
+            break
+
+        voiced.append(midi_number)
+
+        previous = midi_number
+
+    return voiced
+
+
+def make_chord(semitones, beats, bpm=120, sample_rate=8000,
+               loud=0.8):
+    """
+    One strummed chord, filling the time given.
+
+    The strings are struck a moment apart, low to high, as
+    a hand crossing them would, and damped at the end so
+    that a chord still ringing when the next arrives stops
+    cleanly instead of clicking.
+    """
+
+    seconds_per_beat = 60 / bpm
+
+    total_seconds = beats * seconds_per_beat
+
+    samples = int(total_seconds * sample_rate)
+
+    sound = [0.0] * samples
+
+    voiced = voice_chord(semitones)
+
+    for position in range(len(voiced)):
+
+        frequency = midi_to_frequency(voiced[position])
+
+        start = int(
+            position * STRUM_SECONDS * sample_rate
+        )
+
+        string = make_pluck(
+            frequency,
+            total_seconds,
+            sample_rate,
+            loud=loud
+        )
+
+        for offset in range(len(string)):
+
+            index = start + offset
+
+            if index >= samples:
+                break
+
+            sound[index] += string[offset]
+
+    # Damp whatever is still ringing at the end.
+    release_samples = min(
+        int(CHORD_RELEASE_SECONDS * sample_rate),
+        len(sound)
+    )
+
+    for offset in range(release_samples):
+
+        index = len(sound) - release_samples + offset
+
+        fade = 1 - (offset / release_samples)
+
+        sound[index] *= fade
+
+    return sound
+
+
+def make_accompaniment(chords, bars, total_beats, bpm=120,
+                       sample_rate=8000):
+    """
+    A chord part to sing over.
+
+    The chord sounds when it arrives and again on each bar
+    line it lasts through. Struck only on the changes, a
+    chord held for four bars would ring once and then leave
+    the singer with nothing underneath at exactly the point
+    a long note is hardest to hold. Struck every bar, the
+    harmony and the beat both stay present.
+    """
+
+    seconds_per_beat = 60 / bpm
+
+    samples = int(total_beats * seconds_per_beat * sample_rate)
+
+    sound = [0.0] * samples
+
+    if not chords:
+        return sound
+
+    bar_starts = [start for start, length in bars or []]
+
+    for chord_start, chord_length, semitones in chords:
+
+        chord_end = chord_start + chord_length
+
+        # Where this chord is struck: when it arrives, and
+        # on any bar line before it ends.
+        moments = [chord_start]
+
+        for bar_start in bar_starts:
+            if chord_start < bar_start < chord_end:
+                moments.append(bar_start)
+
+        for position in range(len(moments)):
+
+            moment = moments[position]
+
+            if position + 1 < len(moments):
+                ring_until = moments[position + 1]
+
+            else:
+                ring_until = chord_end
+
+            struck = make_chord(
+                semitones,
+                ring_until - moment,
+                bpm,
+                sample_rate
+            )
+
+            start = int(moment * seconds_per_beat * sample_rate)
+
+            for offset in range(len(struck)):
+
+                index = start + offset
+
+                if index >= samples:
+                    break
+
+                sound[index] += struck[offset]
+
+    return sound
+
+
 def make_note(pitch, beats, bpm=120, sample_rate=8000):
     """
     Turn one musical note into a list of sound values.
@@ -203,6 +433,29 @@ def make_melody(
         melody.extend(note_sound)
 
     return sample_rate, melody
+
+
+def keep_in_range(sound, ceiling=0.95):
+    """
+    Quieten a mix that would otherwise clip.
+
+    Layers add up: melody, harmony, chords and clicks
+    together can pass what the speaker can play, and the
+    result is not loud but broken. Scaling the whole mix
+    down keeps the balance between the parts.
+    """
+
+    loudest = max(
+        (abs(value) for value in sound),
+        default=0.0
+    )
+
+    if loudest <= ceiling:
+        return sound
+
+    scale = ceiling / loudest
+
+    return [value * scale for value in sound]
 
 
 def mix_tracks(track_1, track_2):

@@ -313,3 +313,157 @@ def test_without_a_chart_every_click_is_the_same():
     ]
 
     assert max(loudest) - min(loudest) < 0.01
+
+
+def test_a_chord_is_voiced_below_a_singer():
+    """
+    Chords in the singer's own octave muddy the line they
+    are meant to support.
+    """
+
+    from playback import voice_chord, CHORD_HIGHEST_MIDI
+
+    for name in ["C", "Dm", "G7", "Bb"]:
+
+        voiced = voice_chord(chord_semitones(name))
+
+        assert len(voiced) >= 3
+
+        for midi_number in voiced:
+            assert midi_number <= CHORD_HIGHEST_MIDI
+
+        # Opening upward, not bunched at the bottom.
+        assert voiced == sorted(voiced)
+        assert len(set(voiced)) == len(voiced)
+
+
+def test_a_plucked_string_dies_away():
+    """
+    Starting loud and fading is most of what makes a
+    string sound plucked rather than pressed.
+    """
+
+    from playback import make_pluck
+
+    # Long enough to hear the decay: a guitar chord rings
+    # well past a beat, which is the point of it.
+    string = make_pluck(220, 3.0, 8000, loud=1.0)
+
+    beginning = max(abs(value) for value in string[:400])
+    end = max(abs(value) for value in string[-400:])
+
+    assert beginning > end * 5
+
+
+def test_the_chord_sounds_again_on_each_bar_line():
+    """
+    A chord held for several bars would ring once and
+    leave the singer with nothing underneath at exactly
+    the point a long note is hardest to hold.
+    """
+
+    import numpy as np
+
+    from playback import make_accompaniment
+
+    # One chord lasting two whole bars.
+    chords = [(0.0, 8.0, chord_semitones("C"))]
+    bars = [(0.0, 4.0), (4.0, 4.0)]
+
+    sound = np.array(
+        make_accompaniment(chords, bars, 8, 120, 8000)
+    )
+
+    def peak_at(beat):
+        start = int(beat * 0.5 * 8000)
+        return float(np.max(np.abs(sound[start:start + 400])))
+
+    # Struck at the start of each bar, quiet by the end of
+    # one.
+    assert peak_at(4) > peak_at(3) * 3
+    assert peak_at(0) > peak_at(3) * 3
+
+
+def test_no_chart_means_no_accompaniment():
+    from playback import make_accompaniment
+
+    sound = make_accompaniment([], [], 4, 120, 8000)
+
+    assert max(abs(value) for value in sound) == 0
+
+
+def test_chords_mix_with_the_melody():
+    import numpy as np
+
+    from music import play_music, load_twinkle_phrase
+
+    pitches, durations, lyrics, key, chart = load_twinkle_phrase()
+
+    rate, with_chords = play_music(
+        pitches, durations, key,
+        melody_on=True, harmony_on=False, bpm=120,
+        metronome=False, chart_text=chart, chords_on=True
+    )
+
+    rate, without = play_music(
+        pitches, durations, key,
+        melody_on=True, harmony_on=False, bpm=120,
+        metronome=False, chart_text=chart, chords_on=False
+    )
+
+    assert len(with_chords) == len(without)
+    assert not np.allclose(with_chords, without)
+
+
+def test_a_ringing_chord_is_damped_not_cut():
+    """
+    A string still sounding when the chord changes has to
+    be damped, or the waveform jumps and the change
+    arrives with a click on it.
+    """
+
+    import numpy as np
+
+    from playback import make_chord
+
+    sound = np.array(
+        make_chord(chord_semitones("C"), 2, 120, 8000)
+    )
+
+    # Whatever is left at the end is near silence, so the
+    # next chord starts from nothing.
+    assert abs(float(sound[-1])) < 0.01
+
+
+def test_layers_together_do_not_clip():
+    """
+    Four layers add up past what a speaker can play, and
+    the result is not loud but broken.
+    """
+
+    import numpy as np
+
+    from music import play_music, load_twinkle_phrase
+
+    pitches, durations, lyrics, key, chart = load_twinkle_phrase()
+
+    rate, audio = play_music(
+        pitches, durations, key,
+        melody_on=True, harmony_on=True, bpm=100,
+        metronome=True, chart_text=chart, chords_on=True
+    )
+
+    assert float(np.max(np.abs(audio))) <= 1.0
+
+
+def test_quiet_music_is_left_alone():
+    """
+    The limiter only acts when it has to, so a single
+    quiet layer keeps its level.
+    """
+
+    from playback import keep_in_range
+
+    quiet = [0.1, -0.2, 0.3]
+
+    assert keep_in_range(quiet) == quiet

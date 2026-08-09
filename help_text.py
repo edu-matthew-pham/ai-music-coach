@@ -79,6 +79,12 @@ the first line is two bars of four with a chord change
 halfway through the first. The bars set the metre
 themselves: three slots to a bar is three four.
 
+Switch **Chords** on in the playback section to hear the
+chart strummed underneath, voiced below the melody so it
+supports the line rather than covering it. A chord sounds
+when it arrives and again on each bar line it lasts
+through, so the harmony stays present under a long note.
+
 The chart has to last as long as the music, but it does
 not have to line up with it note for note. A chord covers
 many notes, and a syncopated melody crosses the bar lines

@@ -199,6 +199,13 @@ with gr.Blocks(
             label="Harmony interval"
         )
 
+        chords_input = gr.Checkbox(
+            value=False,
+            label="Chords",
+            info="Plays the chart, strummed, below the "
+                 "melody."
+        )
+
         metronome_input = gr.Checkbox(
             value=True,
             label="Metronome",
@@ -544,7 +551,8 @@ with gr.Blocks(
             bpm_input,
             metronome_input,
             harmony_choice_input,
-            chart_input
+            chart_input,
+            chords_input
         ],
         outputs=generated_audio
     ).then(

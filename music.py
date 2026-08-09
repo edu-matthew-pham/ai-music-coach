@@ -2,8 +2,11 @@
 
 import numpy as np
 
+from chords import chord_semitones
 from playback import (
     make_melody,
+    make_accompaniment,
+    keep_in_range,
     mix_tracks,
     make_count_in,
     add_metronome,
@@ -345,7 +348,8 @@ def play_music(
     bpm=120,
     metronome=True,
     harmony_choice="Third below",
-    chart_text=""
+    chart_text="",
+    chords_on=False
 ):
     """
     Build the playback from independent layers.
@@ -402,6 +406,23 @@ def play_music(
 
         layers.append(harmony_track)
 
+    if chords_on and chords:
+
+        voiced = [
+            (start, length, chord_semitones(name))
+            for start, length, name in chords
+        ]
+
+        layers.append(
+            make_accompaniment(
+                voiced,
+                bars,
+                sum(durations),
+                bpm,
+                sample_rate
+            )
+        )
+
     if len(layers) == 0:
         sound = [0.0] * total_samples
 
@@ -409,7 +430,10 @@ def play_music(
         sound = layers[0]
 
     else:
-        sound = mix_tracks(layers[0], layers[1])
+        sound = layers[0]
+
+        for extra in layers[1:]:
+            sound = mix_tracks(sound, extra)
 
     # The metronome always clicks when there are no notes,
     # so switching everything off gives a click track for
@@ -422,6 +446,10 @@ def play_music(
             sample_rate,
             bars=bars
         )
+
+    # Four layers can add up past what a speaker can play,
+    # which sounds broken rather than loud.
+    sound = keep_in_range(sound)
 
     audio_data = np.array(
         sound,
