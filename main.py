@@ -55,18 +55,55 @@ def guard(function):
 
 
 ANCHOR_CSS = """
-.anchor-nav {
-    position: sticky;
+/*
+ * A sticky bar only sticks if nothing above it in the page
+ * clips its scrolling. Gradio's wrappers set overflow on
+ * several ancestors, and any one of them silently turns
+ * position: sticky back into position: relative - no error,
+ * the bar simply scrolls away. So the chain is cleared
+ * first, then the bar is stuck.
+ */
+.gradio-container,
+.gradio-container .main,
+.gradio-container .wrap,
+.gradio-container .contain,
+.gradio-container > .wrap > .contain,
+#component-0,
+#anchor-nav-wrap {
+    overflow: visible !important;
+}
+
+/*
+ * Stuck on the component Gradio wraps the markup in, not on
+ * the markup: styling the inner div leaves Gradio's own
+ * block scrolling away with the bar inside it.
+ */
+#anchor-nav-wrap {
+    position: -webkit-sticky !important;
+    position: sticky !important;
     top: 0;
-    z-index: 100;
+    z-index: 1000;
     background: var(--body-background-fill);
     border-bottom: 1px solid var(--border-color-primary);
-    padding: 8px 0;
+    padding: 10px 0 8px;
+    margin-bottom: 4px;
 }
 .anchor-nav a {
     margin-right: 24px;
     font-weight: 600;
     text-decoration: none;
+    white-space: nowrap;
+}
+.anchor-nav a:hover {
+    text-decoration: underline;
+}
+
+/*
+ * A section jumped to should land below the bar rather than
+ * under it.
+ */
+#song, #arrange, #practice, #instruments {
+    scroll-margin-top: 64px;
 }
 """
 
@@ -109,7 +146,8 @@ with gr.Blocks(
     chart_notes_state = gr.State(None)
 
     gr.HTML(
-        '<div class="anchor-nav">'
+        elem_id="anchor-nav-wrap",
+        value='<div class="anchor-nav">'
         + anchor_link("Song", "song")
         + anchor_link("Arrange", "arrange")
         + anchor_link("Practice", "practice")
