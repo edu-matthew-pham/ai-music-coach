@@ -7,6 +7,8 @@ __pycache__/
 # pytest
 .pytest_cache/
 
+.DS_Store
+
 # Audio sample library (fixtures in tests/ are tracked)
 samples/
 sample_tests/

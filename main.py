@@ -66,337 +66,349 @@ with gr.Blocks(
     )
 
     gr.Markdown(
-        "Test the music, audio and ML systems "
-        "before connecting them into the full coach."
+        "Load a piece of music, get its reading right by "
+        "ear, then practise singing it and see how you did."
     )
 
-    # -----------------------------------------------------
-    # TARGET MUSIC
-    # -----------------------------------------------------
-
-    gr.Markdown(
-        "## Target Music"
-    )
-
+    # chart_notes is the imported polyphony, kept for the
+    # plot asides and Suggest chords. KNOWN HAZARD, logged
+    # in DESIGN.md: it is filled by import only, so heavy
+    # edits to the boxes leave it describing music that has
+    # changed, with no staleness signal. Anything newly
+    # wired to it inherits that.
     chart_notes_state = gr.State(None)
 
-    with gr.Accordion("How to use this", open=False):
-        gr.Markdown(HELP_TEXT)
+    with gr.Tabs():
 
-    pitch_input = gr.Textbox(
-        label="Pitches",
-        value="C4 C4 G4 G4 A4 A4 G4",
-        info="Notes like C4, F#4 or Bb3. Write a rest as R."
-    )
+        # -------------------------------------------------
+        # SONG: get music into the boxes
+        # -------------------------------------------------
 
-    duration_input = gr.Textbox(
-        label="Durations (beats)",
-        value="1 1 1 1 1 1 2",
-        info="One length per note, as a fraction of a beat. "
-             "1 is a beat, 1/2 an eighth note, 3/2 a dotted "
-             "beat, 1/3 a triplet. Decimals work too."
-    )
+        with gr.Tab("Song"):
 
-    detect_chords_button = gr.Button(
-        "Suggest chords",
-        size="sm"
-    )
+            with gr.Accordion("How to use this", open=False):
+                gr.Markdown(HELP_TEXT)
 
-    chart_input = gr.Textbox(
-        label="Chords (optional)",
-        value="",
-        info="A chart in bars of beats, as in "
-             "| Dm . Bb . | F . . . |  Each token is one "
-             "beat and a dot holds the chord on. The bars "
-             "set the metre, so | C . . | is three four."
-    )
+            gr.Markdown(
+                "Load an example, or import a MIDI file. "
+                "Either fills the music boxes on the "
+                "Arrange tab, where everything can be "
+                "edited afterwards."
+            )
 
-    lyric_input = gr.Textbox(
-        label="Lyrics (optional)",
-        value="Twin- kle twin- kle lit- tle star",
-        lines=5,
-        max_lines=20,
-        info="One syllable per note. A trailing hyphen "
-             "joins a word across notes, _ holds a "
-             "syllable through another note. Each line is "
-             "a phrase: press Enter to divide one, "
-             "Backspace to join two."
-    )
+            with gr.Row():
 
-    with gr.Row():
+                example_button = gr.Button(
+                    "Load Twinkle Phrase"
+                )
 
-        key_input = gr.Dropdown(
-            key_choices(),
-            value="C",
-            label="Key",
-            info="A key signature belongs to a major key "
-                 "and its relative minor equally. Notes "
-                 "outside it are harmonised at the "
-                 "nearest scale note."
-        )
+                wellerman_button = gr.Button(
+                    "Load Wellerman Phrase"
+                )
 
-        bpm_input = gr.Number(
-            value=120,
-            label="BPM"
-        )
+            midi_upload = gr.File(
+                label="Or import a MIDI file",
+                file_types=[".mid", ".midi"],
+                type="filepath"
+            )
 
-    detect_key_button = gr.Button(
-        "Detect key"
-    )
+            track_input = gr.Dropdown(
+                [],
+                label="Which track to import",
+                info="Choral and band files hold one track "
+                     "per part. Pick the line you want to "
+                     "practise.",
+                visible=False
+            )
 
-    key_report = gr.Textbox(
-        label="Key",
-        interactive=False,
-        visible=False,
-        lines=8
-    )
+            import_feedback = gr.Textbox(
+                label="Import",
+                interactive=False,
+                visible=False
+            )
 
-    with gr.Row():
+        # -------------------------------------------------
+        # ARRANGE: get the reading right, by eye and ear
+        # -------------------------------------------------
 
-        example_button = gr.Button(
-            "Load Twinkle Phrase"
-        )
+        with gr.Tab("Arrange"):
 
-        wellerman_button = gr.Button(
-            "Load Wellerman Phrase"
-        )
+            pitch_input = gr.Textbox(
+                label="Pitches",
+                value="C4 C4 G4 G4 A4 A4 G4",
+                info="Notes like C4, F#4 or Bb3. Write a rest as R."
+            )
 
-    midi_upload = gr.File(
-        label="Or import a MIDI file",
-        file_types=[".mid", ".midi"],
-        type="filepath"
-    )
+            duration_input = gr.Textbox(
+                label="Durations (beats)",
+                value="1 1 1 1 1 1 2",
+                info="One length per note, as a fraction of a beat. "
+                     "1 is a beat, 1/2 an eighth note, 3/2 a dotted "
+                     "beat, 1/3 a triplet. Decimals work too."
+            )
 
-    track_input = gr.Dropdown(
-        [],
-        label="Which track to import",
-        info="Choral and band files hold one track per "
-             "part. Pick the line you want to practise.",
-        visible=False
-    )
+            lyric_input = gr.Textbox(
+                label="Lyrics (optional)",
+                value="Twin- kle twin- kle lit- tle star",
+                lines=5,
+                max_lines=20,
+                info="One syllable per note. A trailing hyphen "
+                     "joins a word across notes, _ holds a "
+                     "syllable through another note. Each line is "
+                     "a phrase: press Enter to divide one, "
+                     "Backspace to join two."
+            )
 
-    update_phrases_button = gr.Button(
-        "Update phrases",
-        size="sm"
-    )
+            with gr.Row():
 
-    phrase_input = gr.Dropdown(
-        [],
-        label="Which phrase to practise",
-        info="Each line of the lyrics is a phrase. Press "
-             "Enter in the lyrics to add one, or "
-             "Backspace to join two.",
-        visible=False
-    )
+                update_phrases_button = gr.Button(
+                    "Update phrases",
+                    size="sm"
+                )
 
-    import_feedback = gr.Textbox(
-        label="Import",
-        interactive=False,
-        visible=False
-    )
+                phrase_input = gr.Dropdown(
+                    [],
+                    label="Which phrase to practise",
+                    info="Each line of the lyrics is a phrase. "
+                         "Press Enter in the lyrics to add one, "
+                         "or Backspace to join two.",
+                    visible=False
+                )
 
-    # -----------------------------------------------------
-    # PLAYBACK
-    # -----------------------------------------------------
+            with gr.Row():
 
-    gr.Markdown(
-        "## Playback and Harmony"
-    )
+                key_input = gr.Dropdown(
+                    key_choices(),
+                    value="C",
+                    label="Key",
+                    info="A key signature belongs to a major key "
+                         "and its relative minor equally. Notes "
+                         "outside it are harmonised at the "
+                         "nearest scale note."
+                )
 
-    with gr.Row():
+                bpm_input = gr.Number(
+                    value=120,
+                    label="BPM"
+                )
 
-        melody_input = gr.Checkbox(
-            value=True,
-            label="Melody"
-        )
+            detect_key_button = gr.Button(
+                "Detect key"
+            )
 
-        harmony_input = gr.Checkbox(
-            value=False,
-            label="Harmony"
-        )
+            key_report = gr.Textbox(
+                label="Key",
+                interactive=False,
+                visible=False,
+                lines=8
+            )
 
-        harmony_choice_input = gr.Dropdown(
-            list(HARMONY_CHOICES),
-            value="Third below",
-            label="Harmony interval"
-        )
+            detect_chords_button = gr.Button(
+                "Suggest chords",
+                size="sm"
+            )
 
-        harmony_style_input = gr.Dropdown(
-            HARMONY_STYLES,
-            value="Thirds, chord-corrected",
-            label="Harmony style",
-            info="Corrected thirds shadow the tune and "
-                 "bend where the third would clash. Chord "
-                 "tones follow the chords instead. With "
-                 "no chart, all of them are plain thirds."
-        )
+            chart_input = gr.Textbox(
+                label="Chords (optional)",
+                value="",
+                info="A chart in bars of beats, as in "
+                     "| Dm . Bb . | F . . . |  Each token is one "
+                     "beat and a dot holds the chord on. The bars "
+                     "set the metre, so | C . . | is three four."
+            )
 
-        bass_input = gr.Checkbox(
-            value=False,
-            label="Bass",
-            info="The root of each chord, held. Needs a "
-                 "chord chart."
-        )
+            gr.Markdown(
+                "### Hear the reading"
+            )
 
-        chords_input = gr.Checkbox(
-            value=False,
-            label="Chords",
-            info="Plays the chart, strummed, below the "
-                 "melody."
-        )
+            with gr.Row():
 
-        metronome_input = gr.Checkbox(
-            value=True,
-            label="Metronome",
-            info="Clicks under the music. Always on when "
-                 "no notes are playing."
-        )
+                melody_input = gr.Checkbox(
+                    value=True,
+                    label="Melody"
+                )
 
-    with gr.Row():
+                harmony_input = gr.Checkbox(
+                    value=False,
+                    label="Harmony"
+                )
 
-        generate_button = gr.Button(
-            "Generate Playback"
-        )
+                harmony_choice_input = gr.Dropdown(
+                    list(HARMONY_CHOICES),
+                    value="Third below",
+                    label="Harmony interval"
+                )
 
-        harmony_button = gr.Button(
-            "Show Harmony Notes"
-        )
+                harmony_style_input = gr.Dropdown(
+                    HARMONY_STYLES,
+                    value="Thirds, chord-corrected",
+                    label="Harmony style",
+                    info="Corrected thirds shadow the tune and "
+                         "bend where the third would clash. Chord "
+                         "tones follow the chords instead. With "
+                         "no chart, all of them are plain thirds."
+                )
 
-    generated_audio = gr.Audio(
-        label="Generated Music"
-    )
+                bass_input = gr.Checkbox(
+                    value=False,
+                    label="Bass",
+                    info="The root of each chord, held. Needs a "
+                         "chord chart."
+                )
 
-    target_plot = gr.Plot(
-        label="Target Music"
-    )
+                chords_input = gr.Checkbox(
+                    value=False,
+                    label="Chords",
+                    info="Plays the chart, strummed, below the "
+                         "melody."
+                )
 
-    harmony_output = gr.Textbox(
-        label="Harmony Notes"
-    )
+                metronome_input = gr.Checkbox(
+                    value=True,
+                    label="Metronome",
+                    info="Clicks under the music. Always on when "
+                         "no notes are playing."
+                )
 
-    # -----------------------------------------------------
-    # PERFORMANCE
-    # -----------------------------------------------------
+            with gr.Row():
 
-    gr.Markdown(
-        "## Record a Performance"
-    )
+                generate_button = gr.Button(
+                    "Generate Playback"
+                )
 
-    gr.Markdown(
-        "Press record and the guide starts by itself: "
-        "four count-in clicks, then come in on the beat. "
-        "Wear headphones to keep the guide out of the "
-        "recording."
-    )
+                harmony_button = gr.Button(
+                    "Show Harmony Notes"
+                )
 
-    part_input = gr.Radio(
-        PART_CHOICES,
-        value="Melody",
-        label="Part you are performing",
-        info="Sets what the guide plays and what your "
-             "recording is judged against. The bass part "
-             "sings the root of each chord, so it needs a "
-             "chord chart."
-    )
+            generated_audio = gr.Audio(
+                label="Generated Music"
+            )
 
-    guide_choice = gr.Radio(
-        GUIDE_CHOICES,
-        value="Clicks",
-        label="Guide while recording",
-        info="Clicks keeps the recording clean. The other "
-             "part plays the opposite line, for practising "
-             "harmony against the melody."
-    )
+            target_plot = gr.Plot(
+                label="Target Music"
+            )
 
-    guide_audio = gr.Audio(
-        label="Guide",
-        autoplay=True,
-        interactive=False
-    )
+            harmony_output = gr.Textbox(
+                label="Harmony Notes"
+            )
 
-    recorded_audio = gr.Audio(
-        sources=[
-            "microphone",
-            "upload"
-        ],
-        type="numpy",
-        label="Performance"
-    )
+        # -------------------------------------------------
+        # PRACTICE: sing it and see how it went
+        # -------------------------------------------------
 
-    # -----------------------------------------------------
-    # DETECTORS
-    # -----------------------------------------------------
+        with gr.Tab("Practice") as practice_tab:
 
-    gr.Markdown(
-        "## Test the Detectors"
-    )
+            practice_status = gr.Markdown(
+                "Nothing loaded yet: pick music on the "
+                "Song tab first."
+            )
 
-    with gr.Row():
+            gr.Markdown(
+                "Press record and the guide starts by itself: "
+                "four count-in clicks, then come in on the beat. "
+                "Wear headphones to keep the guide out of the "
+                "recording."
+            )
 
-        detect_note_button = gr.Button(
-            "Detect One Note"
-        )
+            part_input = gr.Radio(
+                PART_CHOICES,
+                value="Melody",
+                label="Part you are performing",
+                info="Sets what the guide plays and what your "
+                     "recording is judged against. The bass part "
+                     "sings the root of each chord, so it needs a "
+                     "chord chart."
+            )
 
-        detect_sequence_button = gr.Button(
-            "Detect Sequence"
-        )
+            guide_choice = gr.Radio(
+                GUIDE_CHOICES,
+                value="Clicks",
+                label="Guide while recording",
+                info="Clicks keeps the recording clean. The other "
+                     "part plays the opposite line, for practising "
+                     "harmony against the melody."
+            )
 
-        detect_instrument_button = gr.Button(
-            "Detect Instrument"
-        )
+            guide_audio = gr.Audio(
+                label="Guide",
+                autoplay=True,
+                interactive=False
+            )
 
-    note_output = gr.Textbox(
-        label="Pitch Detection"
-    )
+            recorded_audio = gr.Audio(
+                sources=[
+                    "microphone",
+                    "upload"
+                ],
+                type="numpy",
+                label="Performance"
+            )
 
-    sequence_output = gr.Textbox(
-        label="Sequence Detection"
-    )
+            octave_input = gr.Dropdown(
+                list(OCTAVE_CHOICES),
+                value="Same octave",
+                label="Octave",
+                info="Pick the octave you actually played in. "
+                     "Singers often sit an octave below the "
+                     "written music."
+            )
 
-    instrument_output = gr.Textbox(
-        label="Instrument Detection",
-        lines=4
-    )
+            compare_button = gr.Button(
+                "Compare Performance",
+                variant="primary"
+            )
 
-    # -----------------------------------------------------
-    # COACHING
-    # -----------------------------------------------------
+            performance_plot = gr.Plot(
+                label="Performance"
+            )
 
-    gr.Markdown(
-        "## Compare Your Performance"
-    )
+            tuning_plot = gr.Plot(
+                label="Tuning"
+            )
 
-    gr.Markdown(
-        "Play the target music above, record yourself "
-        "playing it, then compare the two."
-    )
+            feedback_output = gr.Textbox(
+                label="Feedback",
+                lines=10
+            )
 
-    octave_input = gr.Dropdown(
-        list(OCTAVE_CHOICES),
-        value="Same octave",
-        label="Octave",
-        info="Pick the octave you actually played in. "
-             "Singers often sit an octave below the "
-             "written music."
-    )
+        # -------------------------------------------------
+        # DIAGNOSTICS: the detectors, one at a time
+        # -------------------------------------------------
 
-    compare_button = gr.Button(
-        "Compare Performance",
-        variant="primary"
-    )
+        with gr.Tab("Diagnostics"):
 
-    performance_plot = gr.Plot(
-        label="Performance"
-    )
+            gr.Markdown(
+                "Under-the-hood checks on the detectors, "
+                "one at a time. They read the recording "
+                "from the Practice tab."
+            )
 
-    tuning_plot = gr.Plot(
-        label="Tuning"
-    )
+            with gr.Row():
 
-    feedback_output = gr.Textbox(
-        label="Feedback",
-        lines=10
-    )
+                detect_note_button = gr.Button(
+                    "Detect One Note"
+                )
+
+                detect_sequence_button = gr.Button(
+                    "Detect Sequence"
+                )
+
+                detect_instrument_button = gr.Button(
+                    "Detect Instrument"
+                )
+
+            note_output = gr.Textbox(
+                label="Pitch Detection"
+            )
+
+            sequence_output = gr.Textbox(
+                label="Sequence Detection"
+            )
+
+            instrument_output = gr.Textbox(
+                label="Instrument Detection",
+                lines=4
+            )
 
     # -----------------------------------------------------
     # EVENTS
@@ -454,6 +466,49 @@ with gr.Blocks(
             value=chosen,
             visible=len(labels) > 1
         )
+
+    def describe_practice(pitch_text, key, bpm, chosen):
+        """
+        One line saying what the Practice tab is about to
+        judge against.
+
+        The tab reads the Arrange boxes when its buttons
+        are pressed, and this says so out loud: which
+        music, which phrase of it, in what key, how fast.
+        Without it, arriving here shows recording controls
+        and no sign of what they are pointed at.
+        """
+
+        names = pitch_text.split() if pitch_text else []
+
+        if not names:
+            return (
+                "Nothing loaded yet: pick music on the "
+                "Song tab first."
+            )
+
+        line = f"**Practising:** {len(names)} notes, key {key}"
+
+        number = phrase_chosen(chosen)
+
+        if number is not None:
+            line += f", phrase {number + 1}"
+
+        if bpm:
+            line += f", at {bpm:g} BPM"
+
+        return line
+
+    practice_tab.select(
+        fn=describe_practice,
+        inputs=[
+            pitch_input,
+            key_input,
+            bpm_input,
+            phrase_input
+        ],
+        outputs=practice_status
+    )
 
     update_phrases_button.click(
         fn=phrases_now,

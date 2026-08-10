@@ -158,3 +158,27 @@ def test_importing_a_file_through_the_interface(name):
     )
 
     assert len(piece) > 0
+
+
+def test_the_practice_tab_says_what_it_is_pointed_at():
+    """
+    The Practice tab reads the Arrange boxes when its
+    buttons are pressed. The status line says so out loud:
+    which music, which phrase, what key, how fast - and
+    when there is nothing yet, where to go to get some.
+    """
+
+    import main
+
+    line = main.describe_practice(
+        "C4 D4 E4", "F", 240, "Phrase 2: to the moon"
+    )
+
+    assert "3 notes" in line
+    assert "key F" in line
+    assert "phrase 2" in line
+    assert "240" in line
+
+    empty = main.describe_practice("", "C", 120, None)
+
+    assert "Song" in empty
