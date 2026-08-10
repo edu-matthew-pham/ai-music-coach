@@ -139,15 +139,15 @@ def test_a_phrase_of_an_imported_file_plays_on_its_own():
     assert len(labels) > 2
 
     rate, phrase_audio = play_music(
-        pitches, durations, key, True, False, bpm, False,
-        "Third below", chart, False,
-        "Thirds, chord-corrected", False, lyrics, labels[1]
+        pitches, durations, key, 1, 0, 0, bpm, 0,
+        chart, 0,
+        "Thirds, chord-corrected", 0, lyrics, labels[1]
     )
 
     rate, whole_audio = play_music(
-        pitches, durations, key, True, False, bpm, False,
-        "Third below", chart, False,
-        "Thirds, chord-corrected", False, lyrics, WHOLE_PART
+        pitches, durations, key, 1, 0, 0, bpm, 0,
+        chart, 0,
+        "Thirds, chord-corrected", 0, lyrics, WHOLE_PART
     )
 
     # A phrase is a part of the whole, not the whole again.
@@ -346,15 +346,15 @@ def test_the_flow_from_upload_to_playing_one_phrase():
     assert chosen != WHOLE_PART
 
     rate, first = play_music(
-        pitches, durations, key, True, False, bpm, False,
-        "Third below", chart, False,
-        "Thirds, chord-corrected", False, lyrics, chosen
+        pitches, durations, key, 1, 0, 0, bpm, 0,
+        chart, 0,
+        "Thirds, chord-corrected", 0, lyrics, chosen
     )
 
     rate, everything = play_music(
-        pitches, durations, key, True, False, bpm, False,
-        "Third below", chart, False,
-        "Thirds, chord-corrected", False, lyrics, WHOLE_PART
+        pitches, durations, key, 1, 0, 0, bpm, 0,
+        chart, 0,
+        "Thirds, chord-corrected", 0, lyrics, WHOLE_PART
     )
 
     assert len(first) < len(everything)
@@ -412,9 +412,45 @@ def test_the_flow_from_upload_to_playing_one_phrase():
 
     # And it still plays.
     rate, shorter = play_music(
-        pitches, durations, key, True, False, bpm, False,
-        "Third below", chart, False,
-        "Thirds, chord-corrected", False, edited, kept
+        pitches, durations, key, 1, 0, 0, bpm, 0,
+        chart, 0,
+        "Thirds, chord-corrected", 0, edited, kept
     )
 
     assert len(shorter) > 0
+
+def test_cycling_moves_the_phrase_choice_and_wraps():
+    """
+    Previous and Next step through the numbered phrases,
+    wrapping at either end, and rebuild the labels first
+    so a lyric edited since the last press cannot strand
+    the choice on a name that no longer exists.
+    """
+
+    import main
+
+    pitches = "C4 C4 G4 G4 A4 A4 G4 R " * 3
+    durations = "1 1 1 1 1 1 3/2 1/2 " * 3
+    lyrics = "\n".join(
+        ["Twin- kle twin- kle lit- tle star"] * 3
+    )
+
+    labels = main.list_phrases(pitches, durations, lyrics)
+
+    assert len(labels) == 4
+
+    forward = main.cycle_phrase(1)
+    backward = main.cycle_phrase(-1)
+
+    chosen = forward(pitches, durations, lyrics, labels[1])
+    assert chosen["value"] == labels[2]
+
+    chosen = forward(pitches, durations, lyrics, labels[3])
+    assert chosen["value"] == labels[1], "wraps forward"
+
+    chosen = backward(pitches, durations, lyrics, labels[1])
+    assert chosen["value"] == labels[3], "wraps backward"
+
+    # From the whole part, Next lands on the first phrase.
+    chosen = forward(pitches, durations, lyrics, labels[0])
+    assert chosen["value"] == labels[1]

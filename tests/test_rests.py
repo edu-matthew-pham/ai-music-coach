@@ -214,7 +214,7 @@ def test_every_way_in_reads_fractions():
     # Playing it.
     rate, audio = play_music(
         pitches, durations, "C",
-        melody_on=True, harmony_on=False, bpm=120
+        melody_level=1, harmony_below_level=0, bpm=120
     )
 
     assert len(audio) > 0

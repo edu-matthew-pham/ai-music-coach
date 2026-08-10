@@ -454,25 +454,31 @@ def play_music(
     pitch_text,
     duration_text,
     key,
-    melody_on=True,
-    harmony_on=False,
+    melody_level=1.0,
+    harmony_above_level=0.0,
+    harmony_below_level=0.0,
     bpm=120,
-    metronome=True,
-    harmony_choice="Third below",
+    metronome_level=0.5,
     chart_text="",
-    chords_on=False,
+    chords_level=0.0,
     harmony_style="Thirds, chord-corrected",
-    bass_on=False,
+    bass_level=0.0,
     lyric_text="",
     phrase_label=None
 ):
     """
-    Build the playback from independent layers.
+    Build the playback from independent layers, mixed.
 
-    Melody, harmony and metronome are separate tracks,
-    each switched on or off, mixed together at the end.
-    Everything off still clicks, so the result is never
-    silence that looks like a failure.
+    Each part has a level between nought and one, read at
+    the moment of generating: nought is silence, anything
+    above it is that part at that loudness. Both harmony
+    lines exist at once - a third above the tune and a
+    third below - each with its own level, which is how a
+    quiet harmony can sit under a full melody instead of
+    matching it or being absent.
+
+    Everything at nought still clicks, so the result is
+    never silence that looks like a failure.
     """
 
     piece = selected_piece(
@@ -499,7 +505,14 @@ def play_music(
 
     layers = []
 
-    if melody_on:
+    def at_level(track, level):
+        """
+        A track scaled to its slider.
+        """
+
+        return [sample * level for sample in track]
+
+    if melody_level > 0:
 
         sample_rate, melody_track = make_melody(
             pitches,
@@ -507,15 +520,21 @@ def play_music(
             bpm
         )
 
-        layers.append(melody_track)
+        layers.append(at_level(melody_track, melody_level))
 
-    if harmony_on:
+    for steps, level in (
+        (2, harmony_above_level),
+        (-2, harmony_below_level)
+    ):
+
+        if level <= 0:
+            continue
 
         harmony = harmony_line(
             pitches,
             durations,
             key,
-            steps=read_harmony_choice(harmony_choice),
+            steps=steps,
             style=harmony_style,
             chart_text=chart_text
         )
@@ -526,9 +545,9 @@ def play_music(
             bpm
         )
 
-        layers.append(harmony_track)
+        layers.append(at_level(harmony_track, level))
 
-    if bass_on:
+    if bass_level > 0:
 
         sample_rate, bass_track = make_melody(
             bass_line(pitches, durations, chart_text),
@@ -536,9 +555,9 @@ def play_music(
             bpm
         )
 
-        layers.append(bass_track)
+        layers.append(at_level(bass_track, bass_level))
 
-    if chords_on and chords:
+    if chords_level > 0 and chords:
 
         voiced = [
             (start, length, chord_semitones(name))
@@ -546,12 +565,15 @@ def play_music(
         ]
 
         layers.append(
-            make_accompaniment(
-                voiced,
-                bars,
-                sum(durations),
-                bpm,
-                sample_rate
+            at_level(
+                make_accompaniment(
+                    voiced,
+                    bars,
+                    sum(durations),
+                    bpm,
+                    sample_rate
+                ),
+                chords_level
             )
         )
 
@@ -568,16 +590,31 @@ def play_music(
             sound = mix_tracks(sound, extra)
 
     # The metronome always clicks when there are no notes,
-    # so switching everything off gives a click track for
+    # so turning everything down gives a click track for
     # practising to rather than silence.
-    if metronome or len(layers) == 0:
-        sound = add_metronome(
-            sound,
+    click_level = metronome_level
+
+    if len(layers) == 0:
+        click_level = max(click_level, 0.5)
+
+    if click_level > 0:
+
+        clicks = add_metronome(
+            [0.0] * len(sound),
             sum(durations),
             bpm,
             sample_rate,
             bars=bars
         )
+
+        # Added, not averaged in: mixing halves both sides
+        # to stop them doubling, which would make the
+        # failsafe click half as loud as it promises to
+        # be. The limiter below already guards the sum.
+        sound = [
+            sample + click * click_level
+            for sample, click in zip(sound, clicks)
+        ]
 
     # Four layers can add up past what a speaker can play,
     # which sounds broken rather than loud.
@@ -816,7 +853,25 @@ def check_transpose(transpose):
 
 
 # Which line of the music a performance is judged against.
-PART_CHOICES = ["Melody", "Harmony", "Bass"]
+PART_CHOICES = [
+    "Melody", "Harmony above", "Harmony below", "Bass"
+]
+
+
+def part_steps(part):
+    """
+    The scale steps a harmony part sits from the tune.
+
+    Two steps of the scale is a third. Below is the
+    default, which is where a harmony most often sits, and
+    what the plain name "Harmony" meant before there were
+    two.
+    """
+
+    return {
+        "Harmony above": 2,
+        "Harmony below": -2
+    }.get(part, -2)
 
 
 # How the harmony line chooses its notes.
@@ -876,7 +931,6 @@ def analyse_performance(
     lyric_text="",
     part="Melody",
     key="C",
-    harmony_choice="Third below",
     chart_text="",
     harmony_style="Thirds, chord-corrected",
     phrase_label=None
@@ -907,12 +961,12 @@ def analyse_performance(
     chart_text = piece.chart
     lyric_text = piece.lyrics or ""
 
-    if part in ("Harmony", "Bass"):
+    if part.startswith("Harmony") or part == "Bass":
         pitches = part_notes(
             pitches,
             part,
             key,
-            read_harmony_choice(harmony_choice),
+            part_steps(part),
             durations,
             harmony_style,
             chart_text
@@ -1050,7 +1104,10 @@ def part_notes(pitches, part, key, harmony_steps=-2,
     if durations is None:
         durations = [1.0] * len(pitches)
 
-    if part == "Harmony":
+    if part.startswith("Harmony"):
+
+        if part != "Harmony":
+            harmony_steps = part_steps(part)
 
         return harmony_line(
             pitches,
@@ -1100,7 +1157,6 @@ def make_practice_guide(
     guide_choice,
     part="Melody",
     key="C",
-    harmony_choice="Third below",
     chart_text="",
     harmony_style="Thirds, chord-corrected"
 ):
@@ -1141,7 +1197,7 @@ def make_practice_guide(
         sample_rate, sound = make_melody(
             part_notes(
                 pitches, part, key,
-                read_harmony_choice(harmony_choice),
+                part_steps(part),
                 durations, harmony_style, chart_text
             ),
             durations,
@@ -1153,14 +1209,16 @@ def make_practice_guide(
         # With more than two parts there is no single
         # other one, so this means the tune: what a
         # harmony or bass singer needs in their ears. A
-        # melody singer hears the harmony instead, which
-        # is the same exercise the other way round.
-        other = "Harmony" if part == "Melody" else "Melody"
+        # melody singer hears the harmony below instead,
+        # which is the same exercise the other way round.
+        other = (
+            "Harmony below" if part == "Melody" else "Melody"
+        )
 
         sample_rate, sound = make_melody(
             part_notes(
                 pitches, other, key,
-                read_harmony_choice(harmony_choice),
+                part_steps(other),
                 durations, harmony_style, chart_text
             ),
             durations,
@@ -1193,11 +1251,11 @@ def show_target_music(
     bpm,
     lyric_text="",
     key="C",
-    harmony_on=False,
-    harmony_choice="Third below",
+    harmony_above_level=0.0,
+    harmony_below_level=0.0,
     chart_text="",
     harmony_style="Thirds, chord-corrected",
-    bass_on=False,
+    bass_level=0.0,
     chart_notes=None,
     phrase_label=None
 ):
@@ -1223,21 +1281,32 @@ def show_target_music(
 
     lyrics = read_lyrics(piece.lyrics or "", piece.sung())
 
-    harmony = None
+    # Audible parts appear on the picture; the level only
+    # decides whether, not how they are drawn. Each line is
+    # named rather than numbered, because the picture
+    # colours them apart and has to know which is which.
+    voices = {}
 
-    if harmony_on:
-        harmony = harmony_line(
+    for name, steps, level in (
+        ("harmony_above", 2, harmony_above_level),
+        ("harmony_below", -2, harmony_below_level)
+    ):
+
+        if level <= 0:
+            continue
+
+        voices[name] = harmony_line(
             pitches,
             durations,
             key,
-            steps=read_harmony_choice(harmony_choice),
+            steps=steps,
             style=harmony_style,
             chart_text=chart_text
         )
 
     bass = None
 
-    if bass_on:
+    if bass_level > 0:
         bass = bass_line(pitches, durations, chart_text)
 
     chords, bars = read_chords(chart_text, durations)
@@ -1260,7 +1329,8 @@ def show_target_music(
         trace=None,
         lyrics=lyrics,
         title="The target music",
-        harmony=harmony,
+        harmony_above=voices.get("harmony_above"),
+        harmony_below=voices.get("harmony_below"),
         chords=chords,
         bars=bars,
         bass=bass,

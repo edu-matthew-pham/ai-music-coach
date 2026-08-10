@@ -183,7 +183,7 @@ def test_harmony_appears_as_a_second_voice():
         [1.0, 1.0],
         120,
         None,
-        harmony=["A3", "E4"]
+        harmony_below=["A3", "E4"]
     )
 
     axes = figure.axes[0]

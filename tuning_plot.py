@@ -34,9 +34,21 @@ SEMITONE_EDGE = 50
 
 
 # Each voice has its own colour, dark enough to read the
-# note name inside its box.
-HARMONY_COLOUR = "#6a1b9a"
+# note name inside its box. The two harmony lines are told
+# apart by colour rather than by position: they cross the
+# melody and each other, so where a box sits on the page
+# cannot say which line it belongs to.
+#
+# Orange, purple and teal stay distinguishable to the
+# common forms of colour blindness, which purple against
+# purple did not.
+HARMONY_ABOVE_COLOUR = "#e65100"
+HARMONY_BELOW_COLOUR = "#6a1b9a"
 BASS_COLOUR = "#00695c"
+
+# The old name, kept because it reads well where only one
+# harmony is meant.
+HARMONY_COLOUR = HARMONY_BELOW_COLOUR
 
 
 def make_performance_plot(
@@ -47,7 +59,8 @@ def make_performance_plot(
     transpose=0,
     lyrics=None,
     title="What you sang, over what was written",
-    harmony=None,
+    harmony_above=None,
+    harmony_below=None,
     chords=None,
     bars=None,
     bass=None,
@@ -161,7 +174,8 @@ def make_performance_plot(
     # the melody's time axis so the parts read together
     # the way a score prints them.
     for notes, colour in (
-        (harmony, HARMONY_COLOUR),
+        (harmony_above, HARMONY_ABOVE_COLOUR),
+        (harmony_below, HARMONY_BELOW_COLOUR),
         (bass, BASS_COLOUR)
     ):
 

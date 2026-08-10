@@ -77,7 +77,7 @@ def test_playback_checks_the_key_only_when_harmonising():
 
     sample_rate, audio = play_music(
         "C4 C4", "1 1", "D",
-        melody_on=True, harmony_on=False, bpm=120
+        melody_level=1, harmony_below_level=0, bpm=120
     )
 
     assert len(audio) > 0
@@ -92,7 +92,7 @@ def test_harmony_plays_in_any_chosen_key():
 
     sample_rate, audio = play_music(
         "C4 C4", "1 1", "D",
-        melody_on=False, harmony_on=True, bpm=120
+        melody_level=0, harmony_below_level=1, bpm=120
     )
 
     assert len(audio) > 0
@@ -325,12 +325,12 @@ def test_harmony_part_is_judged_against_harmony_notes():
         targets,
         "1 1 1",
         120,
-        part="Harmony",
+        part="Harmony below",
         key="C"
     )
 
     assert "3 of 3 notes" in text
-    assert "harmony part" in text
+    assert "harmony below part" in text
 
 
 def test_melody_part_stays_the_default():
@@ -373,7 +373,7 @@ def test_harmony_part_works_in_any_key():
         "C4",
         "1",
         120,
-        part="Harmony",
+        part="Harmony below",
         key="D"
     )
 
@@ -389,7 +389,7 @@ def test_guide_plays_your_part():
     from music import make_practice_guide
 
     sample_rate, your_part = make_practice_guide(
-        "C4 E4", "1 1", 120, "Your part", "Harmony", "C"
+        "C4 E4", "1 1", 120, "Your part", "Harmony below", "C"
     )
 
     sample_rate, melody = make_practice_guide(
@@ -412,7 +412,7 @@ def test_guide_other_part_flips_the_selection():
     import numpy as np
 
     sample_rate, heard_by_harmonist = make_practice_guide(
-        "C4 E4", "1 1", 120, "The other part", "Harmony", "C"
+        "C4 E4", "1 1", 120, "The other part", "Harmony below", "C"
     )
 
     sample_rate, own_melody = make_practice_guide(
@@ -463,9 +463,8 @@ def test_harmony_part_can_be_judged_above():
         "C4 E4 G4",
         "1 1 1",
         120,
-        part="Harmony",
-        key="C",
-        harmony_choice="Third above"
+        part="Harmony above",
+        key="C"
     )
 
     assert "3 of 3 notes" in text

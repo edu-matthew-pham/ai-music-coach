@@ -206,6 +206,24 @@ def test_every_handler_is_given_as_many_inputs_as_it_takes():
 
     tree = parsed_interface()
 
+    # Input lists shared between wirings are assigned to a
+    # name first. The name hides the count, so the lists
+    # are gathered here and looked through.
+    named_lists = {}
+
+    for node in ast.walk(tree):
+
+        if not isinstance(node, ast.Assign):
+            continue
+
+        if not isinstance(node.value, ast.List):
+            continue
+
+        for target in node.targets:
+
+            if isinstance(target, ast.Name):
+                named_lists[target.id] = len(node.value.elts)
+
     checked = 0
 
     for node in ast.walk(tree):
@@ -249,6 +267,12 @@ def test_every_handler_is_given_as_many_inputs_as_it_takes():
         # How many the interface sends.
         if isinstance(inputs, ast.List):
             sent = len(inputs.elts)
+
+        elif (
+            isinstance(inputs, ast.Name)
+            and inputs.id in named_lists
+        ):
+            sent = named_lists[inputs.id]
 
         else:
             sent = 1

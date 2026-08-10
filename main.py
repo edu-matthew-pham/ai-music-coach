@@ -4,7 +4,8 @@ import os
 
 import gradio as gr
 
-from harmony import MAJOR_SCALES, key_choices
+from harmony import key_choices
+from instrument_diagrams import INSTRUMENTS, show_instrument
 from help_text import HELP_TEXT
 from music import (
     MusicInputError,
@@ -14,7 +15,6 @@ from music import (
     OCTAVE_CHOICES,
     PART_CHOICES,
     GUIDE_CHOICES,
-    HARMONY_CHOICES,
     HARMONY_STYLES,
     make_practice_guide,
     show_target_music,
@@ -27,7 +27,6 @@ from music import (
     selected_piece,
     phrase_number_from,
     play_music,
-    show_harmony,
     analyse_performance,
     load_twinkle,
     load_wellerman
@@ -114,6 +113,7 @@ with gr.Blocks(
         + anchor_link("Song", "song")
         + anchor_link("Arrange", "arrange")
         + anchor_link("Practice", "practice")
+        + anchor_link("Instruments", "instruments")
         + "</div>"
     )
 
@@ -264,63 +264,84 @@ with gr.Blocks(
                 "### Hear the reading"
             )
 
+            gr.Markdown(
+                "Each part has its own level. Nought is "
+                "silent; a quiet harmony can sit under a "
+                "full melody. Levels are read when the "
+                "playback is generated."
+            )
+
             with gr.Row():
 
-                melody_input = gr.Checkbox(
-                    value=True,
+                melody_input = gr.Slider(
+                    0, 1, value=1.0, step=0.05,
                     label="Melody"
                 )
 
-                harmony_input = gr.Checkbox(
-                    value=False,
-                    label="Harmony"
+                harmony_above_input = gr.Slider(
+                    0, 1, value=0.0, step=0.05,
+                    label="Harmony above"
                 )
 
-                harmony_choice_input = gr.Dropdown(
-                    list(HARMONY_CHOICES),
-                    value="Third below",
-                    label="Harmony interval"
+                harmony_below_input = gr.Slider(
+                    0, 1, value=0.0, step=0.05,
+                    label="Harmony below"
                 )
 
-                harmony_style_input = gr.Dropdown(
-                    HARMONY_STYLES,
-                    value="Thirds, chord-corrected",
-                    label="Harmony style",
-                    info="Corrected thirds shadow the tune and "
-                         "bend where the third would clash. Chord "
-                         "tones follow the chords instead. With "
-                         "no chart, all of them are plain thirds."
-                )
-
-                bass_input = gr.Checkbox(
-                    value=False,
+                bass_input = gr.Slider(
+                    0, 1, value=0.0, step=0.05,
                     label="Bass",
-                    info="The root of each chord, held. Needs a "
-                         "chord chart."
+                    info="The root of each chord, held. "
+                         "Needs a chord chart."
                 )
 
-                chords_input = gr.Checkbox(
-                    value=False,
+                chords_input = gr.Slider(
+                    0, 1, value=0.0, step=0.05,
                     label="Chords",
-                    info="Plays the chart, strummed, below the "
+                    info="The chart, strummed, below the "
                          "melody."
                 )
 
-                metronome_input = gr.Checkbox(
-                    value=True,
+                metronome_input = gr.Slider(
+                    0, 1, value=0.5, step=0.05,
                     label="Metronome",
-                    info="Clicks under the music. Always on when "
-                         "no notes are playing."
+                    info="Clicks under the music. Always "
+                         "audible when no parts are."
                 )
 
+            harmony_style_input = gr.Dropdown(
+                HARMONY_STYLES,
+                value="Thirds, chord-corrected",
+                label="Harmony style",
+                info="Both harmony lines are built this way. "
+                     "Corrected thirds shadow the tune and "
+                     "bend where the third would clash. Chord "
+                     "tones follow the chords instead. With "
+                     "no chart, all of them are plain thirds."
+            )
+
+            # Show Harmony Notes was removed here. It showed
+            # plain thirds whatever the style or chart, so it
+            # displayed something different from what played.
+            # The want behind it was real, and bigger than
+            # the button: letting the player edit the
+            # generated harmony, bass, or chord voicings by
+            # hand - the music editor direction. Parked, not
+            # rejected; if it returns, the lines become
+            # editable boxes like the chart, not a display.
             with gr.Row():
 
-                generate_button = gr.Button(
-                    "Generate Playback"
+                previous_button = gr.Button(
+                    "\u25c0 Previous phrase"
                 )
 
-                harmony_button = gr.Button(
-                    "Show Harmony Notes"
+                generate_button = gr.Button(
+                    "Generate Playback",
+                    variant="primary"
+                )
+
+                next_button = gr.Button(
+                    "Next phrase \u25b6"
                 )
 
             generated_audio = gr.Audio(
@@ -329,10 +350,6 @@ with gr.Blocks(
 
             target_plot = gr.Plot(
                 label="Target Music"
-            )
-
-            harmony_output = gr.Textbox(
-                label="Harmony Notes"
             )
 
         # -------------------------------------------------
@@ -410,6 +427,31 @@ with gr.Blocks(
                 label="Feedback",
                 lines=10
             )
+
+        # -------------------------------------------------
+        # INSTRUMENTS: where the key sits under the hands
+        # -------------------------------------------------
+
+        with gr.Column(elem_id="instruments"):
+
+            gr.Markdown("## Instruments")
+
+            gr.Markdown(
+                "Where the notes of the key sit on an "
+                "instrument, for working a line out by "
+                "hand. This follows the key box above: "
+                "change the key and the picture follows."
+            )
+
+            instrument_input = gr.Dropdown(
+                INSTRUMENTS,
+                value=INSTRUMENTS[0],
+                label="Instrument",
+                info="The violin charts read in fingers "
+                     "and show one hand position each."
+            )
+
+            instrument_diagram = gr.HTML()
 
     # -----------------------------------------------------
     # EVENTS
@@ -684,52 +726,133 @@ with gr.Blocks(
     # dropdown was the only way to see a phrase and the
     # file was the only thing that decided them.
 
+    play_inputs = [
+        pitch_input,
+        duration_input,
+        key_input,
+        melody_input,
+        harmony_above_input,
+        harmony_below_input,
+        bpm_input,
+        metronome_input,
+        chart_input,
+        chords_input,
+        harmony_style_input,
+        bass_input,
+        lyric_input,
+        phrase_input
+    ]
+
+    plot_inputs = [
+        pitch_input,
+        duration_input,
+        bpm_input,
+        lyric_input,
+        key_input,
+        harmony_above_input,
+        harmony_below_input,
+        chart_input,
+        harmony_style_input,
+        bass_input,
+        chart_notes_state,
+        phrase_input
+    ]
+
     generate_button.click(
         fn=guard(play_music),
-        inputs=[
-            pitch_input,
-            duration_input,
-            key_input,
-            melody_input,
-            harmony_input,
-            bpm_input,
-            metronome_input,
-            harmony_choice_input,
-            chart_input,
-            chords_input,
-            harmony_style_input,
-            bass_input,
-            lyric_input,
-            phrase_input
-        ],
+        inputs=play_inputs,
         outputs=generated_audio
     ).then(
         fn=guard(show_target_music),
-        inputs=[
-            pitch_input,
-            duration_input,
-            bpm_input,
-            lyric_input,
-            key_input,
-            harmony_input,
-            harmony_choice_input,
-            chart_input,
-            harmony_style_input,
-            bass_input,
-            chart_notes_state,
-            phrase_input
-        ],
+        inputs=plot_inputs,
         outputs=target_plot
     )
 
-    harmony_button.click(
-        fn=guard(show_harmony),
-        inputs=[
-            pitch_input,
-            key_input
-        ],
-        outputs=harmony_output
+    def cycle_phrase(step):
+        """
+        Move the phrase choice on by a step, wrapping.
+
+        The dropdown stays the one home of the selection:
+        this only chooses, and the playback that follows
+        reads the boxes as any generate does. Labels are
+        rebuilt first, so a lyric edited since the last
+        press cannot strand the choice on a name that no
+        longer exists.
+        """
+
+        def moved(pitch_text, duration_text, lyric_text,
+                  chosen):
+
+            labels = list_phrases(
+                pitch_text, duration_text, lyric_text
+            )
+
+            # Only the numbered phrases are cycled; the
+            # whole part is reached from the dropdown.
+            count = len(labels) - 1
+
+            if count < 1:
+                return gr.update()
+
+            number = phrase_chosen(chosen)
+
+            if number is None:
+                number = 0 if step > 0 else count - 1
+
+            else:
+                number = (number + step) % count
+
+            return gr.update(
+                choices=labels,
+                value=labels[number + 1],
+                visible=len(labels) > 1
+            )
+
+        return moved
+
+    # The diagram reads the key box each time it is drawn,
+    # so a key changed anywhere - typed, detected, or filled
+    # by an import - redraws it rather than leaving a
+    # picture of the key that used to be chosen.
+    for control in (key_input, instrument_input):
+
+        control.change(
+            fn=show_instrument,
+            inputs=[key_input, instrument_input],
+            outputs=instrument_diagram
+        )
+
+    # And once when the page opens, so the section is never
+    # an empty box waiting to be poked.
+    demo.load(
+        fn=show_instrument,
+        inputs=[key_input, instrument_input],
+        outputs=instrument_diagram
     )
+
+    for button, step in (
+        (previous_button, -1),
+        (next_button, 1)
+    ):
+
+        button.click(
+            fn=cycle_phrase(step),
+            inputs=[
+                pitch_input,
+                duration_input,
+                lyric_input,
+                phrase_input
+            ],
+            outputs=phrase_input
+        ).then(
+            fn=guard(play_music),
+            inputs=play_inputs,
+            outputs=generated_audio
+        ).then(
+            fn=guard(show_target_music),
+            inputs=plot_inputs,
+            outputs=target_plot
+        )
 
     # Clearing before setting forces a fresh change on the
     # guide player every time, so recording again replays
@@ -746,7 +869,6 @@ with gr.Blocks(
             guide_choice,
             part_input,
             key_input,
-            harmony_choice_input,
             chart_input,
             harmony_style_input
         ],
@@ -764,7 +886,6 @@ with gr.Blocks(
             lyric_input,
             part_input,
             key_input,
-            harmony_choice_input,
             chart_input,
             harmony_style_input,
             phrase_input

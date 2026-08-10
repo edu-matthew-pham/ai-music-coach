@@ -403,14 +403,14 @@ def test_chords_mix_with_the_melody():
 
     rate, with_chords = play_music(
         pitches, durations, key,
-        melody_on=True, harmony_on=False, bpm=120,
-        metronome=False, chart_text=chart, chords_on=True
+        melody_level=1, harmony_below_level=0, bpm=120,
+        metronome_level=0, chart_text=chart, chords_level=1
     )
 
     rate, without = play_music(
         pitches, durations, key,
-        melody_on=True, harmony_on=False, bpm=120,
-        metronome=False, chart_text=chart, chords_on=False
+        melody_level=1, harmony_below_level=0, bpm=120,
+        metronome_level=0, chart_text=chart, chords_level=0
     )
 
     assert len(with_chords) == len(without)
@@ -451,8 +451,8 @@ def test_layers_together_do_not_clip():
 
     rate, audio = play_music(
         pitches, durations, key,
-        melody_on=True, harmony_on=True, bpm=100,
-        metronome=True, chart_text=chart, chords_on=True
+        melody_level=1, harmony_below_level=1, bpm=100,
+        metronome_level=1, chart_text=chart, chords_level=1
     )
 
     assert float(np.max(np.abs(audio))) <= 1.0
@@ -712,16 +712,16 @@ def test_bass_is_a_playback_layer_too():
     pitches, durations, lyrics, key, chart = load_twinkle_phrase()
 
     common = dict(
-        melody_on=True, harmony_on=False, bpm=120,
-        metronome=False, chart_text=chart
+        melody_level=1, harmony_below_level=0, bpm=120,
+        metronome_level=0, chart_text=chart
     )
 
     rate, without = play_music(
-        pitches, durations, key, bass_on=False, **common
+        pitches, durations, key, bass_level=0, **common
     )
 
     rate, with_bass = play_music(
-        pitches, durations, key, bass_on=True, **common
+        pitches, durations, key, bass_level=1, **common
     )
 
     assert not np.allclose(without, with_bass)
@@ -733,8 +733,8 @@ def test_the_bass_layer_needs_a_chart_too():
     with pytest.raises(MusicInputError, match="needs a chord chart"):
         play_music(
             "C4 C4", "1 1", "C",
-            melody_on=False, harmony_on=False, bpm=120,
-            chart_text="", bass_on=True
+            melody_level=0, harmony_below_level=0, bpm=120,
+            chart_text="", bass_level=1
         )
 
 
@@ -750,7 +750,7 @@ def test_the_bass_appears_on_the_picture():
         [1.0] * 4,
         120,
         None,
-        harmony=["A3", "A3", "E4", "E4"],
+        harmony_below=["A3", "A3", "E4", "E4"],
         bass=["C3", "C3", "C3", "C3"]
     )
 
@@ -773,7 +773,7 @@ def test_each_voice_has_its_own_colour():
         [1.0, 1.0],
         120,
         None,
-        harmony=["A3", "A3"],
+        harmony_below=["A3", "A3"],
         bass=["C3", "C3"]
     )
 
@@ -1444,7 +1444,7 @@ def test_the_axis_counts_bars_when_there_is_a_chart():
 
     with_chart = show_target_music(
         pitches, durations, 120, lyrics, key,
-        False, "Third below", chart
+        0, 0, chart
     )
 
     assert with_chart.axes[0].get_xlabel() == "bars"
@@ -1458,7 +1458,78 @@ def test_the_axis_counts_bars_when_there_is_a_chart():
 
     without = show_target_music(
         pitches, durations, 120, lyrics, key,
-        False, "Third below", ""
+        0, 0, ""
     )
 
     assert without.axes[0].get_xlabel() == "seconds"
+
+def test_the_two_harmony_lines_are_different_colours():
+    """
+    Above and below cross the melody and each other, so a
+    box's position on the page cannot say which line it
+    belongs to. The colour has to.
+    """
+
+    from tuning_plot import (
+        make_performance_plot,
+        HARMONY_ABOVE_COLOUR,
+        HARMONY_BELOW_COLOUR,
+        BASS_COLOUR
+    )
+
+    figure = make_performance_plot(
+        ["C4", "C4"],
+        [1.0, 1.0],
+        120,
+        None,
+        harmony_above=["E4", "E4"],
+        harmony_below=["A3", "A3"],
+        bass=["C3", "C3"]
+    )
+
+    colours = {
+        text.get_color()
+        for text in figure.axes[0].texts
+    }
+
+    assert HARMONY_ABOVE_COLOUR in colours
+    assert HARMONY_BELOW_COLOUR in colours
+    assert BASS_COLOUR in colours
+
+    assert len({
+        HARMONY_ABOVE_COLOUR,
+        HARMONY_BELOW_COLOUR,
+        BASS_COLOUR
+    }) == 3, "every voice needs its own colour"
+
+
+def test_a_harmony_line_keeps_its_colour_when_alone():
+    """
+    Turning one line off must not move the other's colour:
+    the colour belongs to the part, not to the order the
+    voices happened to be drawn in.
+    """
+
+    from tuning_plot import (
+        make_performance_plot,
+        HARMONY_ABOVE_COLOUR,
+        HARMONY_BELOW_COLOUR
+    )
+
+    def colours_of(**voices):
+        figure = make_performance_plot(
+            ["C4", "C4"], [1.0, 1.0], 120, None, **voices
+        )
+        return {
+            text.get_color()
+            for text in figure.axes[0].texts
+        }
+
+    above_alone = colours_of(harmony_above=["E4", "E4"])
+    below_alone = colours_of(harmony_below=["A3", "A3"])
+
+    assert HARMONY_ABOVE_COLOUR in above_alone
+    assert HARMONY_BELOW_COLOUR not in above_alone
+
+    assert HARMONY_BELOW_COLOUR in below_alone
+    assert HARMONY_ABOVE_COLOUR not in below_alone

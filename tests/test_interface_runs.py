@@ -182,3 +182,37 @@ def test_loading_an_example_says_what_arrived():
     assert "Wellerman" in feedback["value"]
     assert "phrase" in feedback["value"]
     assert "key F" in feedback["value"]
+
+
+def test_the_instrument_diagram_follows_the_key_box():
+    """
+    The diagram is drawn from the key box each time, so a
+    key changed anywhere - typed, detected, or filled by an
+    import - redraws it. Holding the key it was last drawn
+    for would leave a picture of a key nobody is in.
+    """
+
+    import main
+
+    in_f = main.show_instrument("F", "Piano")
+    in_d = main.show_instrument("D", "Piano")
+
+    assert "F major" in in_f
+    assert "Bb" in in_f
+
+    assert "D major" in in_d
+    assert "F#" in in_d
+
+    assert in_f != in_d
+
+
+def test_every_instrument_offered_can_be_drawn():
+    """
+    The dropdown and the module must agree: an option that
+    cannot be drawn is a blank section with no explanation.
+    """
+
+    import main
+
+    for instrument in main.INSTRUMENTS:
+        assert "<svg" in main.show_instrument("C", instrument)

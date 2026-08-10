@@ -49,8 +49,8 @@ def test_play_music_returns_gradio_audio():
         "C4 C4",
         "1 1",
         "C",
-        melody_on=True,
-        harmony_on=False,
+        melody_level=1,
+        harmony_below_level=0,
         bpm=120
     )
 
@@ -72,10 +72,10 @@ def test_everything_off_still_clicks():
         "C4 C4",
         "1 1",
         "C",
-        melody_on=False,
-        harmony_on=False,
+        melody_level=0,
+        harmony_below_level=0,
         bpm=120,
-        metronome=False
+        metronome_level=0
     )
 
     assert float(np.max(np.abs(audio))) > 0.1
@@ -86,20 +86,20 @@ def test_melody_and_harmony_mix_together():
         "C4 C4",
         "1 1",
         "C",
-        melody_on=True,
-        harmony_on=True,
+        melody_level=1,
+        harmony_below_level=1,
         bpm=120,
-        metronome=False
+        metronome_level=0
     )
 
     sample_rate, alone = play_music(
         "C4 C4",
         "1 1",
         "C",
-        melody_on=True,
-        harmony_on=False,
+        melody_level=1,
+        harmony_below_level=0,
         bpm=120,
-        metronome=False
+        metronome_level=0
     )
 
     # The mixed track is a different signal, not just the
@@ -401,7 +401,7 @@ def test_every_example_is_complete_and_singable():
 
         sample_rate, audio = play_music(
             pitches, durations, key,
-            melody_on=True, harmony_on=True, bpm=120
+            melody_level=1, harmony_below_level=1, bpm=120
         )
 
         assert len(audio) > 0
@@ -589,3 +589,80 @@ def test_the_full_wellerman_opens_like_the_phrase_example():
     # beat four of the count-in bar, so the pickup's length
     # is the one legitimate difference.
     assert full[1].split()[4:12] == phrase[1].split()[1:]
+
+
+def test_both_harmony_lines_play_at_once():
+    """
+    A third above and a third below are separate layers
+    with separate levels. Both up is a fuller texture than
+    either alone, and each alone differs from the other.
+    """
+
+    import numpy as np
+
+    from music import play_music
+
+    def rendered(above, below):
+        rate, audio = play_music(
+            "C4 D4 E4", "1 1 1", "C",
+            melody_level=1,
+            harmony_above_level=above,
+            harmony_below_level=below,
+            bpm=120,
+            metronome_level=0
+        )
+        return audio
+
+    above_only = rendered(1, 0)
+    below_only = rendered(0, 1)
+    both = rendered(1, 1)
+
+    assert not np.allclose(above_only, below_only)
+    assert not np.allclose(both, above_only)
+    assert not np.allclose(both, below_only)
+
+
+def test_a_level_is_a_loudness_not_a_switch():
+    """
+    Half a level is the same part, quieter. That is what
+    lets a harmony sit under the melody instead of
+    matching it or being absent.
+    """
+
+    import numpy as np
+
+    from music import play_music
+
+    def peak(level):
+        rate, audio = play_music(
+            "C4 C4", "1 1", "C",
+            melody_level=level,
+            bpm=120,
+            metronome_level=0
+        )
+        return float(np.max(np.abs(audio)))
+
+    assert peak(0.5) < peak(1.0)
+    assert peak(0.5) > 0
+
+
+def test_the_part_names_its_own_direction():
+    """
+    Harmony above sings the third above; harmony below the
+    third below. The part carries the direction, so the
+    guide and the judging need no separate interval.
+    """
+
+    from music import part_notes, part_steps
+
+    tune = ["C4", "E4", "G4"]
+
+    above = part_notes(tune, "Harmony above", "C")
+    below = part_notes(tune, "Harmony below", "C")
+
+    assert above == part_notes(tune, "Harmony", "C", 2)
+    assert below == part_notes(tune, "Harmony", "C", -2)
+    assert above != below
+
+    assert part_steps("Harmony above") == 2
+    assert part_steps("Harmony below") == -2
