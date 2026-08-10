@@ -206,6 +206,7 @@ GRIDS = [1 / 4, 1 / 3, 1 / 2]
 CLEARLY_BETTER = 0.5
 
 
+
 def find_grid(melody):
     """
     Work out what the player was aiming at.
@@ -259,6 +260,289 @@ def find_grid(melody):
 WRITTEN_ENOUGH = 0.01
 
 
+def tempo_mismatch(melody):
+    """
+    Whether the notes disagree with the marked tempo in a
+    systematic way, and by how much.
+
+    The first question, asked before anything about the
+    playing. A file can be steadily played against a tempo
+    its marking does not describe - exported by software
+    that kept the notes and changed the marking, say - and
+    then every onset misses the written grid by the same
+    proportion. That is not sloppy playing, and treating it
+    as sloppy playing is destructive: snapping to the
+    written grid moves the notes relative to one another
+    and rewrites the rhythm itself.
+
+    The tell is that the misses are systematic rather than
+    random. Random wobble scatters; a wrong marking scales.
+    So the spacings between notes are read for a common
+    pulse, and if one explains nearly all of them tightly
+    and it is not the written beat, the marking is wrong,
+    not the player.
+
+    Returns the pulse as a fraction of the written beat, or
+    None where the marking and the notes agree.
+    """
+
+    if len(melody) < 8:
+        return None
+
+    spacings = sorted(
+        melody[position][0] - melody[position - 1][0]
+        for position in range(1, len(melody))
+        if melody[position][0] > melody[position - 1][0]
+    )
+
+    if not spacings:
+        return None
+
+    # Candidate pulses come from the quick spacings: the
+    # walking notes. The middle of all the spacings can
+    # land on a held note in a slow song, and a held note
+    # is a multiple of the pulse, not the pulse.
+    quick = spacings[len(spacings) // 4]
+
+    middle = spacings[len(spacings) // 2]
+
+    candidates = [1.0]
+
+    for spacing in (quick, middle):
+        for division in (2.0, 1.0, 0.5):
+            candidates.append(spacing / division)
+
+    best = None
+    best_fitting = 0
+
+    for pulse in candidates:
+
+        if pulse <= 0.05 or pulse > 4:
+            continue
+
+        fitting = 0
+        below = 0
+
+        for spacing in spacings:
+
+            in_beats = spacing / pulse
+
+            # Whole beats, half beats, and the dotted
+            # values between them all belong to a pulse.
+            nearest_quarter = round(in_beats * 4) / 4
+
+            if (
+                abs(in_beats - nearest_quarter) < 0.1
+                and nearest_quarter > 0
+            ):
+                fitting += 1
+
+                if 0.3 < in_beats < 0.8:
+                    below += 1
+
+        # Most of the music explained, with real movement
+        # below the beat. Not all of it: a live part has
+        # the odd spacing that fits nothing, and one stray
+        # should not hide a pulse that explains the rest.
+        if (
+            fitting >= len(spacings) * 0.8
+            and below >= 2
+            and fitting > best_fitting
+        ):
+            best = pulse
+            best_fitting = fitting
+
+    if best is None:
+        return None
+
+    # The winning candidate is only roughly right - it
+    # came from one quartile of one list. Refined against
+    # every spacing it explains: each one, divided by the
+    # rough pulse and rounded to the note value it must
+    # have been, votes for what the pulse exactly is.
+    votes = []
+
+    for spacing in spacings:
+
+        in_beats = round(spacing / best * 4) / 4
+
+        if in_beats > 0 and abs(spacing / best - in_beats) < 0.1:
+            votes.append(spacing / in_beats)
+
+    if votes:
+        votes.sort()
+        best = votes[len(votes) // 2]
+
+    # The written beat explaining the notes means no
+    # mismatch at all.
+    if abs(best - 1.0) < 0.02:
+        return None
+
+    return best
+
+
+# The widest range a tempo marking is ever really written
+# in. A hard gate on comfort turned out to choose wrongly:
+# a fast shanty at 240 with the melody walking in whole
+# beats is ordinary notation, where the same music at 120
+# walks in quavers and reads as a flurry. So how the notes
+# read matters more than where the number lands, and the
+# number only has to be possible.
+SLOWEST_TEMPO = 40
+FASTEST_TEMPO = 300
+
+
+def comfortable_multiple(pulse, bpm, melody):
+    """
+    The spelling of a pulse that reads as notation does.
+
+    A performance on a pulse of 0.547 at a marked 131 can
+    be written at 240 or at 120: identical sounds, spelled
+    differently. Convention is that the beat is roughly
+    where the music walks - the ordinary note lands near
+    one beat, quicker notes divide it, held notes span a
+    few. So among the doublings and halvings, the one that
+    puts the typical note nearest a beat wins, and the
+    tempo has to stay somewhere a metronome would be set.
+    """
+
+    spacings = sorted(
+        melody[position][0] - melody[position - 1][0]
+        for position in range(1, len(melody))
+        if melody[position][0] > melody[position - 1][0]
+    )
+
+    if not spacings:
+        return pulse
+
+    typical = spacings[len(spacings) // 2]
+
+    best = pulse
+    best_fit = None
+
+    for factor in (0.25, 0.5, 1.0, 2.0, 4.0):
+
+        scaled = pulse * factor
+
+        tempo = bpm / scaled
+
+        if not (SLOWEST_TEMPO <= tempo <= FASTEST_TEMPO):
+            continue
+
+        # How far the ordinary note sits from one beat, in
+        # octaves of length: 0.5 and 2.0 miss equally.
+        import math
+
+        fit = abs(math.log2(typical / scaled))
+
+        if best_fit is None or fit < best_fit - 0.01:
+            best_fit = fit
+            best = scaled
+
+    return best
+
+
+def rescale(melody, pulse):
+    """
+    Rewrite the times in the player's own beat.
+
+    Division throughout, so the notes keep their places
+    relative to one another exactly: this cannot change
+    the rhythm, only how it is spelled. The tempo is the
+    caller's to scale the other way, which is what keeps
+    the sound identical.
+    """
+
+    if not melody:
+        return melody
+
+    opening = melody[0][0]
+
+    return [
+        (
+            opening + (start - opening) / pulse,
+            length / pulse,
+            number
+        )
+        for start, length, number in melody
+    ]
+
+
+def steady_grid(melody):
+    """
+    The grid a performance can safely be snapped to, or
+    None.
+
+    Snapping is the destructive step: it moves notes
+    relative to one another, and against the wrong grid it
+    rewrites the rhythm. So it is only offered where the
+    onsets already sit close to a grid and the leftover
+    misses look like wobble - small and scattered - rather
+    than like anything systematic.
+    """
+
+    if len(melody) < 4:
+        return None
+
+    opening = melody[0][0]
+
+    for grid in (0.25, 1 / 3):
+
+        missed = [
+            abs(
+                (start - opening) / grid
+                - round((start - opening) / grid)
+            ) * grid
+            for start, length, number in melody
+        ]
+
+        average = sum(missed) / len(missed)
+
+        worst = max(missed)
+
+        # Close on average and never far: wobble, not
+        # structure.
+        if average < 0.09 and worst < 0.22:
+            return grid
+
+    return None
+
+
+def quantise(melody, grid):
+    """
+    Snap a performance onto a grid it already nearly sits
+    on.
+
+    Only called where steady_grid found one, which is what
+    keeps this from doing what it did once before: forcing
+    notes spaced at 0.55 onto a 0.25 grid and turning a
+    smooth line into a lurch.
+    """
+
+    if not melody:
+        return melody
+
+    opening = melody[0][0]
+
+    placed = []
+
+    for start, length, number in melody:
+
+        at = round((start - opening) / grid) * grid + opening
+
+        ends = (
+            round((start + length - opening) / grid) * grid
+            + opening
+        )
+
+        if ends <= at:
+            ends = at + grid
+
+        placed.append((at, ends - at, number))
+
+    return placed
+
+
 def already_written(melody):
     """
     Whether a file holds notation or a performance.
@@ -286,48 +570,6 @@ def already_written(melody):
 
     return missed <= WRITTEN_ENOUGH
 
-
-def quantise(melody, grid=None):
-    """
-    Put a performance back onto the grid it was written on.
-
-    Each note begins at the nearest grid point and lasts
-    until the next one begins, so every length is a whole
-    number of grid steps and the part adds up exactly.
-
-    This is what rounding each length on its own could not
-    do. Those roundings are all small and all independent,
-    so they accumulate: a hundred and sixty of them leave
-    the Wellerman a third of a beat short of where its bars
-    say it should end, and no bar line after the first one
-    falls where it belongs. Fixing the positions instead of
-    the lengths fixes both at once.
-    """
-
-    if not melody:
-        return melody
-
-    if grid is None:
-        grid = find_grid(melody)
-
-    opening = melody[0][0]
-
-    placed = []
-
-    for start, length, number in melody:
-
-        at = round((start - opening) / grid) * grid + opening
-
-        ends = round((start + length - opening) / grid) * grid + opening
-
-        # A note too short to survive the rounding still
-        # has to be heard, and is given one step.
-        if ends <= at:
-            ends = at + grid
-
-        placed.append((at, ends - at, number))
-
-    return placed
 
 
 def snap_to_beat(beats):
@@ -997,12 +1239,11 @@ def notes_to_text(melody, span=None, beats_per_bar=4):
     the last note is where they breathe.
     """
 
-    # A performance is put back on the grid it was written
-    # on. Notation is left exactly as it is.
+    # The caller hands the melody in already on the grid,
+    # having quantised a performance and rescaled its
+    # tempo, or left notation exactly as it was. Doing it
+    # again here would quantise against the wrong pulse.
     written = already_written(melody)
-
-    if not written:
-        melody = quantise(melody)
 
     def as_length(beats):
         """
@@ -1147,6 +1388,58 @@ def import_midi(path, maximum_notes=None, track_number=None,
 
     melody = keep_melody(notes)
 
+    # A performance is put back on the grid it was written
+    # on, and the tempo moves the other way: a part played
+    # at 0.55 of the written beat, rescaled onto whole
+    # beats, is the same music only if the beats also come
+    # 0.55 as fast. Notation is left exactly as it is.
+    # The marking is questioned before the playing is.
+    #
+    # A steady performance against a wrong tempo marking
+    # looks exactly like sloppy playing if the marking is
+    # trusted, and the fix for sloppy playing - snapping to
+    # the written grid - rewrites its rhythm. So first: do
+    # the notes disagree with the marking systematically?
+    # If so the marking is wrong; rescale, and move the
+    # tempo the other way so the sound is unchanged. Only
+    # the wobble left after that is the playing, and only
+    # where it is small and scattered is it snapped.
+    # The words are matched to the notes now, while both
+    # still carry the file's own times. Matching is by
+    # moment, so once the timing has been respelled the
+    # events cannot find their notes any more - two notes
+    # merged by the grid also merge their syllables, and
+    # the count drifts off the sung notes. Matched first,
+    # the words simply travel with the notes through
+    # whatever happens to the timing.
+    syllables = lyrics_for(
+        melody,
+        read_lyric_events(midi_file, track_number)
+    )
+
+    respelled = False
+    cleaned = False
+
+    if melody and not already_written(melody):
+
+        pulse = tempo_mismatch(melody)
+
+        if pulse:
+
+            pulse = comfortable_multiple(pulse, bpm, melody)
+
+            melody = rescale(melody, pulse)
+
+            bpm = max(20, min(300, round(bpm / pulse)))
+
+            respelled = True
+
+        grid = steady_grid(melody)
+
+        if grid:
+            melody = quantise(melody, grid)
+            cleaned = True
+
     # The whole part comes back. It used to be cut into
     # phrases here, which meant the phrasing was decided
     # before anyone could see it and could not be changed
@@ -1162,11 +1455,16 @@ def import_midi(path, maximum_notes=None, track_number=None,
         melody, span, read_time_signature(midi_file)
     )
 
-    lyric_text = read_lyric_text(
-        midi_file,
-        melody,
-        track_number
-    )
+    lyric_text = ""
+
+    if syllables:
+
+        spoken = [
+            syllable for syllable in syllables
+            if syllable != HELD_SYLLABLE
+        ]
+
+        lyric_text = " ".join(spoken)
 
     guessed = split_into_phrases(
         melody,
@@ -1179,7 +1477,7 @@ def import_midi(path, maximum_notes=None, track_number=None,
         lyric_text = lyrics_with_line_breaks(
             melody,
             guessed,
-            lyric_text.split()
+            syllables
         )
 
     # Chords come from every voice sounding together, not

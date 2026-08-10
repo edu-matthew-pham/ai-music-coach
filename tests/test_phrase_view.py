@@ -359,15 +359,49 @@ def test_the_flow_from_upload_to_playing_one_phrase():
 
     assert len(first) < len(everything)
 
-    # Now the correction: a line break, then update.
-    edited = lyrics.replace(
-        "put to sea The name", "put to sea\nThe name", 1
+    # Now the correction: a line break somewhere in the
+    # longest line, then update. Where exactly depends on
+    # what the splitter guessed, so the middle word of the
+    # longest line stands in for wherever a person would
+    # press Enter.
+    lines = lyrics.split("\n")
+
+    longest = max(lines, key=len)
+
+    watched = lines.index(longest)
+
+    words = longest.split()
+
+    middle = len(words) // 2
+
+    broken = (
+        " ".join(words[:middle]) + "\n" + " ".join(words[middle:])
     )
+
+    edited = lyrics.replace(longest, broken, 1)
 
     after = list_phrases(pitches, durations, edited)
 
     assert len(after) == len(labels) + 1
 
+    # The phrase that was actually cut is the one to
+    # watch: pressing Enter in line four says nothing
+    # about line one.
+    from music import selected_piece
+
+    was = selected_piece(
+        pitches, durations, lyrics, key, chart,
+        labels[watched + 1]
+    )
+
+    now = selected_piece(
+        pitches, durations, edited, key, chart,
+        after[watched + 1]
+    )
+
+    assert now.beats() < was.beats()
+
+    # And the selection machinery still lands somewhere.
     number = phrase_chosen(chosen)
 
     kept = (
@@ -376,12 +410,11 @@ def test_the_flow_from_upload_to_playing_one_phrase():
         else after[-1]
     )
 
+    # And it still plays.
     rate, shorter = play_music(
         pitches, durations, key, True, False, bpm, False,
         "Third below", chart, False,
         "Thirds, chord-corrected", False, edited, kept
     )
 
-    # The whole point: correcting a phrase makes it
-    # shorter, not longer.
-    assert len(shorter) < len(first)
+    assert len(shorter) > 0

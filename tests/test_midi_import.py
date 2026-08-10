@@ -936,3 +936,112 @@ def test_the_phrasing_guess_is_written_as_line_breaks():
     sung = len([p for p in pitch_list if not is_rest(p)])
 
     assert len(lyrics.split()) == sung
+
+
+def test_a_steady_performance_at_a_wrong_marking_is_respelled():
+    """
+    The Wellerman file is played dead steadily at about
+    0.55 of its marked beat: the marking is wrong, not the
+    player. Read against the marking, every note lands
+    off the grid and the durations come out as nothing
+    anyone writes. Respelled onto the player's own beat,
+    with the tempo moved the other way, the same sounds
+    read as ordinary notation.
+
+    The order matters and got it badly wrong once: judged
+    the other way round - playing first - the steady
+    offset looks like sloppiness, and snapping it to the
+    written grid rewrites the rhythm itself.
+    """
+
+    import os
+
+    from fractions import Fraction
+
+    from midi_import import import_midi
+    from music import read_beats
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "d_ML_10791.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the band arrangement fixture is absent")
+
+    pitches, durations, lyrics, bpm, chart, notes = import_midi(
+        path, track_number=0, channel=0
+    )
+
+    # The marked 131 was wrong by very nearly half.
+    assert 230 <= bpm <= 250
+
+    # And the music now reads as ordinary lengths: the
+    # opening walks in beats and halves, as the notation
+    # of this tune does.
+    opening = [read_beats(text) for text in durations.split()[:6]]
+
+    assert opening == [1.0, 0.5, 0.5, 0.25, 0.25, 0.5]
+
+
+def test_notation_is_never_respelled():
+    """
+    A file whose lengths already sit on written values is
+    notation, and its marking is presumed right however
+    the onsets might read to a tempo guesser.
+    """
+
+    import os
+
+    from midi_import import import_midi
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "o-holy-night-satb.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the satb fixture is not present")
+
+    pitches, durations, lyrics, bpm, chart, notes = import_midi(
+        path, track_number=1
+    )
+
+    assert bpm == 70
+
+
+def test_the_words_survive_the_respell():
+    """
+    Syllables are matched to notes by moment, and the
+    respell moves every moment. Matched afterwards, the
+    words cannot find their notes; matched before, they
+    simply travel with them.
+    """
+
+    import os
+
+    from midi_import import import_midi
+    from music import read_music
+    from notes import is_rest
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "d_ML_10791.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the band arrangement fixture is absent")
+
+    pitches, durations, lyrics, bpm, chart, notes = import_midi(
+        path, track_number=0, channel=0
+    )
+
+    pitch_list, duration_list = read_music(pitches, durations)
+
+    sung = len([
+        pitch for pitch in pitch_list if not is_rest(pitch)
+    ])
+
+    assert len(lyrics.split()) == sung
+
+    assert lyrics.startswith("There once was a ship")
