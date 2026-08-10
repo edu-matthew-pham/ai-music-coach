@@ -442,7 +442,7 @@ def comfortable_multiple(pulse, bpm, melody):
     return best
 
 
-def rescale(melody, pulse):
+def rescale(melody, pulse, opening=None):
     """
     Rewrite the times in the player's own beat.
 
@@ -451,12 +451,22 @@ def rescale(melody, pulse):
     the rhythm, only how it is spelled. The tempo is the
     caller's to scale the other way, which is what keeps
     the sound identical.
+
+    The opening is the moment everything is measured from,
+    and it stays where it is. It defaults to the first note
+    given, which is right for a part on its own. Anything
+    that has to end up on the same grid as that part - the
+    other voices, sounding underneath it - must be given
+    the same opening explicitly, or each collection is
+    stretched about its own first note and they slide
+    apart.
     """
 
     if not melody:
         return melody
 
-    opening = melody[0][0]
+    if opening is None:
+        opening = melody[0][0]
 
     return [
         (
@@ -1420,6 +1430,14 @@ def import_midi(path, maximum_notes=None, track_number=None,
     respelled = False
     cleaned = False
 
+    # What the melody was respelled by, and the moment it
+    # was measured from. The other voices are read from the
+    # file further down, still in the file's own beat, and
+    # have to be put on this same grid before any chord is
+    # read out of them.
+    respell_pulse = None
+    respell_opening = None
+
     if melody and not already_written(melody):
 
         pulse = tempo_mismatch(melody)
@@ -1427,6 +1445,9 @@ def import_midi(path, maximum_notes=None, track_number=None,
         if pulse:
 
             pulse = comfortable_multiple(pulse, bpm, melody)
+
+            respell_pulse = pulse
+            respell_opening = melody[0][0]
 
             melody = rescale(melody, pulse)
 
@@ -1484,23 +1505,103 @@ def import_midi(path, maximum_notes=None, track_number=None,
     # from the one being sung.
     all_notes, all_bpm = read_notes(midi_file)
 
+    # And they arrive in the file's own beat, which is the
+    # beat the melody has just been taken out of. Left
+    # there, the chords keep the timing of a performance
+    # played at one speed while the notes above them have
+    # been rewritten at another: they start together and
+    # slide apart, a little further every bar, until the
+    # chart names the harmony of somewhere else entirely.
+    #
+    # Measured on the Wellerman band arrangement, the two
+    # ended up sixty-five beats apart by the last line.
+    # The chart's length was already being taken from the
+    # boxes, so it fitted; only its contents were adrift,
+    # which is why nothing failed and it merely sounded
+    # wrong.
+    #
+    # The same pulse, about the same opening: division
+    # cannot change what the voices play relative to one
+    # another, only which beat each moment is called.
+    # Snapping is not wanted here - the grid was fitted to
+    # the sung line, and an accompaniment reads perfectly
+    # well without being tidied.
+    if respell_pulse:
+
+        all_notes = rescale(
+            all_notes, respell_pulse, respell_opening
+        )
+
     # The chart has to be exactly as long as the music in
     # the boxes, and the boxes hold lengths rounded to
     # something singable. A played file drifts, so its
     # notes add up to a little less or more than the
     # ground they cover, and a chart measured against the
     # file rather than against the boxes will not fit.
+    #
+    # The boxes are also rounded up to a whole beat here.
+    # A chart is a grid of beats and can be written to no
+    # other length, so a part that stops a quarter of a
+    # beat into a beat has a length no chart can match, and
+    # the two are unequal by construction however well
+    # either of them was read. The quarter goes onto the
+    # final length, which is the one nobody is counting,
+    # and every sung note stays where it was.
+    #
+    # It has to be the written total that is rounded, not
+    # the ground the notes cover: a played file leaves a
+    # gap after every note, the ones too short to be rests
+    # are dropped, and those droppings add up to bars. The
+    # boxes are what the player sees, so the boxes are what
+    # the chart is measured against.
     if span is None and melody:
+
+        import math
 
         from fractions import Fraction
 
         from music import read_beats
 
-        written = sum(
-            read_beats(length) for length in duration_text.split()
-        )
+        pitches = pitch_text.split()
 
-        span = (melody[0][0], melody[0][0] + written)
+        lengths = [
+            # Through a limit: the lengths are fractions
+            # of a beat, and a float's binary expansion of
+            # one leaves a remainder with a denominator in
+            # the quadrillions, which is not a note length.
+            Fraction(read_beats(length)).limit_denominator(64)
+            for length in duration_text.split()
+        ]
+
+        written = sum(lengths)
+
+        if written and written.denominator != 1:
+
+            remainder = math.ceil(written) - written
+
+            # Onto a rest, never onto a sung note. A note
+            # written a quarter longer than it was sung is
+            # a note the player is asked to hold wrongly;
+            # the closing silence is the one length nobody
+            # is counting.
+            if pitches[-1] == REST:
+                lengths[-1] += remainder
+
+            else:
+                pitches.append(REST)
+                lengths.append(remainder)
+
+                pitch_text = " ".join(pitches)
+
+            duration_text = " ".join(
+                str(value) if value.denominator == 1
+                else f"{value.numerator}/{value.denominator}"
+                for value in lengths
+            )
+
+            written = sum(lengths)
+
+        span = (melody[0][0], melody[0][0] + float(written))
 
     chart_text, chart_notes = read_chart_text(
         midi_file,

@@ -9,6 +9,26 @@ from midi_import import (
 )
 
 
+import pytest as _pytest
+
+
+@_pytest.fixture(params=[
+    "d_ML_10791.mid",
+    "d_FR1924.mid",
+    "o-holy-night-satb.mid"
+])
+def midi_fixture(request):
+    """
+    Each real MIDI file in the fixtures directory, by path.
+    """
+
+    import os
+
+    return os.path.join(
+        os.path.dirname(__file__), "fixtures", "midi", request.param
+    )
+
+
 def write_midi(path, notes, bpm=120, lyrics=None):
     """
     Build a simple MIDI file for a test.
@@ -411,7 +431,13 @@ def test_lengths_are_written_as_fractions_of_a_beat(tmp_path):
 
     pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(path)
 
-    assert durations == "1 1/2 3/4 3/2 2"
+    # The five notes total five and three quarter beats, so
+    # a quarter-beat rest closes the part on a whole beat.
+    # A chart is a grid of beats and can be written to no
+    # other length; the rest is where the singer stops.
+    assert durations.split()[:5] == ["1", "1/2", "3/4", "3/2", "2"]
+
+    assert durations.split()[5:] == ["1/4"]
 
 
 def test_fraction_lengths_read_back_the_same(tmp_path):
@@ -1045,3 +1071,181 @@ def test_the_words_survive_the_respell():
     assert len(lyrics.split()) == sung
 
     assert lyrics.startswith("There once was a ship")
+
+def test_the_chords_land_on_the_same_grid_as_the_notes():
+    """
+    A respelled performance moves the sung line onto a
+    corrected grid. The voices underneath it are read from
+    the file separately, in the file's own beat, and must
+    be moved by the same amount before any chord is taken
+    from them.
+
+    Left behind, they keep the timing of a performance
+    played at one speed while the notes above have been
+    rewritten at another. The two start together and slide
+    apart - sixty-five beats by the last line of this file
+    - so the chart names the harmony of somewhere else.
+    Nothing fails: the chart's length is taken from the
+    boxes, so it still fits. It merely sounds wrong, and
+    scored eleven bars out of twenty-four against a
+    published chord sheet where the detector underneath it
+    scored nineteen.
+    """
+
+    import os
+    from fractions import Fraction
+
+    import pytest
+
+    from music import list_midi_tracks, import_midi_file, read_beats
+
+    path = os.path.join(
+        os.path.dirname(__file__), "fixtures", "midi", "d_ML_10791.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the Wellerman arrangement is not present")
+
+    (
+        pitches, durations, lyrics, bpm,
+        feedback, chart, chart_notes, key
+    ) = import_midi_file(path, list_midi_tracks(path)[0])
+
+    # This file is the respelled case: a performance at a
+    # wrong marking. Without that the test proves nothing.
+    assert bpm == 240
+
+    sung = sum(read_beats(length) for length in durations.split())
+
+    first = min(start for start, length, number in chart_notes)
+    last = max(start + length for start, length, number in chart_notes)
+
+    # The voices start where the melody starts, and cover
+    # the same ground: an accompaniment may run on a little
+    # past the last sung note, but not by bars, and it
+    # cannot be off by the factor of nearly two that a
+    # missed respell leaves behind.
+    assert abs(first) < 1, (
+        f"the voices begin at beat {first:.2f}, not with the melody"
+    )
+
+    assert abs(last - float(sung)) < 8, (
+        f"the melody covers {float(sung):.1f} beats but the voices "
+        f"cover {last:.1f}: they are on different grids"
+    )
+
+
+def test_notation_is_left_alone_when_the_chords_are_moved():
+    """
+    The respell runs only behind the notation gate, so a
+    correctly written file must reach the chart untouched.
+    """
+
+    import os
+
+    import pytest
+
+    from music import list_midi_tracks, import_midi_file, read_beats
+
+    path = os.path.join(
+        os.path.dirname(__file__), "fixtures", "midi",
+        "o-holy-night-satb.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the satb fixture is not present")
+
+    (
+        pitches, durations, lyrics, bpm,
+        feedback, chart, chart_notes, key
+    ) = import_midi_file(path, list_midi_tracks(path)[0])
+
+    sung = sum(read_beats(length) for length in durations.split())
+
+    last = max(start + length for start, length, number in chart_notes)
+
+    assert abs(last - float(sung)) < 8
+
+
+def test_a_part_is_written_to_a_whole_number_of_beats(tmp_path):
+    """
+    A chart is a grid of beats, so a part whose notes stop
+    part way through a beat has a length no chart can be
+    written to. The two are then unequal by construction
+    and the import fails with a length mismatch, however
+    well every other part of it worked.
+
+    The remainder goes to the closing rest, which is the
+    one length nobody is counting, and every sung note
+    stays where it was.
+    """
+
+    from fractions import Fraction
+
+    from midi_import import import_midi
+    from chords import chart_beats
+
+    path = write_midi(
+        str(tmp_path / "part-beat.mid"),
+        [
+            (60, 1),
+            (62, 0.5),
+            (64, 0.25)
+        ]
+    )
+
+    pitches, durations, lyrics, bpm, chart, chart_notes = import_midi(path)
+
+    total = sum(Fraction(x) for x in durations.split())
+
+    assert total.denominator == 1, (
+        f"the part lasts {float(total)} beats, which no chart "
+        f"can be written to"
+    )
+
+    # And the rounding lands on silence. A sung note written
+    # longer than it was sung is a note held wrongly.
+    from notes import REST
+
+    assert pitches.split()[-1] == REST
+
+    assert pitches.split()[:3] == ["C4", "D4", "E4"]
+
+    if chart.strip():
+        assert chart_beats(chart) == float(total)
+
+
+def test_every_fixture_imports_and_slices(midi_fixture):
+    """
+    Import each real file and cut every phrase from it. A
+    chart that does not match the music raises when the
+    slice is taken, which is where this was first seen: a
+    file imported, and then every phrase of it failed with
+    a quarter of a beat's difference.
+    """
+
+    import os
+
+    import pytest
+
+    from music import (
+        list_midi_tracks, import_midi_file, list_phrases, selected_piece
+    )
+
+    if not os.path.exists(midi_fixture):
+        pytest.skip(f"{midi_fixture} is not present")
+
+    tracks = list_midi_tracks(midi_fixture)
+
+    (
+        pitches, durations, lyrics, bpm,
+        feedback, chart, chart_notes, key
+    ) = import_midi_file(midi_fixture, tracks[0])
+
+    for label in list_phrases(pitches, durations, lyrics):
+
+        piece = selected_piece(
+            pitches, durations, lyrics, key, chart, label
+        )
+
+        assert piece is not None
