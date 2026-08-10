@@ -538,30 +538,48 @@ with gr.Blocks(
         outputs=key_report
     )
 
-    def clear_import():
+    def load_example(name, loader):
         """
-        Put the import controls away.
+        Load a built in piece, saying what arrived.
 
         An example is a whole piece of music in itself, so
-        the track and phrase of whatever was imported
-        before no longer mean anything and must not be
-        left on screen describing music that has gone.
-        """
-
-        return (
-            None,
-            gr.update(choices=[], value=None, visible=False),
-            gr.update(choices=[], value=None, visible=False),
-            gr.update(value="", visible=False)
-        )
-
-    def load_example(loader):
-        """
-        Load a built in phrase, clearing any import.
+        the track of whatever was imported before no longer
+        means anything and is put away. The phrase list and
+        the feedback line are filled exactly as an import
+        fills them: silence here made loading look like
+        nothing had happened.
         """
 
         def loaded():
-            return loader() + clear_import()
+
+            pitches, durations, lyrics, key, chart = loader()
+
+            labels = list_phrases(pitches, durations, lyrics)
+
+            count = len(labels) - 1 if len(labels) > 1 else 1
+
+            feedback = (
+                f"Loaded {name}: "
+                f"{len(pitches.split())} notes in key {key}, "
+                f"{count} phrase{'s' if count != 1 else ''}"
+                f"{', chart filled' if chart.strip() else ''}."
+            )
+
+            return (
+                pitches,
+                durations,
+                lyrics,
+                key,
+                chart,
+                None,
+                gr.update(choices=[], value=None, visible=False),
+                gr.update(
+                    choices=labels,
+                    value=labels[1] if len(labels) > 1 else labels[0],
+                    visible=len(labels) > 1
+                ),
+                gr.update(value=feedback, visible=True)
+            )
 
         return loaded
 
@@ -578,12 +596,12 @@ with gr.Blocks(
     ]
 
     example_button.click(
-        fn=load_example(load_twinkle_phrase),
+        fn=load_example("Twinkle Twinkle", load_twinkle_phrase),
         outputs=example_outputs
     )
 
     wellerman_button.click(
-        fn=load_example(load_wellerman_phrase),
+        fn=load_example("the Wellerman", load_wellerman_phrase),
         outputs=example_outputs
     )
 

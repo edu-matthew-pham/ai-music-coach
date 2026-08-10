@@ -182,3 +182,27 @@ def test_the_practice_tab_says_what_it_is_pointed_at():
     empty = main.describe_practice("", "C", 120, None)
 
     assert "Song" in empty
+
+
+def test_loading_an_example_says_what_arrived():
+    """
+    Pressing an example button must not be silent: the
+    feedback line says what landed, the way an import
+    does, and the phrase dropdown is filled from the
+    lyrics rather than cleared.
+    """
+
+    import main
+
+    outputs = main.load_example(
+        "the Wellerman", main.load_wellerman_phrase
+    )()
+
+    assert len(outputs) == 9
+
+    feedback = outputs[8]
+
+    assert feedback["visible"]
+    assert "Wellerman" in feedback["value"]
+    assert "phrase" in feedback["value"]
+    assert "key F" in feedback["value"]
