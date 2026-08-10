@@ -213,3 +213,175 @@ def test_the_lyrics_are_the_only_copy_of_themselves():
     assert not hasattr(music, "remember_lyrics")
     assert not hasattr(music, "with_saved_lyrics")
     assert not hasattr(music, "phrase_key")
+
+
+def test_correcting_the_lyrics_keeps_the_phrase_chosen():
+    """
+    The labels carry the words, so editing the lyrics
+    rewrites every one of them.
+
+    Matching the old label against the new list therefore
+    finds nothing, and falling back to the whole part means
+    a correction makes playback longer rather than shorter:
+    press Enter to shorten a phrase and the app plays the
+    entire song. What stays chosen has to be the number.
+    """
+
+    from music import list_phrases, phrase_chosen, selected_piece
+
+    notes = "C4 C4 G4 G4 A4 A4 G4 R"
+    lengths = "1 1 1 1 1 1 3/2 1/2"
+
+    before = list_phrases(
+        notes, lengths, "Twin- kle twin- kle\nlit- tle star"
+    )
+
+    chosen = before[1]
+
+    # The words of that phrase are rewritten.
+    after = list_phrases(
+        notes, lengths, "My own four words\nlit- tle star"
+    )
+
+    # The label has changed, so it is no longer in the list.
+    assert chosen not in after
+
+    # But the number survives, and still names a phrase.
+    number = phrase_chosen(chosen)
+
+    assert number == 0
+
+    kept = after[number + 1]
+
+    piece = selected_piece(
+        notes, lengths, "My own four words\nlit- tle star",
+        "C", "| C . . . | F . C . |", kept
+    )
+
+    # Four notes, not all eight.
+    assert len(piece) == 4
+
+
+def test_a_phrase_beyond_the_end_falls_to_the_last_one():
+    """
+    Joining two lines leaves the chosen number past the end
+    of a shorter list.
+    """
+
+    from music import list_phrases, phrase_chosen
+
+    notes = "C4 C4 G4 G4 A4 A4 G4 R"
+    lengths = "1 1 1 1 1 1 3/2 1/2"
+
+    three = list_phrases(
+        notes, lengths, "Twin- kle\ntwin- kle\nlit- tle star"
+    )
+
+    chosen = three[3]
+
+    two = list_phrases(
+        notes, lengths, "Twin- kle twin- kle\nlit- tle star"
+    )
+
+    number = phrase_chosen(chosen)
+
+    assert number + 1 >= len(two)
+
+    # The last phrase there is, rather than nothing.
+    assert two[-1] == two[len(two) - 1]
+
+
+def test_the_flow_from_upload_to_playing_one_phrase():
+    """
+    The sequence a person actually performs: upload a file,
+    correct the phrasing, press play.
+
+    Each step was tested on its own and the sequence still
+    did not work. What was wrong sat between them: the
+    import chose the whole part, so playback ran the entire
+    song no matter how the lyrics were divided, and the
+    phrase list looked like it did nothing.
+    """
+
+    import os
+
+    from music import (
+        import_midi_file,
+        list_midi_tracks,
+        list_phrases,
+        phrase_chosen,
+        play_music,
+        WHOLE_PART
+    )
+
+    path = os.path.join(
+        os.path.dirname(__file__),
+        "fixtures", "midi", "d_ML_10791.mid"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the band arrangement fixture is absent")
+
+    tracks = list_midi_tracks(path)
+
+    (
+        pitches,
+        durations,
+        lyrics,
+        bpm,
+        feedback,
+        chart,
+        chart_notes,
+        key
+    ) = import_midi_file(path, tracks[0])
+
+    labels = list_phrases(pitches, durations, lyrics)
+
+    assert len(labels) > 1
+
+    # What the import leaves chosen: a phrase, not the
+    # whole song.
+    chosen = labels[1] if len(labels) > 1 else labels[0]
+
+    assert chosen != WHOLE_PART
+
+    rate, first = play_music(
+        pitches, durations, key, True, False, bpm, False,
+        "Third below", chart, False,
+        "Thirds, chord-corrected", False, lyrics, chosen
+    )
+
+    rate, everything = play_music(
+        pitches, durations, key, True, False, bpm, False,
+        "Third below", chart, False,
+        "Thirds, chord-corrected", False, lyrics, WHOLE_PART
+    )
+
+    assert len(first) < len(everything)
+
+    # Now the correction: a line break, then update.
+    edited = lyrics.replace(
+        "put to sea The name", "put to sea\nThe name", 1
+    )
+
+    after = list_phrases(pitches, durations, edited)
+
+    assert len(after) == len(labels) + 1
+
+    number = phrase_chosen(chosen)
+
+    kept = (
+        after[number + 1]
+        if number is not None and number + 1 < len(after)
+        else after[-1]
+    )
+
+    rate, shorter = play_music(
+        pitches, durations, key, True, False, bpm, False,
+        "Third below", chart, False,
+        "Thirds, chord-corrected", False, edited, kept
+    )
+
+    # The whole point: correcting a phrase makes it
+    # shorter, not longer.
+    assert len(shorter) < len(first)

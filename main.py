@@ -23,6 +23,7 @@ from music import (
     list_midi_tracks,
     list_midi_phrases,
     list_phrases,
+    phrase_chosen,
     selected_piece,
     phrase_number_from,
     play_music,
@@ -172,6 +173,11 @@ with gr.Blocks(
         info="Choral and band files hold one track per "
              "part. Pick the line you want to practise.",
         visible=False
+    )
+
+    update_phrases_button = gr.Button(
+        "Update phrases",
+        size="sm"
     )
 
     phrase_input = gr.Dropdown(
@@ -414,11 +420,31 @@ with gr.Blocks(
 
         labels = list_phrases(pitch_text, duration_text, lyric_text)
 
-        # A phrase that no longer exists cannot stay
-        # chosen: joining two lines can leave the last
-        # phrase numbered past the end.
-        if chosen not in labels:
-            chosen = labels[0]
+        # What stays chosen is the phrase number, not the
+        # label.
+        #
+        # The labels carry the words, so editing the lyrics
+        # rewrites every one of them. Looking for the old
+        # label among the new ones finds nothing and falls
+        # back to the whole part, which then plays the
+        # entire song: the correction appears to have made
+        # things worse, when all that happened is the name
+        # changed underneath it.
+        number = phrase_chosen(chosen)
+
+        if number is None:
+
+            # Nothing in particular was chosen, so offer
+            # the first phrase rather than the whole part.
+            chosen = labels[1] if len(labels) > 1 else labels[0]
+
+        elif number + 1 < len(labels):
+            chosen = labels[number + 1]
+
+        else:
+            # Joining lines can leave the chosen phrase
+            # numbered past the end.
+            chosen = labels[-1]
 
         # And music divided for the first time needs the
         # dropdown to appear, having had nothing to show
@@ -429,7 +455,7 @@ with gr.Blocks(
             visible=len(labels) > 1
         )
 
-    lyric_input.blur(
+    update_phrases_button.click(
         fn=phrases_now,
         inputs=[
             pitch_input,
@@ -570,7 +596,13 @@ with gr.Blocks(
             chart_notes,
             gr.update(
                 choices=phrases,
-                value=phrases[0],
+                # The first phrase, not the whole part.
+                # A whole song is more than anyone
+                # practises at once, and landing on it
+                # makes the phrase list look like it does
+                # nothing: playback runs the entire piece
+                # however the lyrics are divided.
+                value=phrases[1] if len(phrases) > 1 else phrases[0],
                 visible=len(phrases) > 1
             )
         )
