@@ -1426,3 +1426,39 @@ def test_there_must_be_a_bar_to_harmonise():
 
     with pytest.raises(MusicInputError, match="least that can be"):
         suggest_chords(None, "C4 E4", "1 1")
+
+
+def test_the_axis_counts_bars_when_there_is_a_chart():
+    """
+    A chord chart lives in bars, and the picture under it
+    should count the way a musician counts: bar numbers on
+    the bar lines, beats as small marks between. Seconds
+    remain when there is no chart, because a bare
+    recording is genuinely in seconds and bars would be an
+    invention.
+    """
+
+    from music import show_target_music, load_twinkle_phrase
+
+    pitches, durations, lyrics, key, chart = load_twinkle_phrase()
+
+    with_chart = show_target_music(
+        pitches, durations, 120, lyrics, key,
+        False, "Third below", chart
+    )
+
+    assert with_chart.axes[0].get_xlabel() == "bars"
+
+    labels = [
+        tick.get_text()
+        for tick in with_chart.axes[0].get_xticklabels()
+    ]
+
+    assert labels[0] == "1"
+
+    without = show_target_music(
+        pitches, durations, 120, lyrics, key,
+        False, "Third below", ""
+    )
+
+    assert without.axes[0].get_xlabel() == "seconds"

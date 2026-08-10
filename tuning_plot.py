@@ -332,7 +332,54 @@ def make_performance_plot(
         fontsize=8
     )
 
-    axes.set_xlabel("seconds")
+    # The axis speaks the language of what is drawn on it.
+    #
+    # With a chord chart the music is in bars: the ticks
+    # sit on the bar lines and count them, with beats as
+    # smaller marks between, the way anyone counting the
+    # music counts. Seconds remain when there is no chart,
+    # because a bare recording is genuinely in seconds and
+    # bars would be an invention.
+    if bars:
+
+        from matplotlib.ticker import FixedLocator
+
+        bar_edges = [
+            bar_start * seconds_per_beat
+            for bar_start, bar_length in bars
+        ]
+
+        last_start, last_length = bars[-1]
+
+        bar_edges.append(
+            (last_start + last_length) * seconds_per_beat
+        )
+
+        axes.set_xticks(bar_edges)
+
+        axes.set_xticklabels(
+            [str(number + 1) for number in range(len(bars))]
+            + [""]
+        )
+
+        beat_marks = []
+
+        for bar_start, bar_length in bars:
+
+            for beat in range(1, int(round(bar_length))):
+
+                beat_marks.append(
+                    (bar_start + beat) * seconds_per_beat
+                )
+
+        axes.xaxis.set_minor_locator(FixedLocator(beat_marks))
+
+        axes.tick_params(axis="x", which="minor", length=2)
+
+        axes.set_xlabel("bars")
+
+    else:
+        axes.set_xlabel("seconds")
     axes.set_title(title)
 
     axes.spines["top"].set_visible(False)
