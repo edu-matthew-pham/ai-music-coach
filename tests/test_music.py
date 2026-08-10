@@ -666,3 +666,130 @@ def test_the_part_names_its_own_direction():
 
     assert part_steps("Harmony above") == 2
     assert part_steps("Harmony below") == -2
+
+
+def test_transposing_moves_the_notes_the_key_and_the_chords():
+    """
+    One edit of everything that describes the music. The
+    notes move, the key follows them, the chart's roots
+    travel with them and keep their qualities.
+    """
+
+    from music import transpose_music
+
+    pitches, key, chart, notes = transpose_music(
+        "C4 E4 R G4", "C", "| C . Am . | F . G7 . |", None, 2
+    )
+
+    assert pitches == "D4 F#4 R A4"
+    assert key == "D"
+    assert chart == "| D . Bm . | G . A7 . |"
+
+
+def test_transposing_and_back_is_exact():
+    """
+    Returning is a transpose, not a remembered original: a
+    stored starting key would go stale the moment anything
+    was typed, and the round trip is exact anyway.
+    """
+
+    from music import transpose_music, load_wellerman
+
+    original, durations, lyrics, key, chart, tempo = load_wellerman()
+
+    moved, moved_key, moved_chart, _ = transpose_music(
+        original, key, chart, None, -3
+    )
+
+    back, back_key, back_chart, _ = transpose_music(
+        moved, moved_key, moved_chart, None, 3
+    )
+
+    assert back == original
+    assert back_key == key
+    assert back_chart == chart
+
+
+def test_the_hidden_polyphony_travels_with_the_music():
+    """
+    The imported voices behind the picture's chord asides
+    live in pitch, not in a box. Left behind they would
+    describe the key the music has left, and nothing would
+    say so.
+    """
+
+    from music import transpose_music
+
+    _, _, _, notes = transpose_music(
+        "C4", "C", "", [(0.0, 1.0, 60), (0.0, 2.0, 64)], 5
+    )
+
+    assert notes == [(0.0, 1.0, 65), (0.0, 2.0, 69)]
+
+
+def test_an_octave_leaves_the_key_and_the_names_alone():
+    from music import transpose_music
+
+    pitches, key, chart, _ = transpose_music(
+        "C4 E4 G4", "C", "| C . . . |", None, -12
+    )
+
+    assert pitches == "C3 E3 G3"
+    assert key == "C"
+    assert chart == "| C . . . |"
+
+
+def test_the_spelling_follows_the_key_it_lands_in():
+    """
+    Arriving in a flat key reads flats. The same sound
+    spelled in the wrong dialect is what makes a chart
+    look foreign to the key box above it.
+    """
+
+    from music import transpose_music
+
+    pitches, key, chart, _ = transpose_music(
+        "A4 C5", "C", "| C . F . |", None, -2
+    )
+
+    assert key == "Bb"
+    assert "Bb" in chart
+    assert "A#" not in chart
+    assert pitches == "G4 Bb4"
+
+
+def test_the_shortest_way_round_is_taken():
+    from music import semitones_between
+
+    assert semitones_between("C", "D") == 2
+    assert semitones_between("C", "F") == 5
+
+    # Up seven or down five: down five keeps the music
+    # nearer where it was.
+    assert semitones_between("C", "G") == -5
+
+    assert semitones_between("C", "C") == 0
+
+
+def test_music_pushed_off_the_keyboard_is_refused():
+    from music import transpose_music, MusicInputError
+
+    with pytest.raises(MusicInputError):
+        transpose_music("C8 D8", "C", "", None, 36)
+
+
+def test_transposing_says_where_the_part_now_sits():
+    """
+    The range is the fact a singer is deciding on: not
+    which key it is now, but whether the top note is
+    still reachable.
+    """
+
+    from music import describe_transpose
+
+    said = describe_transpose("C", "D", 2, "D4 F#4 A4")
+
+    assert "C to D" in said
+    assert "up 2" in said
+    assert "D4" in said
+    assert "A4" in said

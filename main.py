@@ -9,6 +9,9 @@ from instrument_diagrams import INSTRUMENTS, show_instruments
 from help_text import HELP_TEXT
 from music import (
     MusicInputError,
+    transpose_music,
+    describe_transpose,
+    semitones_between,
     suggest_key,
     suggest_chords,
     describe_key_fit,
@@ -276,6 +279,39 @@ with gr.Blocks(
             detect_key_button = gr.Button(
                 "Detect key"
             )
+
+            # Transposing sits beside the key because it is
+            # the other half of the same question: the key
+            # box says how the music is written, this says
+            # how high it sits. Changing the key respells;
+            # transposing moves the sound.
+            with gr.Row():
+
+                transpose_target = gr.Dropdown(
+                    key_choices(),
+                    value="C",
+                    label="Transpose to",
+                    info="Moves the notes, the key and the "
+                         "chords together, by the shortest "
+                         "way round."
+                )
+
+                transpose_button = gr.Button(
+                    "Transpose",
+                    size="sm"
+                )
+
+                octave_down_button = gr.Button(
+                    "Octave down",
+                    size="sm"
+                )
+
+                octave_up_button = gr.Button(
+                    "Octave up",
+                    size="sm"
+                )
+
+            transpose_feedback = gr.Markdown()
 
             key_report = gr.Textbox(
                 label="Key",
@@ -852,6 +888,106 @@ with gr.Blocks(
             )
 
         return moved
+
+    def transposed(pitch_text, key, chart_text, chart_notes,
+                   semitones):
+        """
+        Move the music and say what moved.
+
+        Everything downstream reads the boxes when its own
+        button is pressed, so writing them here is the
+        whole of it: playback, the picture, the guide and
+        the judging all follow without being told. The
+        hidden polyphony is handed back too, because it
+        lives in pitch rather than in a box and would
+        otherwise describe the key the music has left.
+        """
+
+        pitches, new_key, chart, notes = transpose_music(
+            pitch_text, key, chart_text, chart_notes, semitones
+        )
+
+        return (
+            pitches,
+            new_key,
+            chart,
+            notes,
+            describe_transpose(key, new_key, semitones, pitches),
+            # The dropdown follows the music, so pressing
+            # again from where it landed is the obvious
+            # next gesture.
+            new_key
+        )
+
+    def transpose_to(pitch_text, key, chart_text, chart_notes,
+                     target):
+        """
+        Transpose to a chosen key, the shortest way round.
+        """
+
+        semitones = semitones_between(key, target)
+
+        if semitones == 0:
+            return (
+                gr.update(), gr.update(), gr.update(),
+                gr.update(),
+                f"Already in {key}.",
+                gr.update()
+            )
+
+        return transposed(
+            pitch_text, key, chart_text, chart_notes, semitones
+        )
+
+    def transpose_octave(step):
+        """
+        Move by a whole octave, which leaves the key alone.
+        """
+
+        def moved(pitch_text, key, chart_text, chart_notes):
+            return transposed(
+                pitch_text, key, chart_text, chart_notes,
+                12 * step
+            )
+
+        return moved
+
+    transpose_outputs = [
+        pitch_input,
+        key_input,
+        chart_input,
+        chart_notes_state,
+        transpose_feedback,
+        transpose_target
+    ]
+
+    transpose_button.click(
+        fn=guard(transpose_to),
+        inputs=[
+            pitch_input,
+            key_input,
+            chart_input,
+            chart_notes_state,
+            transpose_target
+        ],
+        outputs=transpose_outputs
+    )
+
+    for button, step in (
+        (octave_down_button, -1),
+        (octave_up_button, 1)
+    ):
+
+        button.click(
+            fn=guard(transpose_octave(step)),
+            inputs=[
+                pitch_input,
+                key_input,
+                chart_input,
+                chart_notes_state
+            ],
+            outputs=transpose_outputs
+        )
 
     # The diagram reads the key box each time it is drawn,
     # so a key changed anywhere - typed, detected, or filled

@@ -127,6 +127,50 @@ def chord_root(name):
     return NOTE_SEMITONES[root]
 
 
+
+def transpose_chart(chart_text, semitones, key=None):
+    """
+    The same chart, its roots moved and respelled.
+
+    Only the roots move. A minor seventh stays a minor
+    seventh however far the music travels: the quality is
+    the shape of the chord, the root is where it sits.
+
+    The spelling follows the key it lands in, so a chart
+    arriving in Bb reads Eb rather than D#. Given no key,
+    sharps are used, which is the app's default dialect.
+
+    Bar lines, dots and metre are untouched. A dot means
+    "the chord before, still sounding", which is true at
+    any pitch, so the chart's shape survives exactly.
+    """
+
+    from notes import FLAT_KEYS, FLAT_NAMES, SHARP_NAMES
+
+    text = chart_text.strip()
+
+    if len(text) == 0:
+        return chart_text
+
+    names = FLAT_NAMES if key in FLAT_KEYS else SHARP_NAMES
+
+    moved = []
+
+    for token in text.split():
+
+        if token in (BAR_LINE, CONTINUE):
+            moved.append(token)
+            continue
+
+        root, quality = split_chord(token)
+
+        semitone = (NOTE_SEMITONES[root] + semitones) % 12
+
+        moved.append(names[semitone] + quality)
+
+    return " ".join(moved)
+
+
 def read_chart(chart_text):
     """
     Read a chart into chords and bars.

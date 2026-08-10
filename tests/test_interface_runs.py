@@ -240,3 +240,58 @@ def test_choosing_nothing_says_so_rather_than_going_blank():
 
     assert "<svg" not in shown
     assert "instrument" in shown.lower()
+
+
+def test_transposing_writes_every_box_the_music_lives_in():
+    """
+    Transposing is one edit of the boxes. Everything
+    downstream reads them when its own button is pressed,
+    so the pitches, the key, the chart and the hidden
+    polyphony have to travel together - and the target
+    dropdown follows the music, so pressing again from
+    where it landed is the obvious next gesture.
+    """
+
+    import main
+
+    out = main.transpose_to(
+        "C4 E4 G4", "C", "| C . Am . |", [(0.0, 1.0, 60)], "D"
+    )
+
+    pitches, key, chart, notes, said, target = out
+
+    assert pitches == "D4 F#4 A4"
+    assert key == "D"
+    assert chart == "| D . Bm . |"
+    assert notes == [(0.0, 1.0, 62)]
+    assert target == "D"
+    assert "C to D" in said
+
+
+def test_transposing_to_the_key_it_is_in_changes_nothing():
+    """
+    Pressing Transpose on the key already showing is a
+    reasonable thing to do by accident, and must not shift
+    the music by an octave or rewrite anything.
+    """
+
+    import main
+
+    out = main.transpose_to("C4", "C", "| C . . . |", None, "C")
+
+    assert "Already in C" in out[4]
+
+
+def test_the_octave_buttons_leave_the_key_alone():
+    import main
+
+    down = main.transpose_octave(-1)
+
+    pitches, key, chart, notes, said, target = down(
+        "C4 E4", "C", "| C . . . |", None
+    )
+
+    assert pitches == "C3 E3"
+    assert key == "C"
+    assert chart == "| C . . . |"
+    assert "down 12" in said

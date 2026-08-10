@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from chords import chord_semitones
+from chords import chord_semitones, transpose_chart
 from piece import Piece
 from playback import (
     make_melody,
@@ -29,7 +29,10 @@ from harmony import (
     RELATIVE_MINORS
 )
 
-from notes import split_note, is_rest, REST
+from notes import (
+    split_note, is_rest, REST, NOTE_SEMITONES,
+    note_to_midi, midi_to_note
+)
 
 from compare import compare_sequence, summarise
 
@@ -1337,6 +1340,155 @@ def show_target_music(
         key=key,
         chord_asides=chord_asides
     )
+
+
+
+# One key per semitone, which is what makes transposing
+# unambiguous: raising F by one lands on F#, not Gb,
+# because F# is the key this app names for that sound.
+KEY_BY_SEMITONE = {
+    NOTE_SEMITONES[key] % 12: key
+    for key in MAJOR_SCALES
+}
+
+
+def semitones_between(from_key, to_key):
+    """
+    The shortest way from one key to another.
+
+    Shortest, because F to G is up two rather than down
+    ten: a singer asking for G wants the nearest G, and
+    the octave buttons are there for anyone who wants the
+    far one.
+    """
+
+    for name in (from_key, to_key):
+        if name not in MAJOR_SCALES:
+            raise MusicInputError(
+                f"'{name}' is not a key this app knows."
+            )
+
+    distance = (
+        NOTE_SEMITONES[to_key] - NOTE_SEMITONES[from_key]
+    ) % 12
+
+    return distance - 12 if distance > 6 else distance
+
+
+def transpose_music(pitch_text, key, chart_text,
+                    chart_notes, semitones):
+    """
+    Move the music, and everything that describes it.
+
+    The notes, the key and the chart travel together, and
+    so does the hidden polyphony the picture and Suggest
+    chords read: it lives in pitch, so left behind it
+    would describe the key the music used to be in.
+
+    This is one edit of the boxes and nothing else. No
+    memory of where the music started is kept: after the
+    edit, this is the music. Transposing back is exact,
+    which is a better way to return than a remembered
+    original that goes stale the moment anything is typed.
+
+    Durations, lyrics, phrasing and tempo are untouched -
+    transposing changes how high the music sits, not how
+    it goes.
+    """
+
+    semitones = check_transpose(semitones)
+
+    if key not in MAJOR_SCALES:
+        raise MusicInputError(
+            f"'{key}' is not a key this app knows."
+        )
+
+    pitches = pitch_text.split()
+
+    if len(pitches) == 0:
+        raise MusicInputError(
+            "Enter some notes first, such as C4 D4 E4."
+        )
+
+    check_note_names(pitches)
+
+    new_key = KEY_BY_SEMITONE[
+        (NOTE_SEMITONES[key] + semitones) % 12
+    ]
+
+    # The numbers first, then the check, then the names.
+    # A note pushed past the ends of the keyboard cannot be
+    # named at all, so naming before checking fails with a
+    # complaint about a note nobody asked for rather than
+    # about the shift that made it.
+    numbers = [
+        None if is_rest(pitch) else note_to_midi(pitch) + semitones
+        for pitch in pitches
+    ]
+
+    for number in numbers:
+
+        if number is None:
+            continue
+
+        if number < 12 or number > 120:
+            raise MusicInputError(
+                "That would move the music off the "
+                "keyboard. Try a smaller shift."
+            )
+
+    moved = [
+        REST if number is None else midi_to_note(number, new_key)
+        for number in numbers
+    ]
+
+    new_chart = transpose_chart(chart_text, semitones, new_key)
+
+    new_notes = chart_notes
+
+    if chart_notes:
+        new_notes = [
+            (start, length, number + semitones)
+            for start, length, number in chart_notes
+        ]
+
+    return " ".join(moved), new_key, new_chart, new_notes
+
+
+def describe_transpose(old_key, new_key, semitones, pitch_text):
+    """
+    What the transpose did, in the words that matter.
+
+    The range is said out loud because that is the fact a
+    singer is deciding on: not which key it is now, but
+    whether the top note is still reachable.
+    """
+
+    pitches = [
+        pitch for pitch in pitch_text.split()
+        if not is_rest(pitch)
+    ]
+
+    direction = "up" if semitones > 0 else "down"
+
+    step = abs(semitones)
+
+    line = (
+        f"{old_key} to {new_key}, {direction} "
+        f"{step} semitone{'s' if step != 1 else ''}"
+    )
+
+    if pitches:
+
+        numbers = [note_to_midi(pitch) for pitch in pitches]
+
+        line += (
+            f". The part now runs "
+            f"{midi_to_note(min(numbers), new_key)} to "
+            f"{midi_to_note(max(numbers), new_key)}"
+        )
+
+    return line + "."
 
 
 def key_setting_for(key_name):
