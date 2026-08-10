@@ -194,8 +194,8 @@ def test_the_instrument_diagram_follows_the_key_box():
 
     import main
 
-    in_f = main.show_instrument("F", "Piano")
-    in_d = main.show_instrument("D", "Piano")
+    in_f = main.show_instruments("F", ["Piano"])
+    in_d = main.show_instruments("D", ["Piano"])
 
     assert "F major" in in_f
     assert "Bb" in in_f
@@ -215,4 +215,28 @@ def test_every_instrument_offered_can_be_drawn():
     import main
 
     for instrument in main.INSTRUMENTS:
-        assert "<svg" in main.show_instrument("C", instrument)
+        assert "<svg" in main.show_instruments("C", [instrument])
+
+    # And all of them together, which is what the toggles
+    # allow: four pictures, each named.
+    everything = main.show_instruments("C", main.INSTRUMENTS)
+
+    assert everything.count("<svg") == len(main.INSTRUMENTS)
+
+    for instrument in main.INSTRUMENTS:
+        assert instrument in everything
+
+
+def test_choosing_nothing_says_so_rather_than_going_blank():
+    """
+    Every box unticked is a legitimate choice, not a fault:
+    the section says what to do instead of showing an empty
+    space that looks broken.
+    """
+
+    import main
+
+    shown = main.show_instruments("C", [])
+
+    assert "<svg" not in shown
+    assert "instrument" in shown.lower()

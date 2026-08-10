@@ -131,10 +131,11 @@ def test_home_is_marked_apart_from_the_rest_of_the_key():
         assert HOME_COLOUR in diagram_for("C", instrument)
 
 
-def test_the_piano_draws_seven_white_keys_and_five_black():
+def test_the_piano_draws_twelve_keys_to_the_octave():
     picture = piano_diagram("C")
 
-    assert len(re.findall(r"<rect", picture)) == 12
+    # Seven white and five black per octave, three octaves.
+    assert len(re.findall(r"<rect", picture)) == 36
 
 
 def test_the_view_says_what_it_is_showing():
@@ -150,13 +151,28 @@ def test_no_key_asks_for_one_instead_of_drawing_nothing():
     assert "<svg" not in show_instrument(None, "Piano")
 
 
-def test_an_unknown_instrument_falls_back_rather_than_failing():
+def test_an_unknown_instrument_is_ignored_rather_than_guessed():
     """
-    The dropdown cannot offer one, but a stale value must
-    not take the page down with it.
+    A stale value must not take the page down - but nor
+    should it be quietly drawn as something else. Silently
+    substituting a piano for an instrument nobody asked
+    for is a lie the picture cannot own up to, so unknown
+    names are dropped and the section says what to do.
     """
 
-    assert "<svg" in show_instrument("C", "Kazoo")
+    shown = show_instrument("C", "Kazoo")
+
+    assert "<svg" not in shown
+    assert "instrument" in shown.lower()
+
+    # And a stale name alongside a real one leaves the
+    # real one drawn.
+    from instrument_diagrams import show_instruments
+
+    both = show_instruments("C", ["Kazoo", "Piano"])
+
+    assert both.count("<svg") == 1
+    assert "Piano" in both
 
 
 def test_the_violin_chart_reads_in_fingers_not_frets():
@@ -176,30 +192,103 @@ def test_the_violin_chart_reads_in_fingers_not_frets():
         assert f">{finger}</text>" in picture
 
 
-def test_the_shift_lands_the_first_finger_where_the_third_was():
+def test_the_first_finger_lands_on_the_perfect_fourth():
     """
-    The relation between the two charts is the shift
-    itself: in third position the hand starts five
-    semitones up, so its first finger covers ground the
-    first position gave to the third.
+    Third position is defined by its first finger playing
+    what the third finger played in first position: five
+    semitones above the open string, a perfect fourth.
+
+    This chart once put the whole hand a semitone sharp,
+    so the definition is pinned at the semitone: on the A
+    string, third position's first finger is D.
     """
 
     from instrument_diagrams import (
-        POSITION_STARTS, FINGER_FOR_SEMITONE
+        POSITION_STARTS, fingering_for, _note_at, name_for
     )
 
-    shift = POSITION_STARTS["Third position"]
+    def fingers_on(string, key, position):
+        frame = POSITION_STARTS[position]
+        return {
+            finger: name_for(_note_at(string, step), key)
+            for step, finger in fingering_for(string, key, frame)
+        }
 
-    # Semitone six from the nut: third finger's ground in
-    # first position, first finger's in third position.
-    assert FINGER_FOR_SEMITONE[6] == 3
-    assert FINGER_FOR_SEMITONE[6 - shift] == 1
+    # D major, A string: the third finger's note in first
+    # position is the first finger's in third.
+    first = fingers_on("A4", "D", "First position")
+    third = fingers_on("A4", "D", "Third position")
+
+    assert first[3] == "D"
+    assert third[1] == "D"
+
+    # Which is five semitones above the open string: a
+    # perfect fourth, not a fifth.
+    assert _note_at("A4", 5) == _note_at("D4", 0)
 
 
-def test_a_shifted_hand_has_no_open_string():
+def test_each_finger_is_used_once_on_a_string():
     """
-    Nought means the open string, which only exists where
-    the hand can reach the nut.
+    The fingers are ordinal: within a position the four of
+    them take the next four notes of the key in order. A
+    chart that stamps the same number on two notes and
+    never reaches the fourth is modelling a hand with four
+    fixed places rather than four fingers.
+
+    This chart did exactly that on the A and E strings in
+    third position - two threes, no four.
+    """
+
+    from harmony import MAJOR_SCALES
+    from instrument_diagrams import (
+        VIOLIN_STRINGS, POSITION_STARTS, fingering_for
+    )
+
+    for key in MAJOR_SCALES:
+        for position, frame in POSITION_STARTS.items():
+            for string in VIOLIN_STRINGS:
+
+                fingers = [
+                    finger
+                    for step, finger in
+                    fingering_for(string, key, frame)
+                ]
+
+                assert fingers == sorted(fingers)
+
+                assert len(fingers) == len(set(fingers)), (
+                    f"{key} {position} {string}: {fingers}"
+                )
+
+                assert fingers == list(range(1, len(fingers) + 1))
+
+
+def test_a_hand_reaches_all_four_fingers_in_a_major_key():
+    """
+    Seven semitones of a major scale always hold four
+    notes, so every string in every key gives a full hand.
+    """
+
+    from harmony import MAJOR_SCALES
+    from instrument_diagrams import (
+        VIOLIN_STRINGS, POSITION_STARTS, fingering_for
+    )
+
+    for key in MAJOR_SCALES:
+        for frame in POSITION_STARTS.values():
+            for string in VIOLIN_STRINGS:
+
+                assert len(
+                    fingering_for(string, key, frame)
+                ) == 4
+
+
+def test_the_open_string_belongs_to_every_position():
+    """
+    An open string needs no finger, so no shift takes it
+    away: both charts draw the nought at the nut. What a
+    shifted hand loses is the nut itself - its first
+    finger starts five semitones up.
     """
 
     from instrument_diagrams import violin_chart
@@ -208,7 +297,29 @@ def test_a_shifted_hand_has_no_open_string():
     third = violin_chart("C", "Third position")
 
     assert ">0</text>" in first
-    assert ">0</text>" not in third
+    assert ">0</text>" in third
+
+
+def test_the_two_charts_share_one_ruler_of_the_neck():
+    """
+    Both charts count semitones from the open string, so
+    third position visibly sits further along the neck:
+    its ruler reaches twelve where first position's stops
+    at seven, and its first fingered mark stands past
+    where the first position's hand ends.
+    """
+
+    from instrument_diagrams import violin_chart
+
+    first = violin_chart("C", "First position")
+    third = violin_chart("C", "Third position")
+
+    assert ">7</text>" in first
+    assert ">11</text>" not in first
+
+    # The frame starts at four and the hand reaches seven
+    # more: the ruler runs to eleven.
+    assert ">11</text>" in third
 
 
 def test_the_fourth_finger_matches_the_next_string_open():
@@ -241,3 +352,22 @@ def test_an_unknown_position_is_refused():
 
     with pytest.raises(KeyError):
         violin_chart("C", "Ninth position")
+
+
+def test_the_piano_spans_three_octaves():
+    """
+    One octave shows the pattern; three show it repeating,
+    which is how a keyboard is read. Every octave carries
+    the same marks.
+    """
+
+    import re
+
+    from instrument_diagrams import piano_diagram
+
+    picture = piano_diagram("F")
+
+    assert len(re.findall(r"<rect", picture)) == 36
+
+    assert picture.count(">F</text>") == 3
+    assert picture.count(">Bb</text>") == 3

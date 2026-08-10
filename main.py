@@ -5,7 +5,7 @@ import os
 import gradio as gr
 
 from harmony import key_choices
-from instrument_diagrams import INSTRUMENTS, show_instrument
+from instrument_diagrams import INSTRUMENTS, show_instruments
 from help_text import HELP_TEXT
 from music import (
     MusicInputError,
@@ -443,12 +443,17 @@ with gr.Blocks(
                 "change the key and the picture follows."
             )
 
-            instrument_input = gr.Dropdown(
+            # Several at once rather than one from a list:
+            # the violin's two positions read together are
+            # what show the shift, and a singer often wants
+            # the piano beside whatever they are holding.
+            instrument_input = gr.CheckboxGroup(
                 INSTRUMENTS,
-                value=INSTRUMENTS[0],
-                label="Instrument",
-                info="The violin charts read in fingers "
-                     "and show one hand position each."
+                value=[INSTRUMENTS[0]],
+                label="Show",
+                info="Any number at once. The violin "
+                     "charts read in fingers and show one "
+                     "hand position each."
             )
 
             instrument_diagram = gr.HTML()
@@ -817,7 +822,7 @@ with gr.Blocks(
     for control in (key_input, instrument_input):
 
         control.change(
-            fn=show_instrument,
+            fn=show_instruments,
             inputs=[key_input, instrument_input],
             outputs=instrument_diagram
         )
@@ -825,7 +830,7 @@ with gr.Blocks(
     # And once when the page opens, so the section is never
     # an empty box waiting to be poked.
     demo.load(
-        fn=show_instrument,
+        fn=show_instruments,
         inputs=[key_input, instrument_input],
         outputs=instrument_diagram
     )

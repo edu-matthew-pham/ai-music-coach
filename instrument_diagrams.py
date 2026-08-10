@@ -55,28 +55,68 @@ STRING_TUNINGS = {
 }
 
 # The violin's strings, lowest first, and where each hand
-# position starts. In first position the first finger sits
-# a semitone or two above the nut; in third position the
-# hand has shifted so the first finger lands where the
-# third finger was, five semitones up. The shift is the
-# skill the two charts exist to teach.
+# position's frame begins. The stored number is one
+# semitone below where the first finger's low placement
+# falls, the way the nut sits one below the low first
+# finger in first position.
+#
+# In third position the hand has shifted so the first
+# finger lands where the third finger was: five semitones
+# above the open string, a perfect fourth. The frame
+# therefore starts at four. Writing five here was an
+# off-by-one that put the whole hand a semitone sharp.
 VIOLIN_STRINGS = ["G3", "D4", "A4", "E5"]
 
 POSITION_STARTS = {
     "First position": 0,
-    "Third position": 5
+    "Third position": 4
 }
 
-# Which finger stops each semitone above the hand's start.
-# Nought is the open string, which only the first position
-# has: a shifted hand cannot reach back to the nut.
-FINGER_FOR_SEMITONE = {
-    0: 0,
-    1: 1, 2: 1,
-    3: 2, 4: 2,
-    5: 3, 6: 3,
-    7: 4
-}
+# How far above its frame a hand reaches: four fingers
+# covering roughly seven semitones.
+POSITION_REACH = 7
+
+# The most fingers a hand has.
+FINGERS = 4
+
+
+def fingering_for(open_string, key, frame):
+    """
+    Which finger takes which note, on one string.
+
+    The fingers are ordinal, not spaced: within a position
+    the four fingers take the next four notes of the key
+    in order, whatever the gaps between them happen to be.
+    A key with a half step early in the hand and one with
+    a whole step there use the same four fingers - they
+    just sit differently, which is the whole of what a
+    hand shape is.
+
+    Mapping semitone distance to a finger instead - one
+    finger per tone, with a low and a high placement each
+    - stamps the same number on two notes whenever the key
+    puts scale notes a half step apart inside the hand,
+    and then never reaches the fourth finger at all. That
+    is a model of a hand with four fixed places rather
+    than four fingers.
+
+    The open string is not here: it needs no finger, so it
+    belongs to every position and is drawn at the nut
+    whatever the hand is doing.
+    """
+
+    in_key = semitones_in(key)
+
+    reachable = [
+        step
+        for step in range(frame + 1, frame + POSITION_REACH + 1)
+        if _note_at(open_string, step) in in_key
+    ]
+
+    return [
+        (step, finger)
+        for finger, step in enumerate(reachable[:FINGERS], start=1)
+    ]
 
 FRETS_SHOWN = 12
 
@@ -168,7 +208,11 @@ def _colour_for(semitone, key, home):
 
 def piano_diagram(key):
     """
-    One octave of a keyboard with the key's notes marked.
+    Three octaves of a keyboard with the key's notes
+    marked. One octave shows the pattern; three show it
+    repeating, which is how a keyboard is actually read -
+    a line moves across octaves, and the shape a hand
+    finds is the same shape everywhere.
 
     White and black keys are drawn as they sit, because
     that is how they are found: a player looks for the
@@ -184,8 +228,20 @@ def piano_diagram(key):
     home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
     in_key = semitones_in(key)
 
-    white_semitones = [0, 2, 4, 5, 7, 9, 11]
-    black_after = {0: 1, 2: 3, 5: 6, 7: 8, 9: 10}
+    octaves = 3
+
+    white_semitones = [
+        semitone + octave * 12
+        for octave in range(octaves)
+        for semitone in [0, 2, 4, 5, 7, 9, 11]
+    ]
+
+    black_after = {
+        semitone + octave * 12: raised + octave * 12
+        for octave in range(octaves)
+        for semitone, raised in
+        {0: 1, 2: 3, 5: 6, 7: 8, 9: 10}.items()
+    }
 
     white_width = 44
     white_height = 170
@@ -200,7 +256,8 @@ def piano_diagram(key):
         """
 
         colour = (
-            HOME_COLOUR if semitone == home else IN_KEY_COLOUR
+            HOME_COLOUR if semitone % 12 == home
+            else IN_KEY_COLOUR
         )
 
         return (
@@ -222,7 +279,7 @@ def piano_diagram(key):
             f'stroke="{LINE_COLOUR}" stroke-width="1.5"/>'
         )
 
-        if semitone in in_key:
+        if semitone % 12 in in_key:
             parts.append(
                 spot(
                     x + white_width / 2,
@@ -248,7 +305,7 @@ def piano_diagram(key):
             f'stroke="{LINE_COLOUR}" stroke-width="1.5"/>'
         )
 
-        if raised in in_key:
+        if raised % 12 in in_key:
             parts.append(
                 spot(
                     x + black_width / 2,
@@ -396,24 +453,28 @@ def fretboard_diagram(key, instrument="Guitar"):
 
 def violin_chart(key, position="First position"):
     """
-    A fingering chart the way violin charts are printed.
+    A fingering chart laid along the neck.
 
-    Vertical, nut at the top, the four strings as lines
-    read G D A E left to right, and each mark a finger
-    number - which is what a violinist reads. The note
-    name sits small beside it.
+    Horizontal like the guitar's, strings as lines with the
+    lowest at the bottom, and the ruler underneath counting
+    semitones from the open string - so the two position
+    charts share one map of the neck, and third position
+    visibly sits further along it than first.
 
-    Vertical placement is proportional to semitones, one
-    unit per half step, so fingers that sit close on the
-    instrument sit close on the page: the half-step pairs
-    that make one key's hand shape differ from another's
-    are visible as geometry rather than annotation.
+    Each mark is a finger number, which is what a violinist
+    reads, with the note name small beside it. Placement is
+    proportional to semitones, so the half-step pairs that
+    make one key's hand shape differ from another's show as
+    geometry.
+
+    The open string is drawn at the nut in every position:
+    it needs no finger, so no shift takes it away. What a
+    shifted hand loses is the nut itself - its first finger
+    starts five semitones up, where the third finger was.
 
     Only the key's notes are drawn, on a faint semitone
-    ruler. A violin chart is a picture of a hand shape,
-    not a map of the fingerboard, so the notes outside the
-    key would be noise here - unlike the guitar, where
-    every fret is a destination worth naming.
+    ruler: this is a picture of a hand shape, not a map of
+    every destination the way the guitar's is.
     """
 
     start = POSITION_STARTS.get(position)
@@ -427,69 +488,75 @@ def violin_chart(key, position="First position"):
     home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
     in_key = semitones_in(key)
 
-    top = 40
-    left = 60
-    string_gap = 78
-    semitone_gap = 34
+    furthest = start + POSITION_REACH
 
-    reach = sorted(FINGER_FOR_SEMITONE)
+    left = 46
+    top = 26
+    semitone_width = 60
+    string_gap = 42
 
-    height = top + max(reach) * semitone_gap + 40
-    width = left + (len(VIOLIN_STRINGS) - 1) * string_gap + 70
+    height = top + (len(VIOLIN_STRINGS) - 1) * string_gap + 44
+    width = left + furthest * semitone_width + 30
 
     parts = []
 
-    # The nut, drawn only where the hand can touch it.
-    if start == 0:
+    strings_bottom = top + (len(VIOLIN_STRINGS) - 1) * string_gap
+
+    # The nut.
+    parts.append(
+        f'<line x1="{left}" y1="{top - 8}" x2="{left}" '
+        f'y2="{strings_bottom + 8}" '
+        f'stroke="{LINE_COLOUR}" stroke-width="5"/>'
+    )
+
+    # The semitone ruler: faint lines, counted underneath.
+    for step in range(1, furthest + 1):
+
+        x = left + step * semitone_width
+
         parts.append(
-            f'<line x1="{left - 20}" y1="{top}" '
-            f'x2="{left + (len(VIOLIN_STRINGS) - 1) * string_gap + 20}" '
-            f'y2="{top}" stroke="{LINE_COLOUR}" '
-            f'stroke-width="5"/>'
+            f'<line x1="{x}" y1="{top - 4}" x2="{x}" '
+            f'y2="{strings_bottom + 4}" '
+            f'stroke="#eceff1" stroke-width="1"/>'
         )
 
-    # A faint ruler of semitones behind the strings.
-    for step in reach[1:]:
-
-        y = top + step * semitone_gap
-
         parts.append(
-            f'<line x1="{left - 14}" y1="{y}" '
-            f'x2="{left + (len(VIOLIN_STRINGS) - 1) * string_gap + 14}" '
-            f'y2="{y}" stroke="#eceff1" stroke-width="1"/>'
+            f'<text x="{x}" y="{height - 8}" '
+            f'text-anchor="middle" font-size="11" '
+            f'font-family="sans-serif" fill="{LABEL_COLOUR}">'
+            f'{step}</text>'
         )
 
-    for index, open_string in enumerate(VIOLIN_STRINGS):
+    # Strings left to right along the neck, lowest at the
+    # bottom the way a player looking down sees them.
+    for index, open_string in enumerate(reversed(VIOLIN_STRINGS)):
 
-        x = left + index * string_gap
+        y = top + index * string_gap
 
         parts.append(
-            f'<line x1="{x}" y1="{top}" x2="{x}" '
-            f'y2="{top + max(reach) * semitone_gap}" '
+            f'<line x1="{left}" y1="{y}" '
+            f'x2="{left + furthest * semitone_width}" y2="{y}" '
             f'stroke="{LINE_COLOUR}" stroke-width="1.5"/>'
         )
 
         parts.append(
-            f'<text x="{x}" y="{top - 14}" '
-            f'text-anchor="middle" font-size="13" '
+            f'<text x="{left - 12}" y="{y + 4}" '
+            f'text-anchor="end" font-size="12" '
             f'font-family="sans-serif" fill="{LABEL_COLOUR}">'
-            f'{_escape(open_string[:-1])}</text>'
+            f'{_escape(open_string)}</text>'
         )
 
-        for step in reach:
+        def mark(step, finger):
+            """
+            One finger's place on this string, if in key.
+            """
 
-            finger = FINGER_FOR_SEMITONE[step]
-
-            # A shifted hand has no open string to play.
-            if finger == 0 and start > 0:
-                continue
-
-            semitone = _note_at(open_string, start + step)
+            semitone = _note_at(open_string, step)
 
             if semitone not in in_key:
-                continue
+                return
 
-            y = top + step * semitone_gap
+            x = left + step * semitone_width
 
             colour = (
                 HOME_COLOUR if semitone == home
@@ -497,7 +564,7 @@ def violin_chart(key, position="First position"):
             )
 
             parts.append(
-                f'<circle cx="{x}" cy="{y}" r="13" '
+                f'<circle cx="{x}" cy="{y}" r="12" '
                 f'fill="{colour}" stroke="#ffffff" '
                 f'stroke-width="1.5"/>'
             )
@@ -509,17 +576,19 @@ def violin_chart(key, position="First position"):
                 f'{finger}</text>'
             )
 
-            # The open string is named by the letter over
-            # it already; a side label there only sits on
-            # the nut line.
-            if finger:
-                parts.append(
-                    f'<text x="{x + 20}" y="{y + 4}" '
-                    f'text-anchor="start" font-size="10" '
-                    f'font-family="sans-serif" '
-                    f'fill="{LABEL_COLOUR}">'
-                    f'{_escape(name_for(semitone, key))}</text>'
-                )
+            parts.append(
+                f'<text x="{x + 15}" y="{y - 9}" '
+                f'text-anchor="start" font-size="9" '
+                f'font-family="sans-serif" '
+                f'fill="{LABEL_COLOUR}">'
+                f'{_escape(name_for(semitone, key))}</text>'
+            )
+
+        # The open string, in every position.
+        mark(0, 0)
+
+        for step, finger in fingering_for(open_string, key, start):
+            mark(step, finger)
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -527,7 +596,7 @@ def violin_chart(key, position="First position"):
         f'width="100%" style="max-width:{width}px" '
         f'role="img" aria-label="A violin chart of '
         f'{_escape(describe_key(key))} in '
-        f'{_escape(position.lower())}">'
+        f'{_escape(position.lower())}, along the neck">'
         + "".join(parts) +
         "</svg>"
     )
@@ -561,13 +630,20 @@ def diagram_for(key, instrument):
     return fretboard_diagram(key, instrument)
 
 
-def show_instrument(key, instrument):
+def show_instruments(key, chosen):
     """
-    A diagram with a line saying what is being looked at.
+    Diagrams for however many instruments are wanted.
 
-    The key comes from the key box every time this runs, so
-    changing the key draws the new one rather than leaving
-    a picture of the old.
+    Several at once, because they answer different halves
+    of one question: where a note sits under the hand, and
+    where it sits on the page. A violinist reading both
+    position charts together sees the shift; a singer with
+    the piano beside them sees the same seven notes twice.
+
+    The key comes from the key box every time this runs,
+    so changing the key redraws every picture rather than
+    leaving one of them showing the key that used to be
+    chosen.
     """
 
     if not key or key not in MAJOR_SCALES:
@@ -575,29 +651,60 @@ def show_instrument(key, instrument):
             "<p>Choose a key to see where its notes sit.</p>"
         )
 
-    if instrument not in INSTRUMENTS:
-        instrument = INSTRUMENTS[0]
+    if isinstance(chosen, str):
+        chosen = [chosen]
+
+    wanted = [
+        instrument for instrument in INSTRUMENTS
+        if instrument in (chosen or [])
+    ]
+
+    if not wanted:
+        return (
+            "<p>Choose an instrument to see where the "
+            "notes of the key sit on it.</p>"
+        )
 
     scale = MAJOR_SCALES[key]
 
-    if instrument.startswith("Violin"):
-        explained = (
-            "The numbers are fingers, nought the open "
-            "string. Home is marked apart. Fingers drawn "
-            "close together sit a half step apart on the "
-            "instrument."
-        )
-
-    else:
-        explained = (
-            "Home is marked apart; the greyed positions "
-            "are the notes outside the key."
-        )
-
-    return (
-        f"<p><strong>{_escape(describe_key(key))}</strong> "
-        f"on the {_escape(instrument.lower())}: "
+    parts = [
+        f"<p><strong>{_escape(describe_key(key))}</strong>: "
         f"{_escape(' '.join(scale))}. "
-        f"{explained}</p>"
-        + diagram_for(key, instrument)
-    )
+        f"Home is marked apart.</p>"
+    ]
+
+    for instrument in wanted:
+
+        if instrument.startswith("Violin"):
+            explained = (
+                "Numbers are fingers, nought the open "
+                "string; the ruler counts semitones from "
+                "it. Fingers drawn close sit a half step "
+                "apart."
+            )
+
+        else:
+            explained = (
+                "The greyed positions are the notes "
+                "outside the key."
+            )
+
+        parts.append(
+            f"<h4 style='margin:18px 0 4px'>"
+            f"{_escape(instrument)}</h4>"
+            f"<p style='margin:0 0 6px;font-size:0.9em;"
+            f"color:{LABEL_COLOUR}'>{explained}</p>"
+            + diagram_for(key, instrument)
+        )
+
+    return "".join(parts)
+
+
+def show_instrument(key, instrument):
+    """
+    One instrument's diagram, with a line saying what it
+    is. Kept for a single choice; show_instruments is the
+    one the interface uses.
+    """
+
+    return show_instruments(key, [instrument])
