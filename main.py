@@ -28,9 +28,6 @@ from music import (
     phrase_number_from,
     play_music,
     show_harmony,
-    analyse_single_note,
-    analyse_sequence,
-    analyse_instrument,
     analyse_performance,
     load_twinkle,
     load_wellerman
@@ -58,6 +55,39 @@ def guard(function):
     return wrapped
 
 
+ANCHOR_CSS = """
+.anchor-nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: var(--body-background-fill);
+    border-bottom: 1px solid var(--border-color-primary);
+    padding: 8px 0;
+}
+.anchor-nav a {
+    margin-right: 24px;
+    font-weight: 600;
+    text-decoration: none;
+}
+"""
+
+
+def anchor_link(label, target):
+    """
+    A navigation link that scrolls to a section.
+
+    Plain anchors and a scroll call together, so it works
+    whether or not the page honours fragment links.
+    """
+
+    return (
+        f'<a href="#{target}" onclick="'
+        f"document.getElementById('{target}')"
+        f".scrollIntoView({{behavior: 'smooth'}}); "
+        f'return false;">{label}</a>'
+    )
+
+
 with gr.Blocks(
     title="AI Music Coach"
 ) as demo:
@@ -79,13 +109,23 @@ with gr.Blocks(
     # wired to it inherits that.
     chart_notes_state = gr.State(None)
 
-    with gr.Tabs():
+    gr.HTML(
+        '<div class="anchor-nav">'
+        + anchor_link("Song", "song")
+        + anchor_link("Arrange", "arrange")
+        + anchor_link("Practice", "practice")
+        + "</div>"
+    )
+
+    with gr.Column():
 
         # -------------------------------------------------
         # SONG: get music into the boxes
         # -------------------------------------------------
 
-        with gr.Tab("Song"):
+        with gr.Column(elem_id="song"):
+
+            gr.Markdown("## Song")
 
             with gr.Accordion("How to use this", open=False):
                 gr.Markdown(HELP_TEXT)
@@ -132,7 +172,9 @@ with gr.Blocks(
         # ARRANGE: get the reading right, by eye and ear
         # -------------------------------------------------
 
-        with gr.Tab("Arrange"):
+        with gr.Column(elem_id="arrange"):
+
+            gr.Markdown("## Arrange")
 
             pitch_input = gr.Textbox(
                 label="Pitches",
@@ -297,12 +339,9 @@ with gr.Blocks(
         # PRACTICE: sing it and see how it went
         # -------------------------------------------------
 
-        with gr.Tab("Practice") as practice_tab:
+        with gr.Column(elem_id="practice"):
 
-            practice_status = gr.Markdown(
-                "Nothing loaded yet: pick music on the "
-                "Song tab first."
-            )
+            gr.Markdown("## Practice")
 
             gr.Markdown(
                 "Press record and the guide starts by itself: "
@@ -372,45 +411,6 @@ with gr.Blocks(
                 lines=10
             )
 
-        # -------------------------------------------------
-        # DIAGNOSTICS: the detectors, one at a time
-        # -------------------------------------------------
-
-        with gr.Tab("Diagnostics"):
-
-            gr.Markdown(
-                "Under-the-hood checks on the detectors, "
-                "one at a time. They read the recording "
-                "from the Practice tab."
-            )
-
-            with gr.Row():
-
-                detect_note_button = gr.Button(
-                    "Detect One Note"
-                )
-
-                detect_sequence_button = gr.Button(
-                    "Detect Sequence"
-                )
-
-                detect_instrument_button = gr.Button(
-                    "Detect Instrument"
-                )
-
-            note_output = gr.Textbox(
-                label="Pitch Detection"
-            )
-
-            sequence_output = gr.Textbox(
-                label="Sequence Detection"
-            )
-
-            instrument_output = gr.Textbox(
-                label="Instrument Detection",
-                lines=4
-            )
-
     # -----------------------------------------------------
     # EVENTS
     # -----------------------------------------------------
@@ -467,49 +467,6 @@ with gr.Blocks(
             value=chosen,
             visible=len(labels) > 1
         )
-
-    def describe_practice(pitch_text, key, bpm, chosen):
-        """
-        One line saying what the Practice tab is about to
-        judge against.
-
-        The tab reads the Arrange boxes when its buttons
-        are pressed, and this says so out loud: which
-        music, which phrase of it, in what key, how fast.
-        Without it, arriving here shows recording controls
-        and no sign of what they are pointed at.
-        """
-
-        names = pitch_text.split() if pitch_text else []
-
-        if not names:
-            return (
-                "Nothing loaded yet: pick music on the "
-                "Song tab first."
-            )
-
-        line = f"**Practising:** {len(names)} notes, key {key}"
-
-        number = phrase_chosen(chosen)
-
-        if number is not None:
-            line += f", phrase {number + 1}"
-
-        if bpm:
-            line += f", at {bpm:g} BPM"
-
-        return line
-
-    practice_tab.select(
-        fn=describe_practice,
-        inputs=[
-            pitch_input,
-            key_input,
-            bpm_input,
-            phrase_input
-        ],
-        outputs=practice_status
-    )
 
     update_phrases_button.click(
         fn=phrases_now,
@@ -796,28 +753,6 @@ with gr.Blocks(
         outputs=guide_audio
     )
 
-    detect_note_button.click(
-        fn=guard(analyse_single_note),
-        inputs=recorded_audio,
-        outputs=note_output
-    )
-
-    detect_sequence_button.click(
-        fn=guard(analyse_sequence),
-        inputs=[
-            recorded_audio,
-            duration_input,
-            bpm_input
-        ],
-        outputs=sequence_output
-    )
-
-    detect_instrument_button.click(
-        fn=guard(analyse_instrument),
-        inputs=recorded_audio,
-        outputs=instrument_output
-    )
-
     compare_button.click(
         fn=guard(analyse_performance),
         inputs=[
@@ -852,5 +787,6 @@ if __name__ == "__main__":
 
     demo.launch(
         server_name="0.0.0.0",
-        server_port=port
+        server_port=port,
+        css=ANCHOR_CSS
     )
