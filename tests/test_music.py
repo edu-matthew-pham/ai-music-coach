@@ -501,3 +501,91 @@ def test_the_wellerman_line_is_two_bars_of_four():
     chords, bars = read_chords(chart, duration_list)
 
     assert bars == [(0.0, 4.0), (4.0, 4.0)]
+
+def test_the_full_twinkle_is_a_consistent_piece():
+    """
+    The whole song: six phrases in an A B C C A B shape,
+    the chart exactly as long as the music.
+    """
+
+    from fractions import Fraction
+
+    from music import load_twinkle
+    from piece import Piece
+    from chords import chart_beats
+
+    pitches, durations, lyrics, key, chart, tempo = load_twinkle()
+
+    piece = Piece.read(pitches, durations, lyrics)
+
+    assert len(piece.phrases()) == 6
+
+    beats = sum(Fraction(x) for x in durations.split())
+
+    assert beats == chart_beats(chart) == 48
+
+    lines = pitches.split("\n") if "\n" in pitches else None
+
+    # The reprise: last two phrases repeat the first two.
+    tokens = pitches.split()
+    assert tokens[:16] == tokens[32:]
+
+
+def test_the_full_wellerman_is_a_consistent_piece():
+    """
+    Verse and chorus on a downbeat-aligned grid: three
+    beats of opening rest put the pickup on beat four, and
+    the chart - one chord to a bar, read at function level
+    from a published sheet - lasts exactly as long as the
+    music.
+    """
+
+    from fractions import Fraction
+
+    from music import load_wellerman
+    from piece import Piece
+    from chords import chart_beats, read_chart
+
+    pitches, durations, lyrics, key, chart, tempo = load_wellerman()
+
+    piece = Piece.read(pitches, durations, lyrics)
+
+    assert len(piece.phrases()) == 8
+
+    beats = sum(Fraction(x) for x in durations.split())
+
+    assert beats == chart_beats(chart) == 68
+
+    assert key == "F"
+
+    # Three opening rests, then the pickup.
+    assert pitches.split()[:4] == ["R", "R", "R", "A3"]
+
+    # The chart parses, including the borrowed dominant.
+    read_chart(chart)
+
+    assert " A " in f" {chart} "
+
+
+def test_the_full_wellerman_opens_like_the_phrase_example():
+    """
+    The first sung line of the full song is the phrase
+    example, note for note: the hand-checked notation and
+    the grid drafted from the imported performance agree,
+    which is what makes the rest of the grid trustworthy.
+    """
+
+    from music import load_wellerman, load_wellerman_phrase
+
+    full = load_wellerman()
+    phrase = load_wellerman_phrase()
+
+    # Skip the three opening rests; compare the nine notes.
+    assert full[0].split()[3:12] == phrase[0].split()
+
+    # Same lengths for the eight notes after the pickup:
+    # the phrase example writes its pickup a beat long
+    # inside its own two bars, the full song places it on
+    # beat four of the count-in bar, so the pickup's length
+    # is the one legitimate difference.
+    assert full[1].split()[4:12] == phrase[1].split()[1:]

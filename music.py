@@ -1881,6 +1881,125 @@ def load_twinkle_phrase():
     return pitches, durations, lyrics, "C", chart
 
 
+
+def load_twinkle():
+    """
+    The whole of Twinkle Twinkle Little Star, six phrases.
+
+    Tune and words are traditional and in the public
+    domain. The shape is A B C C A B: the opening returns
+    after the middle, which is why the last two lines
+    repeat the first two.
+    """
+
+    pitches = " ".join([
+        "C4 C4 G4 G4 A4 A4 G4 R",
+        "F4 F4 E4 E4 D4 D4 C4 R",
+        "G4 G4 F4 F4 E4 E4 D4 R",
+        "G4 G4 F4 F4 E4 E4 D4 R",
+        "C4 C4 G4 G4 A4 A4 G4 R",
+        "F4 F4 E4 E4 D4 D4 C4 R",
+    ])
+
+    durations = " ".join(["1 1 1 1 1 1 3/2 1/2"] * 6)
+
+    lyrics = "\n".join([
+        "Twin- kle twin- kle lit- tle star",
+        "How I won- der what you are",
+        "Up a- bove the world so high",
+        "Like a dia- mond in the sky",
+        "Twin- kle twin- kle lit- tle star",
+        "How I won- der what you are",
+    ])
+
+    chart = (
+        "| C . . . | F . C . |"
+        " | F . C . | G . C . |"
+        " | C . F . | C . G . |"
+        " | C . F . | C . G . |"
+        " | C . . . | F . C . |"
+        " | F . C . | G . C . |"
+    )
+
+    return pitches, durations, lyrics, "C", chart, 100
+
+
+def load_wellerman():
+    """
+    The Wellerman, verse and chorus: the whole traditional
+    song, since every verse carries the same tune.
+
+    The melody was drafted through our own MIDI import of
+    a band arrangement (the d_ML_10791 test fixture),
+    with each onset snapped to the half-beat grid and the
+    result transposed from its C minor up to this D minor.
+    The first line of that draft came out identical to the
+    hand-checked phrase example, which is the evidence the
+    method can be trusted; the rest follows the same grid.
+
+    The chart is a function-level reading of a published
+    beginner chord sheet for the song, transposed into D
+    minor, one chord to a bar. On the grid, every change
+    lands exactly where that sheet places it against the
+    words. The final authority on both melody and chart is
+    the ear; everything here is editable.
+
+    Three beats of rest open the piece so that the pickup
+    note falls on beat four and every bar line lands on a
+    true downbeat. Without them the chords would arrive a
+    beat early on every line that starts with a pickup.
+    """
+
+    pitches = " ".join([
+        "R R R A3",
+        "D4 D4 D4 D4 F4 A4 A4 A4",
+        "A4 Bb4 G4 G4 G4 Bb4 Bb4 D5 D5 A4 A4",
+        "A4 D4 D4 D4 F4 A4 A4 A4",
+        "A4 A4 G4 F4 F4 E4 D4",
+        "D5 D5 Bb4 C5 A4 A4 A4",
+        "A4 Bb4 G4 G4 G4 Bb4 D5 A4 A4",
+        "D5 D5 Bb4 Bb4 C5 A4 A4 A4",
+        "A4 A4 G4 F4 E4 D4",
+    ])
+
+    durations = " ".join([
+        "1 1 1 1",
+        "1 1/2 1/2 1 1 1 1 1",
+        "1 1 1/2 1/2 1 1/2 1/2 1/2 1/2 1 3/2",
+        "1/2 1 1 1 1 1 1 1",
+        "1 1 1 1/2 1/2 1 4",
+        "2 3/2 1/2 1/2 1/2 1 3/2",
+        "1/2 1 1 1/2 1/2 1 1 1 2",
+        "2 1 1/2 1/2 1/2 1/2 3/2 1/2",
+        "1 1 1 1 1 4",
+    ])
+
+    lyrics = "\n".join([
+        "There once was a ship that put to sea",
+        "The name of the ship was the Bil- ly of Tea",
+        "The winds blew up her bow dipped down",
+        "Oh blow my bul- ly boys blow",
+        "Soon may the Wel- ler- man come",
+        "To bring us sug- ar and tea and rum",
+        "One day when the tongu- ing is done",
+        "We'll take our leave and go",
+    ])
+
+    chart = (
+        "| Dm . . . |"
+        " | Dm . . . | Dm . . . |"
+        " | Gm . . . | Dm . . . |"
+        " | Dm . . . | Dm . . . |"
+        " | A . . . | Dm . . . |"
+        " | Bb . . . | F . . . |"
+        " | Gm . . . | Dm . . . |"
+        " | Bb . . . | F . . . |"
+        " | A . . . | Dm . . . |"
+    )
+
+    return pitches, durations, lyrics, "F", chart, 240
+
+
 def load_wellerman_phrase():
     """
     The opening phrase of the Wellerman, a traditional sea

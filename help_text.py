@@ -22,7 +22,7 @@ cents, and where you came in early or late.
 
 ## Getting started
 
-Press **Load Twinkle Phrase**, then **Generate Playback**
+Press **Load Twinkle**, then **Generate Playback**
 to hear it. Press record, sing along with the count-in,
 then press **Compare** to see how it went.
 

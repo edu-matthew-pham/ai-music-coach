@@ -32,7 +32,8 @@ from music import (
     analyse_sequence,
     analyse_instrument,
     analyse_performance,
-    load_twinkle_phrase
+    load_twinkle,
+    load_wellerman
 )
 
 
@@ -99,11 +100,11 @@ with gr.Blocks(
             with gr.Row():
 
                 example_button = gr.Button(
-                    "Load Twinkle Phrase"
+                    "Load Twinkle"
                 )
 
                 wellerman_button = gr.Button(
-                    "Load Wellerman Phrase"
+                    "Load Wellerman"
                 )
 
             midi_upload = gr.File(
@@ -552,17 +553,22 @@ with gr.Blocks(
 
         def loaded():
 
-            pitches, durations, lyrics, key, chart = loader()
+            (
+                pitches, durations, lyrics, key, chart, tempo
+            ) = loader()
 
             labels = list_phrases(pitches, durations, lyrics)
 
             count = len(labels) - 1 if len(labels) > 1 else 1
 
+            sung = len([n for n in pitches.split() if n != "R"])
+
             feedback = (
                 f"Loaded {name}: "
-                f"{len(pitches.split())} notes in key {key}, "
+                f"{sung} notes in key {key}, "
                 f"{count} phrase{'s' if count != 1 else ''}"
-                f"{', chart filled' if chart.strip() else ''}."
+                f"{', chart filled' if chart.strip() else ''}, "
+                f"at {tempo} BPM."
             )
 
             return (
@@ -571,6 +577,7 @@ with gr.Blocks(
                 lyrics,
                 key,
                 chart,
+                tempo,
                 None,
                 gr.update(choices=[], value=None, visible=False),
                 gr.update(
@@ -589,6 +596,7 @@ with gr.Blocks(
         lyric_input,
         key_input,
         chart_input,
+        bpm_input,
         midi_upload,
         track_input,
         phrase_input,
@@ -596,12 +604,12 @@ with gr.Blocks(
     ]
 
     example_button.click(
-        fn=load_example("Twinkle Twinkle", load_twinkle_phrase),
+        fn=load_example("Twinkle Twinkle", load_twinkle),
         outputs=example_outputs
     )
 
     wellerman_button.click(
-        fn=load_example("the Wellerman", load_wellerman_phrase),
+        fn=load_example("the Wellerman", load_wellerman),
         outputs=example_outputs
     )
 

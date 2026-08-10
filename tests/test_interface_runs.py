@@ -195,12 +195,12 @@ def test_loading_an_example_says_what_arrived():
     import main
 
     outputs = main.load_example(
-        "the Wellerman", main.load_wellerman_phrase
+        "the Wellerman", main.load_wellerman
     )()
 
-    assert len(outputs) == 9
+    assert len(outputs) == 10
 
-    feedback = outputs[8]
+    feedback = outputs[9]
 
     assert feedback["visible"]
     assert "Wellerman" in feedback["value"]
