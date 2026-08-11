@@ -7,6 +7,7 @@ import gradio as gr
 from harmony import key_choices
 from instrument_diagrams import INSTRUMENTS, show_instruments
 from lyric_merge import merge_lyrics
+from mixer_block import mixer_html
 from help_text import HELP_TEXT
 from music import (
     MusicInputError,
@@ -472,6 +473,33 @@ with gr.Blocks(
                 label="Generated Music"
             )
 
+            with gr.Accordion("Mix it live", open=False):
+
+                gr.Markdown(
+                    "The parts sent separately and mixed in "
+                    "the browser, so a level can move while "
+                    "they are sounding. Nothing is made "
+                    "again when a fader moves - only its "
+                    "loudness changes.\n\n"
+                    "Built from the boxes when the button is "
+                    "pressed. Edit anything above and press "
+                    "again.\n\n"
+                    "The chart runs along the top and "
+                    "follows the music. Click a bar to jump "
+                    "there; shift-click a second bar to go "
+                    "round that stretch until you have it. "
+                    "A phrase is quicker to build than a "
+                    "whole song, since the parts travel to "
+                    "the browser as sound."
+                )
+
+                open_mixer_button = gr.Button(
+                    "Build the mixer",
+                    size="sm"
+                )
+
+                mixer_output = gr.HTML()
+
             target_plot = gr.Plot(
                 label="Target Music"
             )
@@ -902,6 +930,21 @@ with gr.Blocks(
         chart_notes_state,
         phrase_input
     ]
+
+    open_mixer_button.click(
+        fn=guard(mixer_html),
+        inputs=[
+            pitch_input,
+            duration_input,
+            key_input,
+            bpm_input,
+            chart_input,
+            harmony_style_input,
+            lyric_input,
+            phrase_input
+        ],
+        outputs=mixer_output
+    )
 
     generate_button.click(
         fn=guard(play_music),
