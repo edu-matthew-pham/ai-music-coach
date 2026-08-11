@@ -7,7 +7,7 @@ import gradio as gr
 from harmony import key_choices
 from instrument_diagrams import INSTRUMENTS, show_instruments
 from lyric_merge import merge_lyrics
-from mixer_block import mixer_html
+from mixer_block import MIXER_JS, mixer_html
 from help_text import HELP_TEXT
 from music import (
     MusicInputError,
@@ -498,7 +498,7 @@ with gr.Blocks(
                     size="sm"
                 )
 
-                mixer_output = gr.HTML()
+                mixer_output = gr.HTML(js_on_load=MIXER_JS)
 
             target_plot = gr.Plot(
                 label="Target Music"

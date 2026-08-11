@@ -19,7 +19,8 @@ from mixer_block import (
     as_wav_data,
     _timeline,
     OPENING_LEVELS,
-    LAYER_COLOURS
+    LAYER_COLOURS,
+    MIXER_JS
 )
 from music import LAYER_NAMES, load_wellerman
 
@@ -211,3 +212,45 @@ def test_a_phrase_is_a_smaller_thing_to_send_than_a_song():
     )
 
     assert len(phrase) < len(whole) / 4
+
+
+def test_mixer_html_contains_no_inline_script():
+    """
+    Gradio inserts an HTML output with innerHTML, so an inline
+    script there would be visible but would not execute.  The
+    executable mixer code belongs in js_on_load instead.
+    """
+
+    html = mixer_html("C4 D4 E4", "1 1 1", "C", 120, "")
+
+    assert "<script" not in html.lower()
+
+
+def test_mixer_html_carries_data_for_js_on_load():
+    """
+    The Python-built sounds and timeline cross into the browser
+    as data attributes for MIXER_JS to read after rendering.
+    """
+
+    pitches, durations, lyrics, key, chart, tempo = song()
+
+    html = mixer_html(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, phrase_label="Whole part"
+    )
+
+    assert 'data-layers=' in html
+    assert 'data-timeline=' in html
+    assert '&quot;Melody&quot;' in html
+
+
+def test_mixer_js_reinitialises_after_html_value_changes():
+    """
+    Build the mixer replaces gr.HTML's value.  The js_on_load
+    hook therefore has to watch that value and wire the newly
+    rendered controls each time, not just on initial page load.
+    """
+
+    assert 'watch("value"' in MIXER_JS
+    assert "initialiseMixer" in MIXER_JS
+    assert 'element.querySelector("#mixer")' in MIXER_JS
