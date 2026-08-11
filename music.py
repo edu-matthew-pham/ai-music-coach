@@ -44,7 +44,9 @@ from tuning_plot import (
 from pitch_detector import (
     detect_single_note,
     detect_sequence,
-    trace_performance
+    trace_performance,
+    prepare_audio,
+    trim_leading_silence
 )
 
 from instrument_detector import (
@@ -936,7 +938,8 @@ def analyse_performance(
     key="C",
     chart_text="",
     harmony_style="Thirds, chord-corrected",
-    phrase_label=None
+    phrase_label=None,
+    second_opinion_on=False
 ):
     """
     Compare a recording against the target music.
@@ -1031,6 +1034,38 @@ def analyse_performance(
     )
 
     trace = trace_performance(audio)
+
+    # A second detector, when asked for. It changes nothing
+    # about the judging: it says where another method heard
+    # something different, which is worth knowing on a
+    # microphone that loses the bottom of a low voice, and
+    # worth collecting before either detector is trusted
+    # over the other.
+    if second_opinion_on:
+
+        # Aliased: this module has its own
+        # describe_comparison for note comparisons, and an
+        # unaliased import would shadow it for the whole
+        # function, including the loop above.
+        from pitch_witness import (
+            second_opinion,
+            describe_comparison as describe_second_opinion
+        )
+
+        sample_rate, sound = audio
+
+        sound = prepare_audio(sound)
+        sound = trim_leading_silence(sound)
+
+        times, midi = trace if trace else (None, None)
+
+        lines.append("")
+        lines.append(
+            describe_second_opinion(
+                second_opinion(sound, sample_rate, midi)
+                if midi is not None else None
+            )
+        )
 
     chords, bars = read_chords(chart_text, durations)
 

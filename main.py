@@ -484,6 +484,16 @@ with gr.Blocks(
                      "written music."
             )
 
+            second_opinion_input = gr.Checkbox(
+                value=False,
+                label="Second opinion on pitch",
+                info="Runs a second detector alongside the "
+                     "first and says where they differ. "
+                     "Useful on a microphone that loses the "
+                     "bottom of a low voice. Needs crepe "
+                     "installed; slower when on."
+            )
+
             compare_button = gr.Button(
                 "Compare Performance",
                 variant="primary"
@@ -1067,7 +1077,8 @@ with gr.Blocks(
             key_input,
             chart_input,
             harmony_style_input,
-            phrase_input
+            phrase_input,
+            second_opinion_input
         ],
         outputs=[
             feedback_output,
