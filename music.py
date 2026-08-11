@@ -455,6 +455,120 @@ def read_music(pitch_text, duration_text):
     return pitches, durations
 
 
+
+# The parts a piece can sound, in the order a mixer shows
+# them. Named once here so the synthesis, the sliders and
+# anything that plays them separately cannot drift apart.
+LAYER_NAMES = [
+    "Melody",
+    "Harmony above",
+    "Harmony below",
+    "Bass",
+    "Chords",
+    "Metronome"
+]
+
+
+def separate_layers(
+    pitch_text,
+    duration_text,
+    key,
+    bpm=120,
+    chart_text="",
+    harmony_style="Thirds, chord-corrected",
+    lyric_text="",
+    phrase_label=None
+):
+    """
+    Every part of the music, unmixed and at full level.
+
+    play_music scales these by their levels and adds them
+    together, which is what a finished recording needs. A
+    mixer needs them apart: six sounds playing together,
+    each with its own control, so a level can move while
+    they are sounding instead of asking for the whole
+    thing to be made again.
+
+    Returns (sample_rate, layers) where layers is a
+    dictionary keyed by LAYER_NAMES. A part the music
+    cannot sound - bass or chords with no chart - is
+    absent rather than silent, so a mixer can say why a
+    fader does nothing.
+    """
+
+    piece = selected_piece(
+        pitch_text, duration_text, lyric_text, key,
+        chart_text, phrase_label
+    )
+
+    pitches = piece.pitches
+    durations = piece.durations
+    chart_text = piece.chart
+
+    bpm = check_bpm(bpm)
+
+    chords, bars = read_chords(chart_text, durations)
+
+    layers = {}
+
+    sample_rate, melody_track = make_melody(
+        pitches, durations, bpm
+    )
+
+    layers["Melody"] = melody_track
+
+    for name, steps in (
+        ("Harmony above", 2),
+        ("Harmony below", -2)
+    ):
+
+        harmony = harmony_line(
+            pitches,
+            durations,
+            key,
+            steps=steps,
+            style=harmony_style,
+            chart_text=chart_text
+        )
+
+        sample_rate, track = make_melody(harmony, durations, bpm)
+
+        layers[name] = track
+
+    if chords:
+
+        sample_rate, bass_track = make_melody(
+            bass_line(pitches, durations, chart_text),
+            durations,
+            bpm
+        )
+
+        layers["Bass"] = bass_track
+
+        voiced = [
+            (start, length, chord_semitones(name))
+            for start, length, name in chords
+        ]
+
+        layers["Chords"] = make_accompaniment(
+            voiced,
+            bars,
+            sum(durations),
+            bpm,
+            sample_rate
+        )
+
+    layers["Metronome"] = add_metronome(
+        [0.0] * len(melody_track),
+        sum(durations),
+        bpm,
+        sample_rate,
+        bars=bars
+    )
+
+    return sample_rate, layers
+
+
 def play_music(
     pitch_text,
     duration_text,
@@ -486,101 +600,58 @@ def play_music(
     never silence that looks like a failure.
     """
 
-    piece = selected_piece(
-        pitch_text, duration_text, lyric_text, key,
-        chart_text, phrase_label
+    sample_rate, parts = separate_layers(
+        pitch_text,
+        duration_text,
+        key,
+        bpm,
+        chart_text,
+        harmony_style,
+        lyric_text,
+        phrase_label
     )
 
-    pitches = piece.pitches
-    durations = piece.durations
-    chart_text = piece.chart
-
-    bpm = check_bpm(bpm)
-
-    # Read now so a mistake in the chart is reported when
-    # the music is generated, rather than later when
-    # something tries to use it. The bars also tell the
-    # metronome where the downbeats are.
-    chords, bars = read_chords(chart_text, durations)
-
-    sample_rate = 8000
-
-    total_seconds = sum(durations) * 60 / bpm
-    total_samples = int(total_seconds * sample_rate)
+    # Built once, above, and scaled here. The two used to
+    # be one piece of code that made only the parts it was
+    # going to play; separating them means a mixer and a
+    # recording sound the same, because they are the same
+    # layers.
+    levels = {
+        "Melody": melody_level,
+        "Harmony above": harmony_above_level,
+        "Harmony below": harmony_below_level,
+        "Bass": bass_level,
+        "Chords": chords_level
+    }
 
     layers = []
 
-    def at_level(track, level):
-        """
-        A track scaled to its slider.
-        """
-
-        return [sample * level for sample in track]
-
-    if melody_level > 0:
-
-        sample_rate, melody_track = make_melody(
-            pitches,
-            durations,
-            bpm
-        )
-
-        layers.append(at_level(melody_track, melody_level))
-
-    for steps, level in (
-        (2, harmony_above_level),
-        (-2, harmony_below_level)
-    ):
+    for name, level in levels.items():
 
         if level <= 0:
             continue
 
-        harmony = harmony_line(
-            pitches,
-            durations,
-            key,
-            steps=steps,
-            style=harmony_style,
-            chart_text=chart_text
-        )
+        track = parts.get(name)
 
-        sample_rate, harmony_track = make_melody(
-            harmony,
-            durations,
-            bpm
-        )
+        if track is None:
 
-        layers.append(at_level(harmony_track, level))
-
-    if bass_level > 0:
-
-        sample_rate, bass_track = make_melody(
-            bass_line(pitches, durations, chart_text),
-            durations,
-            bpm
-        )
-
-        layers.append(at_level(bass_track, bass_level))
-
-    if chords_level > 0 and chords:
-
-        voiced = [
-            (start, length, chord_semitones(name))
-            for start, length, name in chords
-        ]
-
-        layers.append(
-            at_level(
-                make_accompaniment(
-                    voiced,
-                    bars,
-                    sum(durations),
-                    bpm,
-                    sample_rate
-                ),
-                chords_level
+            # Asked for a part the music cannot sound. The
+            # fader doing nothing in silence is worse than
+            # being told why: both of these need a chart,
+            # and the player is one box away from having
+            # one.
+            raise MusicInputError(
+                "A bass part sings the root of each chord, "
+                "so it needs a chord chart. Write one in "
+                "the Chords box, such as | C . . . | F . C . |"
+                if name == "Bass" else
+                "There is no chord chart to play. Write one "
+                "in the Chords box, such as | C . . . | F . C . |"
             )
-        )
+
+        layers.append([sample * level for sample in track])
+
+    total_samples = len(parts["Melody"])
 
     if len(layers) == 0:
         sound = [0.0] * total_samples
@@ -604,13 +675,7 @@ def play_music(
 
     if click_level > 0:
 
-        clicks = add_metronome(
-            [0.0] * len(sound),
-            sum(durations),
-            bpm,
-            sample_rate,
-            bars=bars
-        )
+        clicks = parts["Metronome"]
 
         # Added, not averaged in: mixing halves both sides
         # to stop them doubling, which would make the

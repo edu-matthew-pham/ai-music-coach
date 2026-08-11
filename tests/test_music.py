@@ -793,3 +793,58 @@ def test_transposing_says_where_the_part_now_sits():
     assert "up 2" in said
     assert "D4" in said
     assert "A4" in said
+
+
+def test_the_layers_are_the_same_ones_the_mix_uses():
+    """
+    play_music scales these and adds them; a mixer plays
+    them apart. They must be one set of layers, not two
+    sets built by two pieces of code, or the recording and
+    the mixer drift and the drift is inaudible until
+    someone compares them.
+    """
+
+    from music import load_wellerman, separate_layers, LAYER_NAMES
+
+    pitches, durations, lyrics, key, chart, tempo = load_wellerman()
+
+    rate, parts = separate_layers(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, phrase_label="Whole part"
+    )
+
+    for name in LAYER_NAMES:
+        assert name in parts, name
+
+    lengths = {len(track) for track in parts.values()}
+
+    assert len(lengths) == 1, "every layer covers the same music"
+
+
+def test_a_part_the_music_cannot_sound_is_absent():
+    """
+    Bass and chords are built from the chart. With none,
+    they are missing rather than silent, so a mixer can
+    say why a fader does nothing.
+    """
+
+    from music import separate_layers
+
+    rate, parts = separate_layers("C4 D4 E4", "1 1 1", "C", 120, "")
+
+    assert "Melody" in parts
+    assert "Harmony above" in parts
+    assert "Metronome" in parts
+
+    assert "Bass" not in parts
+    assert "Chords" not in parts
+
+
+def test_asking_for_a_missing_part_says_why():
+    from music import play_music, MusicInputError
+
+    with pytest.raises(MusicInputError, match="chord chart"):
+        play_music(
+            "C4 C4", "1 1", "C",
+            melody_level=1, bpm=120, chart_text="", chords_level=1
+        )
