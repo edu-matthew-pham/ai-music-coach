@@ -209,3 +209,79 @@ def test_the_extension_decides_which_importer_runs():
         from_midi = import_music_file(midi, list_music_parts(midi)[0])
 
         assert len(from_midi) == len(from_score)
+
+
+def test_a_bar_in_compound_time_is_read_from_the_score():
+    """
+    Six eight is six eighth notes, which is three beats and
+    not six. Taking the numerator drew every bar line at
+    twice its width - and only in compound time, so a four
+    four score hid it entirely.
+
+    The library states the bar's length; nothing here
+    should be working it out.
+    """
+
+    from music21 import meter
+
+    for ratio, beats in [
+        ("4/4", 4.0),
+        ("3/4", 3.0),
+        ("6/8", 3.0),
+        ("9/8", 4.5),
+        ("12/8", 6.0),
+        ("2/2", 4.0),
+    ]:
+        signature = meter.TimeSignature(ratio)
+
+        assert float(signature.barDuration.quarterLength) == beats
+
+
+def test_the_words_are_joined_as_the_score_marks_them():
+    """
+    A score written by notation software marks each
+    syllable begin, middle, end or single. Reading that is
+    the format's own answer; the trailing space in the
+    printed text is a fallback for scores that mark
+    nothing.
+    """
+
+    from music21 import note as m21note
+
+    item = m21note.Note("C4")
+    item.lyrics.append(m21note.Lyric(text="Co", syllabic="begin", number=1))
+
+    from musicxml_import import _syllable
+
+    assert _syllable(item, 1) == "Co-"
+
+    ending = m21note.Note("D4")
+    ending.lyrics.append(
+        m21note.Lyric(text="lors", syllabic="end", number=1)
+    )
+
+    assert _syllable(ending, 1) == "lors"
+
+
+def test_a_verse_is_taken_whole_and_alone():
+    """
+    A score can write several verses under one line of
+    notes. music21's convenience property joins them with
+    newlines, and that string went into the boxes as one
+    token and split into several later - so a two verse
+    score arrived with more syllables than notes.
+    """
+
+    from music21 import note as m21note
+
+    from musicxml_import import _syllable
+
+    item = m21note.Note("C4")
+    item.lyrics.append(m21note.Lyric(text="Heart", number=1))
+    item.lyrics.append(m21note.Lyric(text="Time", number=2))
+
+    assert _syllable(item, 1) == "Heart"
+    assert _syllable(item, 2) == "Time"
+
+    # And the joined string is never what lands in a box.
+    assert "\n" not in _syllable(item, 1)

@@ -1956,7 +1956,17 @@ def list_score_parts(file_path):
     return parts_in(file_path)
 
 
-def import_score_file(file_path, part_label=None):
+def score_verses(file_path, part_label=None):
+    """
+    Which verses a score's part carries.
+    """
+
+    from musicxml_import import verses_in
+
+    return verses_in(file_path, part_label)
+
+
+def import_score_file(file_path, part_label=None, verse=1):
     """
     Fill the music boxes from a score.
 
@@ -1975,7 +1985,7 @@ def import_score_file(file_path, part_label=None):
         )
 
     try:
-        return import_musicxml(file_path, part_label)
+        return import_musicxml(file_path, part_label, verse)
 
     except MusicInputError:
         raise
@@ -1986,7 +1996,7 @@ def import_score_file(file_path, part_label=None):
         )
 
 
-def import_music_file(file_path, part_label=None):
+def import_music_file(file_path, part_label=None, verse=1):
     """
     Fill the boxes from whichever kind of file arrived.
 
@@ -1996,7 +2006,7 @@ def import_music_file(file_path, part_label=None):
     """
 
     if is_score_file(file_path):
-        return import_score_file(file_path, part_label)
+        return import_score_file(file_path, part_label, verse)
 
     return import_midi_file(file_path, part_label)
 
