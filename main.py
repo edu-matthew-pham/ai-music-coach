@@ -6,6 +6,7 @@ import gradio as gr
 
 from harmony import key_choices
 from instrument_diagrams import INSTRUMENTS, show_instruments
+from lyric_merge import merge_lyrics
 from help_text import HELP_TEXT
 from music import (
     MusicInputError,
@@ -242,6 +243,42 @@ with gr.Blocks(
                      "a phrase: press Enter to divide one, "
                      "Backspace to join two."
             )
+
+            with gr.Accordion(
+                "Correct the lyrics from the words",
+                open=False
+            ):
+
+                gr.Markdown(
+                    "An imported file's lyrics are whatever "
+                    "was typed into it: capitals, words split "
+                    "at odd places, the arranger's name among "
+                    "the words. Paste the words as written and "
+                    "they are corrected in place.\n\n"
+                    "Only the spelling changes. Nothing moves, "
+                    "and the number of syllables stays the "
+                    "same, so every word keeps the note it was "
+                    "sung on. A line that does not match is "
+                    "left as it was and named in the report.\n\n"
+                    "The line breaks come from the paste too: "
+                    "where the words are written as phrases, "
+                    "that is better phrasing than the import "
+                    "guessed. Press Update phrases afterwards."
+                )
+
+                pasted_lyrics = gr.Textbox(
+                    label="The words, one line per phrase",
+                    lines=6,
+                    placeholder="Twinkle twinkle little star\n"
+                                "How I wonder what you are"
+                )
+
+                correct_lyrics_button = gr.Button(
+                    "Correct lyrics",
+                    size="sm"
+                )
+
+                lyric_report = gr.Markdown()
 
             with gr.Row():
 
@@ -598,6 +635,12 @@ with gr.Blocks(
             value=chosen,
             visible=len(labels) > 1
         )
+
+    correct_lyrics_button.click(
+        fn=guard(merge_lyrics),
+        inputs=[lyric_input, pasted_lyrics],
+        outputs=[lyric_input, lyric_report]
+    )
 
     update_phrases_button.click(
         fn=phrases_now,

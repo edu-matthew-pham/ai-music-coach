@@ -295,3 +295,24 @@ def test_the_octave_buttons_leave_the_key_alone():
     assert key == "C"
     assert chart == "| C . . . |"
     assert "down 12" in said
+
+
+def test_correcting_lyrics_writes_the_box_and_reports():
+    """
+    The paste corrects the lyrics box in place. Everything
+    downstream reads that box, so the corrected words
+    travel to the phrases, the picture and the judging
+    without being told - and the count is unchanged, so
+    they still fit the notes.
+    """
+
+    import main
+
+    fixed, report = main.merge_lyrics(
+        "TWIN KLE TWIN KLE LIT TLE STAR",
+        "Twin- kle twin- kle lit- tle star"
+    )
+
+    assert len(fixed.split()) == 7
+    assert fixed == "Twin- kle twin- kle lit- tle star"
+    assert "Corrected 1" in report
