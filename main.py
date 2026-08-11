@@ -10,6 +10,8 @@ from lyric_merge import merge_lyrics
 from help_text import HELP_TEXT
 from music import (
     MusicInputError,
+    import_music_file,
+    list_music_parts,
     transpose_music,
     describe_transpose,
     semitones_between,
@@ -190,14 +192,25 @@ with gr.Blocks(
                 )
 
             midi_upload = gr.File(
-                label="Or import a MIDI file",
-                file_types=[".mid", ".midi"],
+                label="Or import a file",
+                file_types=[".mid", ".midi", ".mxl", ".musicxml", ".xml"],
                 type="filepath"
+            )
+
+            # A score (.mxl from notation software) is the
+            # better import where one exists: it states its
+            # lengths, metre, key and words, so none of the
+            # timing repair a performance needs has to run.
+            gr.Markdown(
+                "A MIDI performance, or a score exported "
+                "from notation software (.mxl). A score "
+                "carries its own written lengths and its "
+                "words, so less has to be guessed at."
             )
 
             track_input = gr.Dropdown(
                 [],
-                label="Which track to import",
+                label="Which part to import",
                 info="Choral and band files hold one track "
                      "per part. Pick the line you want to "
                      "practise.",
@@ -793,7 +806,7 @@ with gr.Blocks(
             chart,
             chart_notes,
             key
-        ) = import_midi_file(file_path, track_label)
+        ) = import_music_file(file_path, track_label)
 
         phrases = list_phrases(pitches, durations, lyrics)
 
@@ -827,7 +840,7 @@ with gr.Blocks(
         if file_path is None:
             return unchanged(len(music_outputs) + 2)
 
-        tracks = list_midi_tracks(file_path)
+        tracks = list_music_parts(file_path)
 
         results = import_track(file_path, tracks[0])
 

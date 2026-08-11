@@ -9,3 +9,4 @@ pytest
 pychord
 chorder
 miditoolkit
+music21

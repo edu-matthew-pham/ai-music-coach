@@ -1933,6 +1933,85 @@ def track_number_from(label):
         return None, None
 
 
+def is_score_file(file_path):
+    """
+    Whether a path is a score rather than a performance.
+    """
+
+    if not file_path:
+        return False
+
+    return str(file_path).lower().endswith(
+        (".mxl", ".musicxml", ".xml")
+    )
+
+
+def list_score_parts(file_path):
+    """
+    The parts of a score, named as the score names them.
+    """
+
+    from musicxml_import import parts_in
+
+    return parts_in(file_path)
+
+
+def import_score_file(file_path, part_label=None):
+    """
+    Fill the music boxes from a score.
+
+    The same eight things the MIDI import returns, so
+    everything above this is unaffected by which kind of
+    file arrived. What differs is how much had to be
+    worked out: a score states its lengths, its metre and
+    its words, so none of the timing repair applies.
+    """
+
+    from musicxml_import import import_musicxml
+
+    if file_path is None:
+        raise MusicInputError(
+            "Choose a score file first."
+        )
+
+    try:
+        return import_musicxml(file_path, part_label)
+
+    except MusicInputError:
+        raise
+
+    except Exception as problem:
+        raise MusicInputError(
+            f"That score could not be read: {problem}"
+        )
+
+
+def import_music_file(file_path, part_label=None):
+    """
+    Fill the boxes from whichever kind of file arrived.
+
+    The extension decides. Both paths end in the same
+    eight values, so nothing above here needs to know
+    which one ran.
+    """
+
+    if is_score_file(file_path):
+        return import_score_file(file_path, part_label)
+
+    return import_midi_file(file_path, part_label)
+
+
+def list_music_parts(file_path):
+    """
+    The parts of whichever kind of file arrived.
+    """
+
+    if is_score_file(file_path):
+        return list_score_parts(file_path)
+
+    return list_midi_tracks(file_path)
+
+
 def import_midi_file(
     file_path,
     track_label=None
