@@ -60,16 +60,22 @@
 	}
 
 	function selectBar(bar: MixerBarData, event: MouseEvent | KeyboardEvent): void {
-		// Seeking while playing should keep playing - only a
-		// click while stopped is selection-only.
 		const wasPlaying = engine.playing;
 
-		engine.select(bar, event.shiftKey);
+		// Only tell Python when the range itself changed - a
+		// preview click leaves loop_start/loop_end untouched,
+		// so there is nothing worth a round trip for, and one
+		// fewer round trip is one fewer remount to flicker
+		// through.
+		const rangeChanged = engine.select(bar, event.shiftKey);
 		playhead = engine.position();
-		reportValue();
+
+		if (rangeChanged) {
+			reportValue();
+		}
 
 		if (wasPlaying) {
-			engine.play(layers, engine.loopFrom ?? bar.start);
+			engine.play(layers);
 		}
 	}
 
@@ -263,11 +269,11 @@
 		text-align: left;
 	}
 	.bar.playing {
-		border-color: #2e7d32;
-		background: #e8f5e9;
+		border-color: #2e7d32 !important;
+		background: #e8f5e9 !important;
 	}
 	.bar.looped {
-		background: #fff3e0;
+		background: #fff3e0 !important;
 	}
 	.bar .number {
 		font-size: 10px;
