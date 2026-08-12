@@ -11,6 +11,7 @@
 	import ChordStrip from "./ChordStrip.svelte";
 	import FaderPanel from "./FaderPanel.svelte";
 	import NotesPanel from "./NotesPanel.svelte";
+	import PhraseList from "./PhraseList.svelte";
 
 	// This file is deliberately thin: it wires Gradio's value
 	// in and out, and holds the handful of actions that touch
@@ -147,6 +148,7 @@
 		{/if}
 
 		{#if panels.notes}
+			<PhraseList {phrases} {timeline} onSelectBar={selectBar} />
 			<NotesPanel {notes} {timeline} {phrases} {playhead} />
 		{/if}
 

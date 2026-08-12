@@ -34,7 +34,7 @@
 		const end = notes.reduce(
 			(max, note) => Math.max(max, note.start + note.length), 0
 		);
-		return [{ start: 0, end }];
+		return [{ start: 0, end, label: "1. Whole part" }];
 	});
 
 	// The switch happens once the current page's phrase has

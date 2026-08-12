@@ -114,15 +114,14 @@ def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,
 
 def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text):
     """
-    Where each phrase starts and ends, in seconds.
+    Where each phrase starts and ends, in seconds, with a
+    label to click on.
 
     A phrase is a line of the lyrics - the same unit the
     retired phrase dropdown used, read the same way, via
-    Piece.phrases(). What's new here is only the units:
-    that gives note-index ranges, and the note view pages
-    by time, so they are walked through durations and
-    converted through the same per_beat arithmetic every
-    other seconds-based list in this file uses.
+    Piece.phrases(), and labelled the same way it was: the
+    opening words of that line, so a phrase reads as
+    something a person recognises rather than a number.
 
     Falls back to treating the whole piece as one phrase
     when there is no more than one - matching the dropdown,
@@ -131,6 +130,7 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text):
 
     from piece import Piece
     from music import MusicInputError
+    from midi_import import join_syllables
 
     try:
         piece = Piece.read(pitch_text, duration_text, lyric_text)
@@ -150,13 +150,25 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text):
     def time_at(index):
         return sum(durations[:index]) * per_beat
 
+    lines = [
+        line for line in (lyric_text or "").split("\n")
+        if line.strip()
+    ]
+
     phrases = []
 
-    for first, last in found:
+    for position, (first, last) in enumerate(found):
+
+        if position < len(lines):
+            label = join_syllables(lines[position].split())
+
+        else:
+            label = " ".join(piece.pitches[first:first + 5])
 
         phrases.append({
             "start": time_at(first),
-            "end": time_at(last + 1)
+            "end": time_at(last + 1),
+            "label": f"{position + 1}. {label}"
         })
 
     return phrases

@@ -25,6 +25,7 @@ export interface MixerNote {
 export interface MixerPhrase {
 	start: number;
 	end: number;
+	label: string;
 }
 
 export interface MixerValue {
