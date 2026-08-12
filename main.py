@@ -25,7 +25,6 @@ from music import (
     GUIDE_CHOICES,
     HARMONY_STYLES,
     make_practice_guide,
-    show_target_music,
     load_wellerman_phrase,
     import_midi_file,
     list_midi_tracks,
@@ -34,7 +33,6 @@ from music import (
     phrase_chosen,
     selected_piece,
     phrase_number_from,
-    play_music,
     analyse_performance,
     load_twinkle,
     load_wellerman
@@ -386,55 +384,6 @@ with gr.Blocks(
                      "set the metre, so | C . . | is three four."
             )
 
-            gr.Markdown(
-                "### Hear the reading"
-            )
-
-            gr.Markdown(
-                "Each part has its own level. Nought is "
-                "silent; a quiet harmony can sit under a "
-                "full melody. Levels are read when the "
-                "playback is generated."
-            )
-
-            with gr.Row():
-
-                melody_input = gr.Slider(
-                    0, 1, value=1.0, step=0.05,
-                    label="Melody"
-                )
-
-                harmony_above_input = gr.Slider(
-                    0, 1, value=0.0, step=0.05,
-                    label="Harmony above"
-                )
-
-                harmony_below_input = gr.Slider(
-                    0, 1, value=0.0, step=0.05,
-                    label="Harmony below"
-                )
-
-                bass_input = gr.Slider(
-                    0, 1, value=0.0, step=0.05,
-                    label="Bass",
-                    info="The root of each chord, held. "
-                         "Needs a chord chart."
-                )
-
-                chords_input = gr.Slider(
-                    0, 1, value=0.0, step=0.05,
-                    label="Chords",
-                    info="The chart, strummed, below the "
-                         "melody."
-                )
-
-                metronome_input = gr.Slider(
-                    0, 1, value=0.5, step=0.05,
-                    label="Metronome",
-                    info="Clicks under the music. Always "
-                         "audible when no parts are."
-                )
-
             harmony_style_input = gr.Dropdown(
                 HARMONY_STYLES,
                 value="Thirds, chord-corrected",
@@ -461,18 +410,9 @@ with gr.Blocks(
                     "\u25c0 Previous phrase"
                 )
 
-                generate_button = gr.Button(
-                    "Generate Playback",
-                    variant="primary"
-                )
-
                 next_button = gr.Button(
                     "Next phrase \u25b6"
                 )
-
-            generated_audio = gr.Audio(
-                label="Generated Music"
-            )
 
             with gr.Accordion("Mix it live", open=False):
 
@@ -499,10 +439,6 @@ with gr.Blocks(
                 )
 
                 mixer_output = MusicMixer(show_label=False)
-
-            target_plot = gr.Plot(
-                label="Target Music"
-            )
 
         # -------------------------------------------------
         # PRACTICE: sing it and see how it went
@@ -921,38 +857,6 @@ with gr.Blocks(
     # dropdown was the only way to see a phrase and the
     # file was the only thing that decided them.
 
-    play_inputs = [
-        pitch_input,
-        duration_input,
-        key_input,
-        melody_input,
-        harmony_above_input,
-        harmony_below_input,
-        bpm_input,
-        metronome_input,
-        chart_input,
-        chords_input,
-        harmony_style_input,
-        bass_input,
-        lyric_input,
-        phrase_input
-    ]
-
-    plot_inputs = [
-        pitch_input,
-        duration_input,
-        bpm_input,
-        lyric_input,
-        key_input,
-        harmony_above_input,
-        harmony_below_input,
-        chart_input,
-        harmony_style_input,
-        bass_input,
-        chart_notes_state,
-        phrase_input
-    ]
-
     open_mixer_button.click(
         fn=guard(build_mixer),
         inputs=[
@@ -965,16 +869,6 @@ with gr.Blocks(
             lyric_input
         ],
         outputs=mixer_output
-    )
-
-    generate_button.click(
-        fn=guard(play_music),
-        inputs=play_inputs,
-        outputs=generated_audio
-    ).then(
-        fn=guard(show_target_music),
-        inputs=plot_inputs,
-        outputs=target_plot
     )
 
     def cycle_phrase(step):
@@ -1153,14 +1047,6 @@ with gr.Blocks(
                 phrase_input
             ],
             outputs=phrase_input
-        ).then(
-            fn=guard(play_music),
-            inputs=play_inputs,
-            outputs=generated_audio
-        ).then(
-            fn=guard(show_target_music),
-            inputs=plot_inputs,
-            outputs=target_plot
         )
 
     # Clearing before setting forces a fresh change on the

@@ -300,4 +300,10 @@ def test_every_handler_is_given_as_many_inputs_as_it_takes():
             f"silently keep their defaults"
         )
 
-    assert checked >= 4
+    # A floor on the scanner itself, not a target: enough
+    # handlers checked here to know the AST walk is actually
+    # matching something, rather than silently checking
+    # zero. Three now that Generate Playback (play_music,
+    # show_target_music) is retired - suggest_chords,
+    # make_practice_guide and analyse_performance remain.
+    assert checked >= 3
