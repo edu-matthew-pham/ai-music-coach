@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { MusicMixerProps, MusicMixerEvents } from "./types";
 	import type { MixerBarData } from "./mixerEngine.svelte";
+	import type { MixerPhrase } from "./types";
 	import { Gradio } from "@gradio/utils";
 	import { Block } from "@gradio/atoms";
 	import { onDestroy } from "svelte";
@@ -98,6 +99,21 @@
 		}
 	}
 
+	function selectPhrase(phrase: MixerPhrase): void {
+		const wasPlaying = engine.playing;
+
+		const rangeChanged = engine.selectRange(phrase.start, phrase.end);
+		playhead = engine.position();
+
+		if (rangeChanged) {
+			reportValue();
+		}
+
+		if (wasPlaying) {
+			engine.play(layers);
+		}
+	}
+
 	function clearSelection(): void {
 		engine.clearLoop();
 		playhead = 0;
@@ -148,7 +164,7 @@
 		{/if}
 
 		{#if panels.notes}
-			<PhraseList {phrases} {timeline} onSelectBar={selectBar} />
+			<PhraseList {phrases} onSelectPhrase={selectPhrase} />
 			<NotesPanel {notes} {timeline} {phrases} {playhead} />
 		{/if}
 

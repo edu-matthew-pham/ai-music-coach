@@ -1,31 +1,19 @@
 <script lang="ts">
-	import type { MixerPhrase, MixerBar } from "./types";
+	import type { MixerPhrase } from "./types";
 
-	// Bar clicking already jumps the notes panel to that
-	// bar's phrase - this just removes the need to know
-	// which bar a phrase starts on. Clicking a phrase here
-	// finds and clicks its first bar, so it goes through the
-	// exact same selection path a real bar click does; no
-	// second way of choosing where playback starts, just a
-	// second way of asking for the same thing.
+	// Selecting a phrase now goes straight to its own exact
+	// start and end - engine.selectRange - rather than being
+	// translated into "click this bar" first. That translation
+	// used to mean losing a pickup note: a phrase starting a
+	// fraction of a second before its bar's downbeat would
+	// snap to the whole bar, dragging in whatever the previous
+	// bar was still finishing. This keeps phrase timing exact.
 	interface Props {
 		phrases: MixerPhrase[];
-		timeline: MixerBar[];
-		onSelectBar: (bar: MixerBar, event: MouseEvent | KeyboardEvent) => void;
+		onSelectPhrase: (phrase: MixerPhrase) => void;
 	}
 
-	let { phrases, timeline, onSelectBar }: Props = $props();
-
-	function firstBarOf(phrase: MixerPhrase): MixerBar | undefined {
-		return timeline.find(
-			(bar) => bar.start < phrase.end && bar.end > phrase.start
-		);
-	}
-
-	function select(phrase: MixerPhrase, event: MouseEvent | KeyboardEvent): void {
-		const bar = firstBarOf(phrase);
-		if (bar) onSelectBar(bar, event);
-	}
+	let { phrases, onSelectPhrase }: Props = $props();
 </script>
 
 {#if phrases.length}
@@ -34,11 +22,11 @@
 			<button
 				type="button"
 				class="phrase"
-				onclick={(event) => select(phrase, event)}
+				onclick={() => onSelectPhrase(phrase)}
 				onkeydown={(event) => {
 					if (event.key === "Enter" || event.key === " ") {
 						event.preventDefault();
-						select(phrase, event);
+						onSelectPhrase(phrase);
 					}
 				}}
 			>

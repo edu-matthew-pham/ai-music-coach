@@ -264,6 +264,31 @@ class MixerEngine {
 		return this.loopFrom !== previousFrom || this.loopTo !== previousTo;
 	}
 
+	// A second way to select a stretch, sitting alongside
+	// select() rather than replacing it. Bar selection is
+	// deliberately literal - a bar means exactly that bar's
+	// own span, nothing added. A phrase can start on a
+	// pickup note a fraction of a second before its bar's
+	// downbeat, and selecting "that bar" to reach it would
+	// drag in whatever the previous bar was still finishing -
+	// so a phrase asks for its own exact start and end
+	// directly, rather than being translated into a bar
+	// first and losing precision on the way.
+	selectRange(start: number, end: number): boolean {
+		const previousFrom = this.loopFrom;
+		const previousTo = this.loopTo;
+
+		this.anchor = null;
+		this.loopFrom = start;
+		this.loopTo = Math.max(end, start + 0.05);
+		this.offset = start;
+
+		this.stopSources();
+		this.playing = false;
+
+		return this.loopFrom !== previousFrom || this.loopTo !== previousTo;
+	}
+
 	clearLoop(): void {
 		this.anchor = null;
 		this.loopFrom = null;
