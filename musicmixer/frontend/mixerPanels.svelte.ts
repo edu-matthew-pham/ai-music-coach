@@ -24,7 +24,8 @@
 export const panels: Record<string, boolean> = $state({
 	strip: true,
 	faders: true,
-	notes: false
+	notes: false,
+	lyrics: false
 });
 
 // Which layers show inside the note view. Separate from

@@ -21,6 +21,10 @@
 			<input type="checkbox" bind:checked={panels.notes} />
 			Notes
 		</label>
+		<label class="panel-toggle">
+			<input type="checkbox" bind:checked={panels.lyrics} />
+			Lyrics
+		</label>
 	{/if}
 	<label class="panel-toggle">
 		<input type="checkbox" bind:checked={panels.faders} />

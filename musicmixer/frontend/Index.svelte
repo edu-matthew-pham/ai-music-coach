@@ -13,6 +13,7 @@
 	import FaderPanel from "./FaderPanel.svelte";
 	import NotesPanel from "./NotesPanel.svelte";
 	import PhraseList from "./PhraseList.svelte";
+	import LyricsPanel from "./LyricsPanel.svelte";
 
 	// This file is deliberately thin: it wires Gradio's value
 	// in and out, and holds the handful of actions that touch
@@ -166,6 +167,10 @@
 		{#if panels.notes}
 			<PhraseList {phrases} onSelectPhrase={selectPhrase} />
 			<NotesPanel {notes} {timeline} {phrases} {playhead} />
+		{/if}
+
+		{#if panels.lyrics}
+			<LyricsPanel {notes} {phrases} {playhead} />
 		{/if}
 
 		{#if panels.faders}
