@@ -151,6 +151,21 @@ def test_no_key_asks_for_one_instead_of_drawing_nothing():
     assert "<svg" not in show_instrument(None, "Piano")
 
 
+def test_choosing_no_instrument_says_so_rather_than_going_blank():
+    """
+    Every box unticked is a legitimate choice, not a fault:
+    the function says what to do instead of returning an
+    empty string that would render as broken.
+    """
+
+    from instrument_diagrams import show_instruments
+
+    shown = show_instruments("C", [])
+
+    assert "<svg" not in shown
+    assert "instrument" in shown.lower()
+
+
 def test_an_unknown_instrument_is_ignored_rather_than_guessed():
     """
     A stale value must not take the page down - but nor

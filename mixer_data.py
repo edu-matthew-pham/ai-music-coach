@@ -23,6 +23,8 @@ import numpy as np
 from scipy.io import wavfile
 
 from music import LAYER_NAMES, separate_layers
+from harmony import MAJOR_SCALES
+from instrument_diagrams import INSTRUMENTS, chord_overlay_for, diagram_for
 
 
 # Levels a part starts at, matching what the sliders used
@@ -147,6 +149,57 @@ def _timeline(pitch_text, duration_text, key, bpm, chart_text,
         })
 
     return strip
+
+
+def _diagrams(key, timeline):
+    """
+    The instrument pictures the mixer's diagram panel
+    stacks: one scale base per instrument, keyed by the key
+    box, and one transparent chord overlay per instrument
+    per distinct chord this song's chart actually uses.
+
+    Every instrument is included regardless of which the
+    player has toggled on - the toggle is a display choice
+    the browser makes with data it already has, the same
+    way the Notes and Lyrics panels already work. Asking
+    Python to rebuild the mixer value every time a toggle
+    changes would make the toggle a round trip instead of
+    a CSS switch.
+
+    A chord name the chart uses but the theory module
+    cannot read (a typo that slipped past chart validation
+    elsewhere) is skipped rather than sent broken - the
+    strip still shows the name; only its picture is
+    missing, which is visible and correctable rather than
+    a page that fails to render.
+    """
+
+    if not key or key not in MAJOR_SCALES:
+        return {}
+
+    from chords import ChartError
+
+    scale = {
+        instrument: diagram_for(key, instrument)
+        for instrument in INSTRUMENTS
+    }
+
+    chord_names = sorted({bar["name"] for bar in timeline if bar["name"]})
+
+    chords = {instrument: {} for instrument in INSTRUMENTS}
+
+    for chord_name in chord_names:
+        for instrument in INSTRUMENTS:
+
+            try:
+                chords[instrument][chord_name] = chord_overlay_for(
+                    key, instrument, chord_name
+                )
+
+            except ChartError:
+                continue
+
+    return {"scale": scale, "chords": chords}
 
 
 def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,
@@ -355,11 +408,14 @@ def mixer_data(
         pitch_text, duration_text, key, bpm, lyric_text
     )
 
+    diagrams = _diagrams(key, timeline)
+
     return {
         "layers": layers,
         "timeline": timeline,
         "notes": notes,
         "phrases": phrases,
+        "diagrams": diagrams,
         "bpm": float(bpm),
         "loop_start": None,
         "loop_end": None

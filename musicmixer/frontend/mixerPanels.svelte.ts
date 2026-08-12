@@ -25,7 +25,8 @@ export const panels: Record<string, boolean> = $state({
 	strip: true,
 	faders: true,
 	notes: false,
-	lyrics: false
+	lyrics: false,
+	instruments: false
 });
 
 // Which layers show inside the note view. Separate from
@@ -60,3 +61,38 @@ export const previewSideBySide = $state({ value: false });
 // same information twice; this is one or the other, not a
 // combination.
 export const lyricsSentenceStyle = $state({ value: false });
+
+// Whether the Notes panel's per-note word labels show
+// alongside the Lyrics panel. Kept as its own toggle rather
+// than forced off when Lyrics is on: redundancy between the
+// two isn't automatically a problem (SingStar shows both),
+// so the choice is left to whoever is looking at the
+// screen rather than decided here.
+export const notesShowLabels = $state({ value: true });
+
+// The Lyrics panel at its normal size, or enlarged. A long
+// phrase or a whole-song view already reads fine small;
+// this is for whoever wants the words bigger regardless.
+export const lyricsLarge = $state({ value: false });
+
+// Which instruments the diagram panel draws. Same pattern
+// as noteLayers: not "is the panel visible" but "which
+// pictures does it draw once it is". Empty by default -
+// nothing is drawn until something is chosen, the same way
+// the retired static Instruments section worked.
+export const diagramInstruments: Record<string, boolean> = $state({
+	Piano: false,
+	Guitar: false,
+	"Violin, first position": false,
+	"Violin, third position": false
+});
+
+// The two transparent layers a chosen instrument stacks:
+// the key's scale (static for the song) and the current
+// bar's chord (changes as the mixer plays). Chord defaults
+// on because it's the live one - the scale is available a
+// click away, same as everything else here.
+export const diagramLayers = $state({
+	scale: false,
+	chord: true
+});

@@ -4,9 +4,10 @@
 	interface Props {
 		hasTimeline: boolean;
 		hasNotes: boolean;
+		hasDiagrams: boolean;
 	}
 
-	let { hasTimeline, hasNotes }: Props = $props();
+	let { hasTimeline, hasNotes, hasDiagrams }: Props = $props();
 </script>
 
 <div class="panel-toggles">
@@ -30,6 +31,12 @@
 		<input type="checkbox" bind:checked={panels.faders} />
 		Mixer
 	</label>
+	{#if hasDiagrams}
+		<label class="panel-toggle">
+			<input type="checkbox" bind:checked={panels.instruments} />
+			Instruments
+		</label>
+	{/if}
 </div>
 <style>
 	.panel-toggles {

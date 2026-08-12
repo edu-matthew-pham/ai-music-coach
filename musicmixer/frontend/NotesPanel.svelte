@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { engine } from "./mixerEngine.svelte";
-	import { noteLayers, showNextPreview, previewSideBySide } from "./mixerPanels.svelte";
+	import { noteLayers, showNextPreview, previewSideBySide, notesShowLabels } from "./mixerPanels.svelte";
 	import type { MixerNote, MixerBar, MixerPhrase } from "./types";
 
 	// A static page per phrase, hard-cut to the next rather
@@ -200,7 +200,7 @@
 						{noteName(note.midi)}
 					</text>
 				{/if}
-				{#if note.word}
+				{#if note.word && notesShowLabels.value}
 					<text
 						class="note-word"
 						x={x(page, note.start) + (note.length * page.pxPerSecond) / 2}
@@ -241,6 +241,10 @@
 			Side by side
 		</label>
 	{/if}
+	<label class="layer-toggle">
+		<input type="checkbox" bind:checked={notesShowLabels.value} />
+		Word labels
+	</label>
 </div>
 
 {#if currentPage}

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { lyricsSentenceStyle } from "./mixerPanels.svelte";
+	import { lyricsSentenceStyle, lyricsLarge } from "./mixerPanels.svelte";
 	import type { MixerNote, MixerPhrase } from "./types";
 
 	// One representation of the words, not two shown at once -
@@ -80,10 +80,14 @@
 </script>
 
 {#if currentPhrase}
-	<div class="lyrics-panel">
+	<div class="lyrics-panel" class:large={lyricsLarge.value}>
 		<label class="style-toggle">
 			<input type="checkbox" bind:checked={lyricsSentenceStyle.value} />
 			Sentence style
+		</label>
+		<label class="style-toggle">
+			<input type="checkbox" bind:checked={lyricsLarge.value} />
+			Larger
 		</label>
 
 		{#if lyricsSentenceStyle.value}

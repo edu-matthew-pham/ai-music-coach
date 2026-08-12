@@ -14,6 +14,7 @@
 	import NotesPanel from "./NotesPanel.svelte";
 	import PhraseList from "./PhraseList.svelte";
 	import LyricsPanel from "./LyricsPanel.svelte";
+	import InstrumentPanel from "./InstrumentPanel.svelte";
 
 	// This file is deliberately thin: it wires Gradio's value
 	// in and out, and holds the handful of actions that touch
@@ -33,6 +34,9 @@
 	const timeline = $derived(gradio.props.value?.timeline ?? []);
 	const notes = $derived(gradio.props.value?.notes ?? []);
 	const phrases = $derived(gradio.props.value?.phrases ?? []);
+	const diagrams = $derived(
+		gradio.props.value?.diagrams ?? { scale: {}, chords: {} }
+	);
 
 	// A loop is seconds into a particular song. Carried over
 	// into a different one it means nothing - possibly a
@@ -169,7 +173,11 @@
 			onToggleRepeat={toggleRepeat}
 		/>
 
-		<PanelToggles hasTimeline={timeline.length > 0} hasNotes={notes.length > 0} />
+		<PanelToggles
+			hasTimeline={timeline.length > 0}
+			hasNotes={notes.length > 0}
+			hasDiagrams={Object.keys(diagrams.scale ?? {}).length > 0}
+		/>
 
 		{#if panels.strip}
 			<ChordStrip {timeline} {playhead} {follow} onSelectBar={selectBar} />
@@ -186,6 +194,10 @@
 
 		{#if panels.faders}
 			<FaderPanel {layers} onLevelChanged={levelChanged} />
+		{/if}
+
+		{#if panels.instruments}
+			<InstrumentPanel {diagrams} {timeline} {playhead} />
 		{/if}
 	</div>
 </Block>

@@ -80,6 +80,35 @@ POSITION_REACH = 7
 FINGERS = 4
 
 
+# Layout numbers, named once so a chord overlay can find
+# the exact same spot the key diagram marked. Duplicating
+# these as separate literals in an overlay function would
+# let the two drift apart pixel by pixel; sharing the one
+# dict is what keeps a transparent overlay actually
+# transparent-in-register rather than merely see-through.
+PIANO_LAYOUT = {
+    "octaves": 3,
+    "white_width": 44,
+    "white_height": 170,
+    "black_width": 26,
+    "black_height": 105,
+}
+
+FRETBOARD_LAYOUT = {
+    "left": 46,
+    "top": 26,
+    "fret_width": 52,
+    "string_gap": 30,
+}
+
+VIOLIN_LAYOUT = {
+    "left": 46,
+    "top": 26,
+    "semitone_width": 60,
+    "string_gap": 42,
+}
+
+
 def fingering_for(open_string, key, frame):
     """
     Which finger takes which note, on one string.
@@ -228,7 +257,7 @@ def piano_diagram(key):
     home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
     in_key = semitones_in(key)
 
-    octaves = 3
+    octaves = PIANO_LAYOUT["octaves"]
 
     white_semitones = [
         semitone + octave * 12
@@ -243,10 +272,10 @@ def piano_diagram(key):
         {0: 1, 2: 3, 5: 6, 7: 8, 9: 10}.items()
     }
 
-    white_width = 44
-    white_height = 170
-    black_width = 26
-    black_height = 105
+    white_width = PIANO_LAYOUT["white_width"]
+    white_height = PIANO_LAYOUT["white_height"]
+    black_width = PIANO_LAYOUT["black_width"]
+    black_height = PIANO_LAYOUT["black_height"]
 
     parts = []
 
@@ -353,10 +382,10 @@ def fretboard_diagram(key, instrument="Guitar"):
 
     home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
 
-    left = 46
-    top = 26
-    fret_width = 52
-    string_gap = 30
+    left = FRETBOARD_LAYOUT["left"]
+    top = FRETBOARD_LAYOUT["top"]
+    fret_width = FRETBOARD_LAYOUT["fret_width"]
+    string_gap = FRETBOARD_LAYOUT["string_gap"]
 
     height = top + (len(tuning) - 1) * string_gap + 30
     width = left + FRETS_SHOWN * fret_width + 20
@@ -490,10 +519,10 @@ def violin_chart(key, position="First position"):
 
     furthest = start + POSITION_REACH
 
-    left = 46
-    top = 26
-    semitone_width = 60
-    string_gap = 42
+    left = VIOLIN_LAYOUT["left"]
+    top = VIOLIN_LAYOUT["top"]
+    semitone_width = VIOLIN_LAYOUT["semitone_width"]
+    string_gap = VIOLIN_LAYOUT["string_gap"]
 
     height = top + (len(VIOLIN_STRINGS) - 1) * string_gap + 44
     width = left + furthest * semitone_width + 30
@@ -600,6 +629,260 @@ def violin_chart(key, position="First position"):
         + "".join(parts) +
         "</svg>"
     )
+
+
+# The mixer overlay's mark, drawn heavier than the scale
+# diagram's so a chord tone that is also a scale note is
+# still visibly the thing being played right now, not just
+# a note that happens to belong to the key.
+CHORD_TONE_COLOUR = "#ad1457"
+
+
+def piano_chord_overlay(key, chord_semitone_set):
+    """
+    Chord tones only, on a transparent piano, positioned
+    exactly as piano_diagram places its marks - same
+    PIANO_LAYOUT, so the two stack in register when the
+    mixer shows both.
+
+    Nothing outside the chord is drawn: no keys, no scale
+    marks. A caller wanting the key underneath draws
+    piano_diagram separately and layers this on top.
+    """
+
+    octaves = PIANO_LAYOUT["octaves"]
+    white_width = PIANO_LAYOUT["white_width"]
+    white_height = PIANO_LAYOUT["white_height"]
+    black_width = PIANO_LAYOUT["black_width"]
+    black_height = PIANO_LAYOUT["black_height"]
+
+    white_semitones = [
+        semitone + octave * 12
+        for octave in range(octaves)
+        for semitone in [0, 2, 4, 5, 7, 9, 11]
+    ]
+
+    black_after = {
+        semitone + octave * 12: raised + octave * 12
+        for octave in range(octaves)
+        for semitone, raised in
+        {0: 1, 2: 3, 5: 6, 7: 8, 9: 10}.items()
+    }
+
+    parts = []
+
+    def spot(x, y, semitone, radius):
+        return (
+            f'<circle cx="{x}" cy="{y}" r="{radius}" '
+            f'fill="{CHORD_TONE_COLOUR}"/>'
+            f'<text x="{x}" y="{y + 4}" text-anchor="middle" '
+            f'font-size="11" font-family="sans-serif" '
+            f'fill="#ffffff">'
+            f'{_escape(name_for(semitone, key))}</text>'
+        )
+
+    for index, semitone in enumerate(white_semitones):
+
+        if semitone % 12 not in chord_semitone_set:
+            continue
+
+        x = index * white_width
+
+        parts.append(
+            spot(x + white_width / 2, white_height - 28, semitone, 14)
+        )
+
+    for index, semitone in enumerate(white_semitones):
+
+        raised = black_after.get(semitone)
+
+        if raised is None or raised % 12 not in chord_semitone_set:
+            continue
+
+        x = (index + 1) * white_width - black_width / 2
+
+        parts.append(
+            spot(x + black_width / 2, black_height - 22, raised, 12)
+        )
+
+    width = len(white_semitones) * white_width
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {white_height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="The chord tones highlighted '
+        f'on a keyboard">'
+        + "".join(parts) +
+        "</svg>"
+    )
+
+
+def fretboard_chord_overlay(key, chord_semitone_set, instrument="Guitar"):
+    """
+    Chord tones only, on a transparent fretboard, at the
+    same coordinates fretboard_diagram uses - same
+    FRETBOARD_LAYOUT, same FRETS_SHOWN, so it stacks in
+    register.
+    """
+
+    tuning = STRING_TUNINGS.get(instrument)
+
+    if tuning is None:
+        raise KeyError(
+            f"'{instrument}' is not an instrument this "
+            f"app can draw."
+        )
+
+    left = FRETBOARD_LAYOUT["left"]
+    top = FRETBOARD_LAYOUT["top"]
+    fret_width = FRETBOARD_LAYOUT["fret_width"]
+    string_gap = FRETBOARD_LAYOUT["string_gap"]
+
+    height = top + (len(tuning) - 1) * string_gap + 30
+    width = left + FRETS_SHOWN * fret_width + 20
+
+    parts = []
+
+    for index, open_string in enumerate(reversed(tuning)):
+
+        y = top + index * string_gap
+
+        for fret in range(FRETS_SHOWN + 1):
+
+            semitone = _note_at(open_string, fret)
+
+            if semitone not in chord_semitone_set:
+                continue
+
+            x = (
+                left if fret == 0
+                else left + fret * fret_width - fret_width / 2
+            )
+
+            parts.append(
+                f'<circle cx="{x}" cy="{y}" r="11" '
+                f'fill="{CHORD_TONE_COLOUR}" '
+                f'stroke="#ffffff" stroke-width="1.5"/>'
+                f'<text x="{x}" y="{y + 4}" '
+                f'text-anchor="middle" font-size="10" '
+                f'font-family="sans-serif" fill="#ffffff">'
+                f'{_escape(name_for(semitone, key))}</text>'
+            )
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="The chord tones highlighted '
+        f'on a {_escape(instrument)} neck">'
+        + "".join(parts) +
+        "</svg>"
+    )
+
+
+def violin_chord_overlay(key, chord_semitone_set, position="First position"):
+    """
+    Chord tones only, on a transparent violin chart, at the
+    same coordinates violin_chart uses - same VIOLIN_LAYOUT
+    and the same fingering_for hand shape, so it stacks in
+    register and only marks fingers the hand actually plays
+    in this position.
+    """
+
+    start = POSITION_STARTS.get(position)
+
+    if start is None:
+        raise KeyError(
+            f"'{position}' is not a position this app "
+            f"can draw."
+        )
+
+    left = VIOLIN_LAYOUT["left"]
+    top = VIOLIN_LAYOUT["top"]
+    semitone_width = VIOLIN_LAYOUT["semitone_width"]
+    string_gap = VIOLIN_LAYOUT["string_gap"]
+
+    furthest = start + POSITION_REACH
+    height = top + (len(VIOLIN_STRINGS) - 1) * string_gap + 44
+    width = left + furthest * semitone_width + 30
+
+    parts = []
+
+    for index, open_string in enumerate(reversed(VIOLIN_STRINGS)):
+
+        y = top + index * string_gap
+
+        def mark(step, finger):
+
+            semitone = _note_at(open_string, step)
+
+            if semitone not in chord_semitone_set:
+                return
+
+            x = left + step * semitone_width
+
+            parts.append(
+                f'<circle cx="{x}" cy="{y}" r="12" '
+                f'fill="{CHORD_TONE_COLOUR}" '
+                f'stroke="#ffffff" stroke-width="1.5"/>'
+                f'<text x="{x}" y="{y + 4}" '
+                f'text-anchor="middle" font-size="12" '
+                f'font-family="sans-serif" fill="#ffffff">'
+                f'{finger}</text>'
+                f'<text x="{x + 15}" y="{y - 9}" '
+                f'text-anchor="start" font-size="9" '
+                f'font-family="sans-serif" fill="{LABEL_COLOUR}">'
+                f'{_escape(name_for(semitone, key))}</text>'
+            )
+
+        mark(0, 0)
+
+        for step, finger in fingering_for(open_string, key, start):
+            mark(step, finger)
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="The chord tones highlighted '
+        f'on a violin chart in {_escape(position.lower())}">'
+        + "".join(parts) +
+        "</svg>"
+    )
+
+
+def chord_overlay_for(key, instrument, chord_name):
+    """
+    The chord-tones-only picture of one chord on one
+    instrument, positioned to stack exactly on
+    diagram_for(key, instrument).
+
+    Empty (no marks, correctly formed SVG) if the chord's
+    tones don't overlap the instrument's playable range in
+    a way that matters here - there is no such case for a
+    12-tone chord vocabulary against these instruments, but
+    an unreadable chord name still raises, the same as
+    diagram_for would refuse an unreadable key.
+    """
+
+    from chords import chord_semitones
+
+    tones = set(chord_semitones(chord_name))
+
+    if instrument == "Piano":
+        return piano_chord_overlay(key, tones)
+
+    if instrument.startswith("Violin"):
+
+        position = (
+            "Third position" if "third" in instrument
+            else "First position"
+        )
+
+        return violin_chord_overlay(key, tones, position)
+
+    return fretboard_chord_overlay(key, tones, instrument)
 
 
 INSTRUMENTS = [

@@ -167,9 +167,9 @@ def test_a_fader_wears_the_colour_of_its_part():
 def test_mixer_data_has_the_shape_the_component_expects():
     """
     The dictionary the MusicMixer component's value is set
-    from - layers, timeline, notes, phrases, and an open
-    loop_start/loop_end that a freshly built mixer starts
-    without one.
+    from - layers, timeline, notes, phrases, diagrams, and
+    an open loop_start/loop_end that a freshly built mixer
+    starts without one.
     """
 
     pitches, durations, lyrics, key, chart, tempo = song()
@@ -180,8 +180,8 @@ def test_mixer_data_has_the_shape_the_component_expects():
     )
 
     assert set(value.keys()) == {
-        "layers", "timeline", "notes", "phrases", "bpm",
-        "loop_start", "loop_end"
+        "layers", "timeline", "notes", "phrases", "diagrams",
+        "bpm", "loop_start", "loop_end"
     }
 
     assert value["loop_start"] is None
@@ -195,6 +195,23 @@ def test_mixer_data_has_the_shape_the_component_expects():
         assert layer["wav"]
 
     assert len(value["timeline"]) > 1
+
+    # The diagrams stack in the browser, so mixer_data must
+    # always ship the full instrument set for the scale
+    # base, and one chord overlay per chord name the chart
+    # actually printed on the strip.
+    from instrument_diagrams import INSTRUMENTS
+
+    assert set(value["diagrams"]["scale"].keys()) == set(INSTRUMENTS)
+
+    chart_chord_names = {
+        bar["name"] for bar in value["timeline"] if bar["name"]
+    }
+
+    assert (
+        set(value["diagrams"]["chords"]["Piano"].keys())
+        == chart_chord_names
+    )
     assert len(value["notes"]) > 1
     assert len(value["phrases"]) > 1
 

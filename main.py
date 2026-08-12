@@ -5,7 +5,6 @@ import os
 import gradio as gr
 
 from harmony import key_choices
-from instrument_diagrams import INSTRUMENTS, show_instruments
 from gradio_musicmixer import MusicMixer
 from lyric_merge import merge_lyrics
 from mixer_data import mixer_data
@@ -108,7 +107,7 @@ ANCHOR_CSS = """
  * A section jumped to should land below the bar rather than
  * under it.
  */
-#song, #arrange, #practice, #instruments, #playback {
+#song, #arrange, #practice, #playback {
     scroll-margin-top: 64px;
 }
 """
@@ -158,7 +157,6 @@ with gr.Blocks(
         + anchor_link("Arrange", "arrange")
         + anchor_link("Playback", "playback")
         + anchor_link("Practice", "practice")
-        + anchor_link("Instruments", "instruments")
         + "</div>"
     )
 
@@ -528,36 +526,6 @@ with gr.Blocks(
                 label="Feedback",
                 lines=10
             )
-
-        # -------------------------------------------------
-        # INSTRUMENTS: where the key sits under the hands
-        # -------------------------------------------------
-
-        with gr.Column(elem_id="instruments"):
-
-            gr.Markdown("## Instruments")
-
-            gr.Markdown(
-                "Where the notes of the key sit on an "
-                "instrument, for working a line out by "
-                "hand. This follows the key box above: "
-                "change the key and the picture follows."
-            )
-
-            # Several at once rather than one from a list:
-            # the violin's two positions read together are
-            # what show the shift, and a singer often wants
-            # the piano beside whatever they are holding.
-            instrument_input = gr.CheckboxGroup(
-                INSTRUMENTS,
-                value=[INSTRUMENTS[0]],
-                label="Show",
-                info="Any number at once. The violin "
-                     "charts read in fingers and show one "
-                     "hand position each."
-            )
-
-            instrument_diagram = gr.HTML()
 
     # -----------------------------------------------------
     # EVENTS
@@ -1015,26 +983,6 @@ with gr.Blocks(
             ],
             outputs=transpose_outputs
         )
-
-    # The diagram reads the key box each time it is drawn,
-    # so a key changed anywhere - typed, detected, or filled
-    # by an import - redraws it rather than leaving a
-    # picture of the key that used to be chosen.
-    for control in (key_input, instrument_input):
-
-        control.change(
-            fn=show_instruments,
-            inputs=[key_input, instrument_input],
-            outputs=instrument_diagram
-        )
-
-    # And once when the page opens, so the section is never
-    # an empty box waiting to be poked.
-    demo.load(
-        fn=show_instruments,
-        inputs=[key_input, instrument_input],
-        outputs=instrument_diagram
-    )
 
     for button, step in (
         (previous_button, -1),

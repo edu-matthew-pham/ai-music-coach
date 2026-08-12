@@ -184,62 +184,21 @@ def test_loading_an_example_says_what_arrived():
     assert "key F" in feedback["value"]
 
 
-def test_the_instrument_diagram_follows_the_key_box():
+def test_the_instrument_diagrams_still_work_standalone():
     """
-    The diagram is drawn from the key box each time, so a
-    key changed anywhere - typed, detected, or filled by an
-    import - redraws it. Holding the key it was last drawn
-    for would leave a picture of a key nobody is in.
-    """
-
-    import main
-
-    in_f = main.show_instruments("F", ["Piano"])
-    in_d = main.show_instruments("D", ["Piano"])
-
-    assert "F major" in in_f
-    assert "Bb" in in_f
-
-    assert "D major" in in_d
-    assert "F#" in in_d
-
-    assert in_f != in_d
-
-
-def test_every_instrument_offered_can_be_drawn():
-    """
-    The dropdown and the module must agree: an option that
-    cannot be drawn is a blank section with no explanation.
+    The static Instruments section is retired - the mixer's
+    InstrumentPanel does this job now, and does more (live
+    chord overlays). instrument_diagrams.py itself is
+    unchanged and still tested directly in
+    tests/test_instrument_diagrams.py; this just confirms
+    main.py no longer wires a redundant copy of it.
     """
 
     import main
 
-    for instrument in main.INSTRUMENTS:
-        assert "<svg" in main.show_instruments("C", [instrument])
-
-    # And all of them together, which is what the toggles
-    # allow: four pictures, each named.
-    everything = main.show_instruments("C", main.INSTRUMENTS)
-
-    assert everything.count("<svg") == len(main.INSTRUMENTS)
-
-    for instrument in main.INSTRUMENTS:
-        assert instrument in everything
-
-
-def test_choosing_nothing_says_so_rather_than_going_blank():
-    """
-    Every box unticked is a legitimate choice, not a fault:
-    the section says what to do instead of showing an empty
-    space that looks broken.
-    """
-
-    import main
-
-    shown = main.show_instruments("C", [])
-
-    assert "<svg" not in shown
-    assert "instrument" in shown.lower()
+    assert not hasattr(main, "show_instruments")
+    assert not hasattr(main, "instrument_input")
+    assert not hasattr(main, "instrument_diagram")
 
 
 def test_transposing_writes_every_box_the_music_lives_in():
