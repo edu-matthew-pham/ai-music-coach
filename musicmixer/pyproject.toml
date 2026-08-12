@@ -45,7 +45,7 @@ classifiers = [
 # space = "your space url"
 
 [project.optional-dependencies]
-dev = ["build", "twine"]
+dev = ["build", "twine", "pytest-playwright"]
 
 [tool.hatch.build]
 artifacts = ["/backend/gradio_musicmixer/templates", "*.pyi", "/\\backend\\gradio_musicmixer\\templates"]

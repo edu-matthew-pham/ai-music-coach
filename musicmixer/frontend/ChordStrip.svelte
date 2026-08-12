@@ -48,6 +48,7 @@
 			<button
 				type="button"
 				class="bar"
+				data-bar={bar.bar}
 				class:playing={currentBar === bar}
 				class:looped={engine.loopFrom !== null &&
 					engine.loopTo !== null &&
