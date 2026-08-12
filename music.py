@@ -1004,7 +1004,8 @@ def analyse_performance(
     chart_text="",
     harmony_style="Thirds, chord-corrected",
     phrase_label=None,
-    second_opinion_on=False
+    second_opinion_on=False,
+    mixer_value=None
 ):
     """
     Compare a recording against the target music.
@@ -1014,6 +1015,13 @@ def analyse_performance(
     singing the harmony part is judged against the harmony
     notes, not marked wrong against the melody.
 
+    mixer_value is the live mixer's own value, if it has one:
+    a loop selected there - by clicking bars or a phrase in
+    the mixer - takes over from the phrase dropdown, since
+    it is a more exact statement of what was just sung
+    against. No loop selected there, or no mixer built yet,
+    and phrase_label decides it exactly as before.
+
     Returns a written summary and two charts.
     """
 
@@ -1022,7 +1030,16 @@ def analyse_performance(
             "Record or upload a performance first."
         )
 
-    piece = selected_piece(
+    from mixer_data import loop_notes
+
+    looped = loop_notes(
+        pitch_text, duration_text, lyric_text, key,
+        chart_text, mixer_value
+    )
+
+    judged_on_loop = looped is not None
+
+    piece = looped if judged_on_loop else selected_piece(
         pitch_text, duration_text, lyric_text, key,
         chart_text, phrase_label
     )
@@ -1070,6 +1087,11 @@ def analyse_performance(
     lines = [
         describe_summary(summarise(comparisons))
     ]
+
+    if judged_on_loop:
+        lines.append(
+            "Judged against the stretch selected in the mixer."
+        )
 
     if part != "Melody":
         lines.append(
@@ -1261,7 +1283,8 @@ def make_practice_guide(
     part="Melody",
     key="C",
     chart_text="",
-    harmony_style="Thirds, chord-corrected"
+    harmony_style="Thirds, chord-corrected",
+    mixer_value=None
 ):
     """
     The audio that plays while a performance is recorded.
@@ -1275,6 +1298,11 @@ def make_practice_guide(
     part plays the line being sung, for learning it. The
     other part plays the opposite line, the way harmony is
     usually practised: singing against the melody.
+
+    mixer_value is the live mixer's own value: a loop
+    selected there shortens the guide to just that stretch,
+    the same rule analyse_performance follows for judging -
+    otherwise the whole piece plays, as before.
     """
 
     if guide_choice == "No guide":
@@ -1284,6 +1312,17 @@ def make_practice_guide(
         pitch_text,
         duration_text
     )
+
+    from mixer_data import loop_notes
+
+    looped = loop_notes(
+        pitch_text, duration_text, "", key, chart_text, mixer_value
+    )
+
+    if looped is not None:
+        pitches = looped.pitches
+        durations = looped.durations
+        chart_text = looped.chart
 
     bpm = check_bpm(bpm)
 

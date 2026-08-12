@@ -1179,7 +1179,8 @@ with gr.Blocks(
             part_input,
             key_input,
             chart_input,
-            harmony_style_input
+            harmony_style_input,
+            mixer_output
         ],
         outputs=guide_audio
     )
@@ -1198,7 +1199,8 @@ with gr.Blocks(
             chart_input,
             harmony_style_input,
             phrase_input,
-            second_opinion_input
+            second_opinion_input,
+            mixer_output
         ],
         outputs=[
             feedback_output,

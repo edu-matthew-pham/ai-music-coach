@@ -360,6 +360,7 @@ def mixer_data(
         "timeline": timeline,
         "notes": notes,
         "phrases": phrases,
+        "bpm": float(bpm),
         "loop_start": None,
         "loop_end": None
     }
@@ -385,3 +386,65 @@ def loop_region(mixer_value):
         return None
 
     return start, end
+
+
+def loop_notes(pitch_text, duration_text, lyric_text, key,
+               chart_text, mixer_value):
+    """
+    The stretch of the music a selected loop covers, as a
+    Piece - or None if nothing is usably selected.
+
+    The reverse of the walk _note_timeline does: that walk
+    turns each note's beat position into seconds; this reads
+    seconds back and finds which notes they cover. Uses the
+    bpm the mixer was built at, carried in mixer_value,
+    rather than whatever the BPM box currently says - the
+    loop's seconds were fixed at build time and mean nothing
+    at a tempo chosen afterwards.
+
+    A small tolerance absorbs float rounding across the
+    beats-to-seconds-and-back trip, not genuine ambiguity
+    about which notes were meant - it is far smaller than
+    any real note.
+    """
+
+    from piece import Piece
+
+    region = loop_region(mixer_value)
+
+    if region is None:
+        return None
+
+    loop_start, loop_end = region
+    bpm = mixer_value.get("bpm")
+
+    if not bpm:
+        return None
+
+    piece = Piece.read(
+        pitch_text, duration_text, lyric_text, key, chart_text
+    )
+
+    per_beat = 60.0 / float(bpm)
+    starts = piece.starts()
+
+    TOLERANCE = 0.05
+
+    first = None
+    last = None
+
+    for index, beat_start in enumerate(starts):
+
+        seconds = beat_start * per_beat
+
+        if loop_start - TOLERANCE <= seconds < loop_end + TOLERANCE:
+
+            if first is None:
+                first = index
+
+            last = index
+
+    if first is None:
+        return None
+
+    return piece.slice(first, last)

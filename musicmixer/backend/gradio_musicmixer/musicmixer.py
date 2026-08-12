@@ -106,9 +106,15 @@ class MusicMixer(Component):
         """
         Parameters:
             value: a dict built by mixer_data() - layers and
-                timeline to send down. loop_start / loop_end
-                are normally left unset here, so a freshly
-                built mixer opens with nothing looped.
+                timeline to send down. bpm is the tempo the
+                mixer was built at, carried alongside the
+                loop so a Python handler reading loop_start /
+                loop_end back later knows what tempo those
+                seconds were measured against, even if the
+                BPM box has since changed. loop_start /
+                loop_end are normally left unset here, so a
+                freshly built mixer opens with nothing
+                looped.
         Returns:
             The dict sent to the browser.
         """
@@ -120,6 +126,7 @@ class MusicMixer(Component):
             "timeline": value.get("timeline", []),
             "notes": value.get("notes", []),
             "phrases": value.get("phrases", []),
+            "bpm": value.get("bpm"),
             "loop_start": value.get("loop_start"),
             "loop_end": value.get("loop_end"),
         }
@@ -144,6 +151,9 @@ class MusicMixer(Component):
                     "type": "array",
                     "items": {"type": "object"},
                 },
+                "bpm": {
+                    "anyOf": [{"type": "number"}, {"type": "null"}]
+                },
                 "loop_start": {
                     "anyOf": [{"type": "number"}, {"type": "null"}]
                 },
@@ -154,7 +164,7 @@ class MusicMixer(Component):
         }
 
     def example_payload(self) -> Any:
-        return {"layers": [], "timeline": [], "notes": [], "phrases": [], "loop_start": None, "loop_end": None}
+        return {"layers": [], "timeline": [], "notes": [], "phrases": [], "bpm": None, "loop_start": None, "loop_end": None}
 
     def example_value(self) -> Any:
-        return {"layers": [], "timeline": [], "notes": [], "phrases": [], "loop_start": None, "loop_end": None}
+        return {"layers": [], "timeline": [], "notes": [], "phrases": [], "bpm": None, "loop_start": None, "loop_end": None}

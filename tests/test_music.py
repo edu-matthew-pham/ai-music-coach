@@ -329,6 +329,117 @@ def test_practice_guide_validates_its_input():
         make_practice_guide("C4 banana", "1 1", 120, "Clicks")
 
 
+def test_practice_guide_follows_a_selected_loop():
+    """
+    A loop selected in the mixer shortens the guide to just
+    that stretch, the same rule Compare's judging follows.
+    """
+
+    from music import make_practice_guide
+
+    pitches = "C4 D4 E4 F4 G4 A4"
+    durations = "1 1 1 1 1 1"
+
+    whole_rate, whole_audio = make_practice_guide(
+        pitches, durations, 120, "Clicks"
+    )
+
+    # At 120bpm, notes 2-4 (E4 F4 G4) start at 1.0s, 1.5s,
+    # 2.0s. loop_end sits safely before note 5's start
+    # (2.5s) so it is excluded.
+    mixer_value = {"loop_start": 1.0, "loop_end": 2.4, "bpm": 120.0}
+
+    looped_rate, looped_audio = make_practice_guide(
+        pitches, durations, 120, "Clicks", mixer_value=mixer_value
+    )
+
+    assert whole_rate == looped_rate
+    assert len(looped_audio) < len(whole_audio)
+
+
+def test_practice_guide_ignores_an_empty_mixer_value():
+    """
+    No mixer built yet, or nothing selected in it: the whole
+    piece plays, exactly as before this was added.
+    """
+
+    from music import make_practice_guide
+
+    pitches = "C4 D4 E4"
+    durations = "1 1 1"
+
+    without_param = make_practice_guide(
+        pitches, durations, 120, "Clicks"
+    )
+
+    with_none = make_practice_guide(
+        pitches, durations, 120, "Clicks", mixer_value=None
+    )
+
+    with_empty = make_practice_guide(
+        pitches, durations, 120, "Clicks",
+        mixer_value={"loop_start": None, "loop_end": None}
+    )
+
+    assert len(without_param[1]) == len(with_none[1]) == len(with_empty[1])
+
+
+def test_compare_judges_against_a_selected_loop():
+    """
+    A loop selected in the mixer takes over from the phrase
+    dropdown: judged against exactly the notes it covers, and
+    the feedback says so.
+    """
+
+    from playback import make_melody
+    from music import analyse_performance
+
+    pitches = "C4 D4 E4 F4 G4 A4"
+    durations = "1 1 1 1 1 1"
+
+    # A recording matching only the looped notes (E4 F4 G4)
+    # exactly.
+    rate, sound = make_melody(
+        ["E4", "F4", "G4"], [1.0, 1.0, 1.0], 120, 8000
+    )
+
+    mixer_value = {"loop_start": 1.0, "loop_end": 2.4, "bpm": 120.0}
+
+    text, performance, tuning = analyse_performance(
+        (rate, np.array(sound)),
+        pitches, durations, 120,
+        mixer_value=mixer_value
+    )
+
+    assert "3 of 3" in text
+    assert "selected in the mixer" in text
+
+
+def test_compare_falls_back_to_the_phrase_dropdown_without_a_loop():
+    """
+    No loop selected: phrase_label decides it, exactly as
+    before this was added, and the mixer note is absent.
+    """
+
+    from playback import make_melody
+    from music import analyse_performance
+
+    pitches = "C4 D4 E4"
+    durations = "1 1 1"
+
+    rate, sound = make_melody(
+        ["C4", "D4", "E4"], [1.0, 1.0, 1.0], 120, 8000
+    )
+
+    text, performance, tuning = analyse_performance(
+        (rate, np.array(sound)),
+        pitches, durations, 120,
+        mixer_value=None
+    )
+
+    assert "selected in the mixer" not in text
+
+
 def test_show_target_music_draws_without_a_performance():
     from music import show_target_music
 

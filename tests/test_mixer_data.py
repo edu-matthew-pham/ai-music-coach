@@ -20,7 +20,8 @@ from mixer_data import (
     OPENING_LEVELS,
     LAYER_COLOURS,
     mixer_data,
-    loop_region
+    loop_region,
+    loop_notes
 )
 from music import load_wellerman, LAYER_NAMES
 
@@ -179,7 +180,7 @@ def test_mixer_data_has_the_shape_the_component_expects():
     )
 
     assert set(value.keys()) == {
-        "layers", "timeline", "notes", "phrases",
+        "layers", "timeline", "notes", "phrases", "bpm",
         "loop_start", "loop_end"
     }
 
@@ -256,3 +257,96 @@ def test_loop_region_is_none_when_nothing_is_selected():
     assert loop_region({"loop_start": None, "loop_end": None}) is None
     assert loop_region(None) is None
     assert loop_region({}) is None
+
+
+def test_mixer_data_carries_its_own_build_tempo():
+    """
+    A selected loop is in seconds fixed at the tempo the
+    mixer was built at. Reading it back has to use that
+    tempo, not whatever the BPM box says later, so it is
+    carried in the dictionary rather than assumed to match.
+    """
+
+    value = mixer_data("C4 D4 E4", "1 1 1", "C", 90, "")
+
+    assert value["bpm"] == 90.0
+
+
+def test_loop_notes_finds_the_selected_stretch():
+    """
+    The reverse of the walk that placed notes in seconds:
+    given a selected range, find which notes it covers.
+    """
+
+    pitches, durations, lyrics, key, chart, tempo = song()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, phrase_label="Whole part"
+    )
+
+    timeline = value["timeline"]
+    value["loop_start"] = timeline[1]["start"]
+    value["loop_end"] = timeline[5]["end"]
+
+    piece = loop_notes(pitches, durations, lyrics, key, chart, value)
+
+    assert piece is not None
+    assert 0 < len(piece.pitches) < len(pitches.split())
+
+    # The chart re-cuts to the loop too, the same way
+    # Piece.slice already does for the phrase dropdown -
+    # this is not new chart-cutting logic, just a new way
+    # of choosing the range to cut to.
+    assert piece.chart.strip()
+
+
+def test_loop_notes_uses_the_build_tempo_not_a_different_one():
+    """
+    The same seconds, read against the tempo actually used
+    to build the mixer, land on the same notes regardless of
+    what the BPM box says by the time Compare runs.
+    """
+
+    pitches, durations, lyrics, key, chart, tempo = song()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, phrase_label="Whole part"
+    )
+
+    timeline = value["timeline"]
+    value["loop_start"] = timeline[1]["start"]
+    value["loop_end"] = timeline[5]["end"]
+
+    at_build_tempo = loop_notes(
+        pitches, durations, lyrics, key, chart, value
+    )
+
+    # A tampered copy with the wrong bpm would misread the
+    # same seconds against a different beat grid - this is
+    # the bug the carried bpm field exists to prevent.
+    wrong_tempo_value = dict(value, bpm=tempo * 2)
+
+    at_wrong_tempo = loop_notes(
+        pitches, durations, lyrics, key, chart, wrong_tempo_value
+    )
+
+    assert len(at_build_tempo.pitches) != len(at_wrong_tempo.pitches)
+
+
+def test_loop_notes_is_none_without_a_selection():
+    """
+    Nothing selected yet, or the mixer never built - either
+    way, there is nothing to slice to.
+    """
+
+    pitches, durations, lyrics, key, chart, tempo = song()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, phrase_label="Whole part"
+    )
+
+    assert loop_notes(pitches, durations, lyrics, key, chart, value) is None
+    assert loop_notes(pitches, durations, lyrics, key, chart, None) is None
