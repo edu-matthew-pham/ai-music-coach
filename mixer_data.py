@@ -24,7 +24,9 @@ from scipy.io import wavfile
 
 from music import LAYER_NAMES, separate_layers
 from harmony import MAJOR_SCALES
-from instrument_diagrams import INSTRUMENTS, chord_overlay_for, diagram_for
+from instrument_diagrams import (
+    INSTRUMENTS, chord_overlay_for, scale_overlay_for, structure_for
+)
 
 
 # Levels a part starts at, matching what the sliders used
@@ -154,9 +156,17 @@ def _timeline(pitch_text, duration_text, key, bpm, chart_text,
 def _diagrams(key, timeline):
     """
     The instrument pictures the mixer's diagram panel
-    stacks: one scale base per instrument, keyed by the key
-    box, and one transparent chord overlay per instrument
-    per distinct chord this song's chart actually uses.
+    stacks, three layers per instrument:
+
+    - structure: the instrument itself (keys, frets,
+      strings), key-independent, always sent - it is not a
+      toggleable layer, since a picture of marks with no
+      instrument under them is illegible.
+    - scale: the key's notes, transparent, for the Scale
+      toggle.
+    - chord: one transparent overlay per distinct chord
+      this song's chart actually uses, for the Chord
+      toggle.
 
     Every instrument is included regardless of which the
     player has toggled on - the toggle is a display choice
@@ -179,8 +189,13 @@ def _diagrams(key, timeline):
 
     from chords import ChartError
 
+    structure = {
+        instrument: structure_for(instrument)
+        for instrument in INSTRUMENTS
+    }
+
     scale = {
-        instrument: diagram_for(key, instrument)
+        instrument: scale_overlay_for(key, instrument)
         for instrument in INSTRUMENTS
     }
 
@@ -199,7 +214,7 @@ def _diagrams(key, timeline):
             except ChartError:
                 continue
 
-    return {"scale": scale, "chords": chords}
+    return {"structure": structure, "scale": scale, "chords": chords}
 
 
 def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,

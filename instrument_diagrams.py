@@ -235,6 +235,47 @@ def _colour_for(semitone, key, home):
     return OFF_KEY_COLOUR
 
 
+def piano_structure():
+    """
+    The keyboard on its own, no key involved - the mixer's
+    always-there background layer. Same picture whatever
+    key is chosen, because a keyboard's keys don't move.
+    """
+
+    parts, width, height = _piano_structure_parts()
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="A keyboard, three octaves">'
+        + "".join(parts) +
+        "</svg>"
+    )
+
+
+def piano_scale_overlay(key):
+    """
+    Just the key's in-key marks, transparent background,
+    positioned exactly as piano_diagram places them - for
+    stacking on piano_structure as the mixer's Scale layer.
+    """
+
+    _, width, height = _piano_structure_parts()
+    parts = _piano_scale_parts(key)
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="The notes of '
+        f'{_escape(describe_key(key))} highlighted on a '
+        f'keyboard">'
+        + "".join(parts) +
+        "</svg>"
+    )
+
+
 def piano_diagram(key):
     """
     Three octaves of a keyboard with the key's notes
@@ -252,6 +293,94 @@ def piano_diagram(key):
     of a keyboard into one block of colour and hides the
     black keys inside it, which is the shape a player is
     actually navigating by.
+
+    Built from piano_structure and piano_scale_overlay so
+    the standalone diagram and the mixer's separately
+    toggleable layers can never draw the keyboard two
+    different ways.
+    """
+
+    structure_parts, width, height = _piano_structure_parts()
+    scale_parts = _piano_scale_parts(key)
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="A keyboard octave with the '
+        f'notes of {_escape(describe_key(key))} marked">'
+        + "".join(structure_parts) + "".join(scale_parts) +
+        "</svg>"
+    )
+
+
+def _piano_structure_parts():
+    """
+    The keyboard itself: white and black keys, nothing
+    marked on them. Key-independent - three octaves look
+    the same whatever key is chosen - so this is the part
+    of the picture that never needs to change or be
+    toggled off.
+    """
+
+    octaves = PIANO_LAYOUT["octaves"]
+
+    white_semitones = [
+        semitone + octave * 12
+        for octave in range(octaves)
+        for semitone in [0, 2, 4, 5, 7, 9, 11]
+    ]
+
+    black_after = {
+        semitone + octave * 12: raised + octave * 12
+        for octave in range(octaves)
+        for semitone, raised in
+        {0: 1, 2: 3, 5: 6, 7: 8, 9: 10}.items()
+    }
+
+    white_width = PIANO_LAYOUT["white_width"]
+    white_height = PIANO_LAYOUT["white_height"]
+    black_width = PIANO_LAYOUT["black_width"]
+    black_height = PIANO_LAYOUT["black_height"]
+
+    parts = []
+
+    for index in range(len(white_semitones)):
+
+        x = index * white_width
+
+        parts.append(
+            f'<rect x="{x}" y="0" width="{white_width}" '
+            f'height="{white_height}" fill="#ffffff" '
+            f'stroke="{LINE_COLOUR}" stroke-width="1.5"/>'
+        )
+
+    for index, semitone in enumerate(white_semitones):
+
+        raised = black_after.get(semitone)
+
+        if raised is None:
+            continue
+
+        x = (index + 1) * white_width - black_width / 2
+
+        parts.append(
+            f'<rect x="{x}" y="0" width="{black_width}" '
+            f'height="{black_height}" fill="#212121" '
+            f'stroke="{LINE_COLOUR}" stroke-width="1.5"/>'
+        )
+
+    width = len(white_semitones) * white_width
+
+    return parts, width, white_height
+
+
+def _piano_scale_parts(key):
+    """
+    Just the in-key marks a piano_diagram draws on top of
+    its keys - no keyboard underneath. What the mixer's
+    Scale layer shows, stacked on the always-visible
+    structure from _piano_structure_parts.
     """
 
     home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
@@ -302,12 +431,6 @@ def piano_diagram(key):
 
         x = index * white_width
 
-        parts.append(
-            f'<rect x="{x}" y="0" width="{white_width}" '
-            f'height="{white_height}" fill="#ffffff" '
-            f'stroke="{LINE_COLOUR}" stroke-width="1.5"/>'
-        )
-
         if semitone % 12 in in_key:
             parts.append(
                 spot(
@@ -328,12 +451,6 @@ def piano_diagram(key):
 
         x = (index + 1) * white_width - black_width / 2
 
-        parts.append(
-            f'<rect x="{x}" y="0" width="{black_width}" '
-            f'height="{black_height}" fill="#212121" '
-            f'stroke="{LINE_COLOUR}" stroke-width="1.5"/>'
-        )
-
         if raised % 12 in in_key:
             parts.append(
                 spot(
@@ -344,14 +461,48 @@ def piano_diagram(key):
                 )
             )
 
-    width = len(white_semitones) * white_width
+    return parts
+
+
+def fretboard_structure(instrument="Guitar"):
+    """
+    The neck itself - nut, frets, strings, fret numbers,
+    inlay dots - with nothing marked on it. Key-independent:
+    a fretboard is the same physical object whatever key is
+    chosen, so this is the mixer's always-there background
+    for a Guitar or similar string instrument.
+    """
+
+    parts, width, height = _fretboard_structure_parts(instrument)
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {width} {white_height}" '
+        f'viewBox="0 0 {width} {height}" '
         f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="A keyboard octave with the '
-        f'notes of {_escape(describe_key(key))} marked">'
+        f'role="img" aria-label="A {_escape(instrument)} neck">'
+        + "".join(parts) +
+        "</svg>"
+    )
+
+
+def fretboard_scale_overlay(key, instrument="Guitar"):
+    """
+    Just the key's marks - every fretted position, coloured
+    home/in-key/off-key - transparent background, positioned
+    exactly as fretboard_diagram places them. The mixer's
+    Scale layer, stacked on fretboard_structure.
+    """
+
+    _, width, height = _fretboard_structure_parts(instrument)
+    parts = _fretboard_scale_parts(key, instrument)
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="The notes of '
+        f'{_escape(describe_key(key))} highlighted on a '
+        f'{_escape(instrument)} neck">'
         + "".join(parts) +
         "</svg>"
     )
@@ -370,6 +521,32 @@ def fretboard_diagram(key, instrument="Guitar"):
     neck into semitones, which is where the fingers go; the
     lines are a ruler, not a promise that anything stops
     the string there.
+
+    Built from fretboard_structure and
+    fretboard_scale_overlay so the standalone diagram and
+    the mixer's separately toggleable layers can never draw
+    the neck two different ways.
+    """
+
+    structure_parts, width, height = _fretboard_structure_parts(instrument)
+    scale_parts = _fretboard_scale_parts(key, instrument)
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="A {_escape(instrument)} neck with '
+        f'the notes of {_escape(describe_key(key))} marked">'
+        + "".join(structure_parts) + "".join(scale_parts) +
+        "</svg>"
+    )
+
+
+def _fretboard_structure_parts(instrument="Guitar"):
+    """
+    Nut, frets, strings, fret numbers, inlay dots - no key
+    involved, nothing marked. Raises for an instrument this
+    app cannot draw, same as the diagram functions do.
     """
 
     tuning = STRING_TUNINGS.get(instrument)
@@ -379,8 +556,6 @@ def fretboard_diagram(key, instrument="Guitar"):
             f"'{instrument}' is not an instrument this "
             f"app can draw."
         )
-
-    home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
 
     left = FRETBOARD_LAYOUT["left"]
     top = FRETBOARD_LAYOUT["top"]
@@ -440,6 +615,38 @@ def fretboard_diagram(key, instrument="Guitar"):
             f'{_escape(open_string)}</text>'
         )
 
+    return parts, width, height
+
+
+def _fretboard_scale_parts(key, instrument="Guitar"):
+    """
+    Just the marks fretboard_diagram draws on top of the
+    neck - every fretted position, coloured home/in-key/
+    off-key - no neck underneath. What the mixer's Scale
+    layer shows, stacked on _fretboard_structure_parts.
+    """
+
+    tuning = STRING_TUNINGS.get(instrument)
+
+    if tuning is None:
+        raise KeyError(
+            f"'{instrument}' is not an instrument this "
+            f"app can draw."
+        )
+
+    home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
+
+    left = FRETBOARD_LAYOUT["left"]
+    top = FRETBOARD_LAYOUT["top"]
+    fret_width = FRETBOARD_LAYOUT["fret_width"]
+    string_gap = FRETBOARD_LAYOUT["string_gap"]
+
+    parts = []
+
+    for index, open_string in enumerate(reversed(tuning)):
+
+        y = top + index * string_gap
+
         for fret in range(FRETS_SHOWN + 1):
 
             semitone = _note_at(open_string, fret)
@@ -469,12 +676,49 @@ def fretboard_diagram(key, instrument="Guitar"):
                     f'{_escape(name_for(semitone, key))}</text>'
                 )
 
+    return parts
+
+
+def violin_structure(position="First position"):
+    """
+    The nut, the semitone ruler, and the strings - nothing
+    fingered. Key-independent: the neck and the hand frame
+    a position defines don't move with the key, only which
+    of its marked points light up does. The mixer's
+    always-there background for a violin chart.
+    """
+
+    parts, width, height = _violin_structure_parts(position)
+
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
         f'viewBox="0 0 {width} {height}" '
         f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="A {_escape(instrument)} neck with '
-        f'the notes of {_escape(describe_key(key))} marked">'
+        f'role="img" aria-label="A violin neck in '
+        f'{_escape(position.lower())}">'
+        + "".join(parts) +
+        "</svg>"
+    )
+
+
+def violin_scale_overlay(key, position="First position"):
+    """
+    Just the key's finger marks, transparent background,
+    positioned exactly as violin_chart places them - for
+    stacking on violin_structure as the mixer's Scale
+    layer.
+    """
+
+    _, width, height = _violin_structure_parts(position)
+    parts = _violin_scale_parts(key, position)
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="The notes of '
+        f'{_escape(describe_key(key))} highlighted on a '
+        f'violin chart in {_escape(position.lower())}">'
         + "".join(parts) +
         "</svg>"
     )
@@ -504,6 +748,33 @@ def violin_chart(key, position="First position"):
     Only the key's notes are drawn, on a faint semitone
     ruler: this is a picture of a hand shape, not a map of
     every destination the way the guitar's is.
+
+    Built from violin_structure and violin_scale_overlay so
+    the standalone chart and the mixer's separately
+    toggleable layers can never draw the neck two different
+    ways.
+    """
+
+    structure_parts, width, height = _violin_structure_parts(position)
+    scale_parts = _violin_scale_parts(key, position)
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="A violin chart of '
+        f'{_escape(describe_key(key))} in '
+        f'{_escape(position.lower())}, along the neck">'
+        + "".join(structure_parts) + "".join(scale_parts) +
+        "</svg>"
+    )
+
+
+def _violin_structure_parts(position="First position"):
+    """
+    The nut, the semitone ruler, and the strings - no key
+    involved, nothing fingered. Raises for an unknown
+    position, same as violin_chart does.
     """
 
     start = POSITION_STARTS.get(position)
@@ -513,9 +784,6 @@ def violin_chart(key, position="First position"):
             f"'{position}' is not a position this app "
             f"can draw."
         )
-
-    home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
-    in_key = semitones_in(key)
 
     furthest = start + POSITION_REACH
 
@@ -575,6 +843,39 @@ def violin_chart(key, position="First position"):
             f'{_escape(open_string)}</text>'
         )
 
+    return parts, width, height
+
+
+def _violin_scale_parts(key, position="First position"):
+    """
+    Just the finger marks violin_chart draws on top of the
+    neck - no ruler or strings underneath. What the mixer's
+    Scale layer shows, stacked on
+    _violin_structure_parts.
+    """
+
+    start = POSITION_STARTS.get(position)
+
+    if start is None:
+        raise KeyError(
+            f"'{position}' is not a position this app "
+            f"can draw."
+        )
+
+    home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
+    in_key = semitones_in(key)
+
+    left = VIOLIN_LAYOUT["left"]
+    top = VIOLIN_LAYOUT["top"]
+    semitone_width = VIOLIN_LAYOUT["semitone_width"]
+    string_gap = VIOLIN_LAYOUT["string_gap"]
+
+    parts = []
+
+    for index, open_string in enumerate(reversed(VIOLIN_STRINGS)):
+
+        y = top + index * string_gap
+
         def mark(step, finger):
             """
             One finger's place on this string, if in key.
@@ -619,16 +920,7 @@ def violin_chart(key, position="First position"):
         for step, finger in fingering_for(open_string, key, start):
             mark(step, finger)
 
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {width} {height}" '
-        f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="A violin chart of '
-        f'{_escape(describe_key(key))} in '
-        f'{_escape(position.lower())}, along the neck">'
-        + "".join(parts) +
-        "</svg>"
-    )
+    return parts
 
 
 # The mixer overlay's mark, drawn heavier than the scale
@@ -852,11 +1144,59 @@ def violin_chord_overlay(key, chord_semitone_set, position="First position"):
     )
 
 
+def _violin_position_for(instrument):
+    """
+    Which position an "instrument" string like "Violin,
+    third position" names, shared by every function that
+    dispatches on the INSTRUMENTS list so the parsing
+    lives in one place.
+    """
+
+    return (
+        "Third position" if "third" in instrument
+        else "First position"
+    )
+
+
+def structure_for(instrument):
+    """
+    The always-there background picture of one instrument -
+    no key involved. The mixer's base layer, drawn once and
+    never toggled off.
+    """
+
+    if instrument == "Piano":
+        return piano_structure()
+
+    if instrument.startswith("Violin"):
+        return violin_structure(_violin_position_for(instrument))
+
+    return fretboard_structure(instrument)
+
+
+def scale_overlay_for(key, instrument):
+    """
+    The key's-notes-only picture of one instrument,
+    transparent background, positioned to stack exactly on
+    structure_for(instrument). The mixer's Scale layer.
+    """
+
+    if instrument == "Piano":
+        return piano_scale_overlay(key)
+
+    if instrument.startswith("Violin"):
+        return violin_scale_overlay(key, _violin_position_for(instrument))
+
+    return fretboard_scale_overlay(key, instrument)
+
+
 def chord_overlay_for(key, instrument, chord_name):
     """
     The chord-tones-only picture of one chord on one
     instrument, positioned to stack exactly on
-    diagram_for(key, instrument).
+    diagram_for(key, instrument) - and on structure_for and
+    scale_overlay_for, all three sharing one coordinate
+    system per (key, instrument).
 
     Empty (no marks, correctly formed SVG) if the chord's
     tones don't overlap the instrument's playable range in
@@ -874,13 +1214,9 @@ def chord_overlay_for(key, instrument, chord_name):
         return piano_chord_overlay(key, tones)
 
     if instrument.startswith("Violin"):
-
-        position = (
-            "Third position" if "third" in instrument
-            else "First position"
+        return violin_chord_overlay(
+            key, tones, _violin_position_for(instrument)
         )
-
-        return violin_chord_overlay(key, tones, position)
 
     return fretboard_chord_overlay(key, tones, instrument)
 
@@ -902,13 +1238,7 @@ def diagram_for(key, instrument):
         return piano_diagram(key)
 
     if instrument.startswith("Violin"):
-
-        position = (
-            "Third position" if "third" in instrument
-            else "First position"
-        )
-
-        return violin_chart(key, position)
+        return violin_chart(key, _violin_position_for(instrument))
 
     return fretboard_diagram(key, instrument)
 

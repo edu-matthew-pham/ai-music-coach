@@ -197,11 +197,13 @@ def test_mixer_data_has_the_shape_the_component_expects():
     assert len(value["timeline"]) > 1
 
     # The diagrams stack in the browser, so mixer_data must
-    # always ship the full instrument set for the scale
-    # base, and one chord overlay per chord name the chart
-    # actually printed on the strip.
+    # always ship the full instrument set for the structure
+    # (always-there background) and the scale base, and one
+    # chord overlay per chord name the chart actually
+    # printed on the strip.
     from instrument_diagrams import INSTRUMENTS
 
+    assert set(value["diagrams"]["structure"].keys()) == set(INSTRUMENTS)
     assert set(value["diagrams"]["scale"].keys()) == set(INSTRUMENTS)
 
     chart_chord_names = {
@@ -212,6 +214,17 @@ def test_mixer_data_has_the_shape_the_component_expects():
         set(value["diagrams"]["chords"]["Piano"].keys())
         == chart_chord_names
     )
+
+    # Structure and scale must be different pictures, not
+    # the same one under two names - the bug that shipped
+    # the combined diagram as "scale" and left nothing for
+    # an always-there background.
+    structure_piano = value["diagrams"]["structure"]["Piano"]
+    scale_piano = value["diagrams"]["scale"]["Piano"]
+
+    assert structure_piano != scale_piano
+    assert "<rect" in structure_piano
+    assert "<rect" not in scale_piano
     assert len(value["notes"]) > 1
     assert len(value["phrases"]) > 1
 
