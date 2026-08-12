@@ -55,7 +55,7 @@ CONTROLS = [
     "Part",
     "Guide while recording",
     "Octave",
-    "Build the mixer",
+    "Generate Playback",
     "Compare"
 ]
 

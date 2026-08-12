@@ -22,9 +22,9 @@ cents, and where you came in early or late.
 
 ## Getting started
 
-Press **Load Twinkle**, then **Build the mixer** under
-Mix it live to hear it. Press record, sing along with
-the count-in, then press **Compare** to see how it went.
+Press **Load Twinkle**, then **Generate Playback**
+to hear it. Press record, sing along with the count-in,
+then press **Compare** to see how it went.
 
 ## Writing music by hand
 

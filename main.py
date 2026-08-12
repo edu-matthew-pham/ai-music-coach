@@ -108,7 +108,7 @@ ANCHOR_CSS = """
  * A section jumped to should land below the bar rather than
  * under it.
  */
-#song, #arrange, #practice, #instruments {
+#song, #arrange, #practice, #instruments, #playback {
     scroll-margin-top: 64px;
 }
 """
@@ -156,6 +156,7 @@ with gr.Blocks(
         value='<div class="anchor-nav">'
         + anchor_link("Song", "song")
         + anchor_link("Arrange", "arrange")
+        + anchor_link("Playback", "playback")
         + anchor_link("Practice", "practice")
         + anchor_link("Instruments", "instruments")
         + "</div>"
@@ -414,7 +415,9 @@ with gr.Blocks(
                     "Next phrase \u25b6"
                 )
 
-            with gr.Accordion("Mix it live", open=False):
+            with gr.Accordion(
+                "Playback", open=True, elem_id="playback"
+            ):
 
                 gr.Markdown(
                     "The parts sent separately and mixed in "
@@ -425,16 +428,16 @@ with gr.Blocks(
                     "Built from the boxes when the button is "
                     "pressed, for the whole piece. Edit "
                     "anything above and press again.\n\n"
-                    "The mixer has its own phrase list, to "
-                    "jump straight to any phrase's exact "
-                    "start and end, and its own chord strip "
-                    "along the top: click a bar to jump "
-                    "there, shift-click a second bar to loop "
-                    "that stretch."
+                    "Has its own phrase list, to jump "
+                    "straight to any phrase's exact start "
+                    "and end, and its own chord strip along "
+                    "the top: click a bar to jump there, "
+                    "shift-click a second bar to loop that "
+                    "stretch."
                 )
 
                 open_mixer_button = gr.Button(
-                    "Build the mixer",
+                    "Generate Playback",
                     size="sm"
                 )
 
