@@ -5,6 +5,22 @@
 	import { Block } from "@gradio/atoms";
 	import { onDestroy } from "svelte";
 	import { engine } from "./mixerEngine.svelte";
+	import { panels } from "./mixerPanels.svelte";
+	import Transport from "./Transport.svelte";
+	import PanelToggles from "./PanelToggles.svelte";
+	import ChordStrip from "./ChordStrip.svelte";
+	import FaderPanel from "./FaderPanel.svelte";
+
+	// This file is deliberately thin: it wires Gradio's value
+	// in and out, and holds the handful of actions that touch
+	// both the engine and Python's copy of the value. Every
+	// panel - Transport, PanelToggles, ChordStrip, FaderPanel
+	// - reads the shared engine/panels state directly rather
+	// than being handed a slice of it, and calls back up here
+	// only for the few actions that need to report to Python.
+	// A new panel means a new file that imports engine the
+	// same way, plus one line rendering it here - nothing
+	// about the panels already working has to change.
 
 	const props = $props();
 	const gradio = new Gradio<MusicMixerEvents, MusicMixerProps>(props);
@@ -28,10 +44,7 @@
 	// the first test - only the audio needed the engine.
 	// Seeded from whatever Python last sent, so a remount
 	// mid-selection does not lose it.
-	if (
-		gradio.props.value?.loop_start != null &&
-		engine.loopFrom === null
-	) {
+	if (gradio.props.value?.loop_start != null && engine.loopFrom === null) {
 		engine.loopFrom = gradio.props.value.loop_start;
 		engine.loopTo = gradio.props.value.loop_end ?? null;
 	}
@@ -51,6 +64,8 @@
 		if (frame !== null) cancelAnimationFrame(frame);
 	});
 
+	let follow = $state(true);
+
 	function reportValue(): void {
 		if (gradio.props.value) {
 			gradio.props.value.loop_start = engine.loopFrom;
@@ -63,10 +78,10 @@
 		const wasPlaying = engine.playing;
 
 		// Only tell Python when the range itself changed - a
-		// preview click leaves loop_start/loop_end untouched,
-		// so there is nothing worth a round trip for, and one
-		// fewer round trip is one fewer remount to flicker
-		// through.
+		// scrub or a preview leaves loop_start/loop_end
+		// untouched, so there is nothing worth a round trip
+		// for, and one fewer round trip is one fewer remount
+		// to flicker through.
 		const rangeChanged = engine.select(bar, event.shiftKey);
 		playhead = engine.position();
 
@@ -77,6 +92,12 @@
 		if (wasPlaying) {
 			engine.play(layers);
 		}
+	}
+
+	function clearSelection(): void {
+		engine.clearLoop();
+		playhead = 0;
+		reportValue();
 	}
 
 	function toggleRepeat(): void {
@@ -91,56 +112,10 @@
 		}
 	}
 
-	function clearLoop(): void {
-		engine.clearLoop();
-		playhead = 0;
-		reportValue();
-	}
-
 	function levelChanged(name: string): void {
 		engine.setLevel(name, engine.levels[name]);
 		gradio.dispatch("input");
 	}
-
-	function toggleMute(name: string, opening: number): void {
-		engine.levels[name] = engine.levels[name] > 0 ? 0 : opening;
-		levelChanged(name);
-	}
-
-	const currentBar = $derived(
-		timeline.find((bar) => playhead >= bar.start && playhead < bar.end)
-	);
-
-	// On by default: while playing, the strip scrolls to keep
-	// the current bar in view. Off, it stays put - useful for
-	// glancing ahead or back in the chart without the view
-	// yanking away from wherever you were looking.
-	let follow = $state(true);
-	let barElements: Record<number, HTMLElement> = {};
-
-	$effect(() => {
-		if (follow && currentBar && barElements[currentBar.bar]) {
-			barElements[currentBar.bar].scrollIntoView({
-				behavior: "smooth",
-				inline: "center",
-				block: "nearest"
-			});
-		}
-	});
-
-	const loopLabel = $derived.by(() => {
-		if (engine.loopFrom === null) {
-			return timeline.length
-				? "Click a bar to select where Play starts. Shift-click a later bar to loop a stretch."
-				: "";
-		}
-		if (engine.loopTo === null) {
-			return `Play starts at ${engine.loopFrom.toFixed(1)}s. Shift-click a later bar to select a stretch, or press Play.`;
-		}
-		return engine.repeat
-			? `Repeating ${engine.loopFrom.toFixed(1)}s to ${engine.loopTo.toFixed(1)}s. Untick Repeat to play it once, or Clear selection to release it.`
-			: `Selected ${engine.loopFrom.toFixed(1)}s to ${engine.loopTo.toFixed(1)}s, playing once. Tick Repeat to loop it.`;
-	});
 </script>
 
 <Block
@@ -153,234 +128,29 @@
 	padding={true}
 >
 	<div class="mixer">
-		<div class="transport">
-			<button onclick={() => engine.play(layers)}>Play</button>
-			<button onclick={() => engine.stop()}>Stop</button>
-			<button onclick={clearLoop}>Clear selection</button>
-			{#if engine.loopFrom !== null && engine.loopTo !== null}
-				<label class="repeat">
-					<input
-						type="checkbox"
-						bind:checked={engine.repeat}
-						onchange={toggleRepeat}
-					/>
-					Repeat
-				</label>
-			{/if}
-			<span class="time">{playhead.toFixed(1)}s</span>
-			{#if timeline.length}
-				<label class="repeat">
-					<input type="checkbox" bind:checked={follow} />
-					Follow
-				</label>
-			{/if}
-		</div>
+		<Transport
+			{layers}
+			{playhead}
+			bind:follow
+			hasTimeline={timeline.length > 0}
+			onClearSelection={clearSelection}
+			onToggleRepeat={toggleRepeat}
+		/>
 
-		<div class="panel-toggles">
-			{#if timeline.length}
-				<label class="panel-toggle">
-					<input type="checkbox" bind:checked={engine.panels.strip} />
-					Chart
-				</label>
-			{/if}
-			<label class="panel-toggle">
-				<input type="checkbox" bind:checked={engine.panels.faders} />
-				Mixer
-			</label>
-		</div>
+		<PanelToggles hasTimeline={timeline.length > 0} />
 
-		{#if timeline.length && engine.panels.strip}
-			<div class="strip">
-				{#each timeline as bar (bar.bar)}
-					<button
-						type="button"
-						class="bar"
-						class:playing={currentBar === bar}
-						class:looped={engine.loopFrom !== null &&
-							engine.loopTo !== null &&
-							bar.start >= engine.loopFrom - 0.001 &&
-							bar.end <= engine.loopTo + 0.001}
-						bind:this={barElements[bar.bar]}
-						onclick={(event) => selectBar(bar, event)}
-						onkeydown={(event) => {
-							if (event.key === "Enter" || event.key === " ") {
-								event.preventDefault();
-								selectBar(bar, event);
-							}
-						}}
-					>
-						<div class="number">{bar.bar}</div>
-						<div class="chord">{bar.name}</div>
-						<div class="words">{bar.words}</div>
-					</button>
-				{/each}
-			</div>
-			<p class="note">{loopLabel}</p>
+		{#if panels.strip}
+			<ChordStrip {timeline} {playhead} {follow} onSelectBar={selectBar} />
 		{/if}
 
-		{#if engine.panels.faders}
-			<div class="faders">
-				{#each layers as layer (layer.name)}
-					<div class="fader-row">
-						<span class="name" style="color:{layer.colour}">
-							{layer.name}
-						</span>
-						<button
-							class="mute"
-							onclick={() => toggleMute(layer.name, layer.level)}
-						>
-							M
-						</button>
-						<input
-							type="range"
-							min="0"
-							max="1"
-							step="0.05"
-							bind:value={engine.levels[layer.name]}
-							oninput={() => levelChanged(layer.name)}
-						/>
-						<span class="value">
-							{Math.round((engine.levels[layer.name] ?? 0) * 100)}%
-						</span>
-					</div>
-				{/each}
-			</div>
+		{#if panels.faders}
+			<FaderPanel {layers} onLevelChanged={levelChanged} />
 		{/if}
-		</div>
+	</div>
 </Block>
 
 <style>
 	.mixer {
 		font-family: sans-serif;
-	}
-	.transport {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		margin-bottom: 6px;
-	}
-	.transport button {
-		padding: 6px 14px;
-		font-size: 13px;
-		font-weight: 600;
-		cursor: pointer;
-	}
-	.time {
-		font-size: 12px;
-		color: var(--body-text-color-subdued);
-		margin-left: auto;
-	}
-	.repeat {
-		font-size: 13px;
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		cursor: pointer;
-	}
-	.repeat input[type="checkbox"] {
-		/* Gradio's theme resets input appearance broadly
-		   enough that a checked box drew no checkmark at all
-		   - it wasn't disappearing, there was simply nothing
-		   left to render once checked. Forced back on and
-		   given an explicit colour rather than an inherited
-		   one that might match its own background. */
-		appearance: auto;
-		accent-color: #2e7d32;
-		width: 15px;
-		height: 15px;
-	}
-	.panel-toggles {
-		display: flex;
-		gap: 14px;
-		margin-bottom: 8px;
-	}
-	.panel-toggle {
-		font-size: 12px;
-		color: var(--body-text-color-subdued);
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		cursor: pointer;
-	}
-	.panel-toggle input[type="checkbox"] {
-		appearance: auto;
-		accent-color: #607d8b;
-		width: 13px;
-		height: 13px;
-	}
-
-	.strip {
-		display: flex;
-		gap: 4px;
-		overflow-x: auto;
-		padding: 8px 2px;
-	}
-	.bar {
-		min-width: 84px;
-		border: 1px solid var(--border-color-primary);
-		border-radius: 4px;
-		padding: 6px 8px;
-		cursor: pointer;
-		background: var(--background-fill-primary);
-		flex: 0 0 auto;
-		font: inherit;
-		text-align: left;
-	}
-	.bar.playing {
-		border-color: #2e7d32 !important;
-		background: #e8f5e9 !important;
-	}
-	.bar.looped {
-		background: #fff3e0 !important;
-	}
-	.bar .number {
-		font-size: 10px;
-		color: var(--body-text-color-subdued);
-	}
-	.bar .chord {
-		font-weight: 700;
-		font-size: 14px;
-	}
-	.bar .words {
-		font-size: 11px;
-		color: var(--body-text-color-subdued);
-		margin-top: 2px;
-		white-space: nowrap;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		max-width: 140px;
-	}
-
-	.note {
-		font-size: 13px;
-		color: var(--body-text-color-subdued);
-	}
-
-	.fader-row {
-		display: flex;
-		align-items: center;
-		gap: 12px;
-		margin: 6px 0;
-	}
-	.name {
-		width: 120px;
-		font-size: 13px;
-		font-weight: 600;
-	}
-	.mute {
-		width: 30px;
-		padding: 4px 0;
-		font-size: 13px;
-		cursor: pointer;
-	}
-	input[type="range"] {
-		flex: 1;
-		max-width: 320px;
-	}
-	.value {
-		width: 38px;
-		font-size: 12px;
-		color: var(--body-text-color-subdued);
-		text-align: right;
 	}
 </style>

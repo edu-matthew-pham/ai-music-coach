@@ -1,0 +1,44 @@
+<script lang="ts">
+	import { panels } from "./mixerPanels.svelte";
+
+	interface Props {
+		hasTimeline: boolean;
+	}
+
+	let { hasTimeline }: Props = $props();
+</script>
+
+<div class="panel-toggles">
+	{#if hasTimeline}
+		<label class="panel-toggle">
+			<input type="checkbox" bind:checked={panels.strip} />
+			Chart
+		</label>
+	{/if}
+	<label class="panel-toggle">
+		<input type="checkbox" bind:checked={panels.faders} />
+		Mixer
+	</label>
+</div>
+
+<style>
+	.panel-toggles {
+		display: flex;
+		gap: 14px;
+		margin-bottom: 8px;
+	}
+	.panel-toggle {
+		font-size: 12px;
+		color: var(--body-text-color-subdued);
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		cursor: pointer;
+	}
+	.panel-toggle input[type="checkbox"] {
+		appearance: auto;
+		accent-color: #607d8b;
+		width: 13px;
+		height: 13px;
+	}
+</style>
