@@ -29,6 +29,7 @@
 	const layers = $derived(gradio.props.value?.layers ?? []);
 	const timeline = $derived(gradio.props.value?.timeline ?? []);
 	const notes = $derived(gradio.props.value?.notes ?? []);
+	const phrases = $derived(gradio.props.value?.phrases ?? []);
 
 	// Fader positions default from the engine (survives a
 	// remount) and fall back to each layer's opening level
@@ -146,7 +147,7 @@
 		{/if}
 
 		{#if panels.notes}
-			<NotesPanel {notes} {timeline} {playhead} {follow} />
+			<NotesPanel {notes} {timeline} {phrases} {playhead} />
 		{/if}
 
 		{#if panels.faders}

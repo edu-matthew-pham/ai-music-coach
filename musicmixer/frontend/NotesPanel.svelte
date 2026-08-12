@@ -1,37 +1,81 @@
 <script lang="ts">
 	import { engine } from "./mixerEngine.svelte";
 	import { noteLayers } from "./mixerPanels.svelte";
-	import type { MixerNote, MixerBar } from "./types";
+	import type { MixerNote, MixerBar, MixerPhrase } from "./types";
 
+	// A static page per phrase, hard-cut to the next rather
+	// than scrolled - the way SingStar shows a line of notes:
+	// still, until the line finishes, then instantly replaced.
+	// Scrolling made you track two moving things at once (the
+	// playhead and the background sliding under it), which
+	// was the actual readability problem; a still page removes
+	// one of them entirely.
+	//
 	// This panel is read-only by design, for now. Selecting a
-	// stretch is still the chord strip's job - both panels
-	// read the same playhead and loop bounds, so toggling
-	// this on adds a picture without adding a second, competing
-	// way to choose what plays.
+	// stretch is still the chord strip's job.
 	interface Props {
 		notes: MixerNote[];
 		timeline: MixerBar[];
+		phrases: MixerPhrase[];
 		playhead: number;
-		follow: boolean;
 	}
 
-	let { notes, timeline, playhead, follow }: Props = $props();
+	let { notes, timeline, phrases, playhead }: Props = $props();
 
 	const ROW_HEIGHT = 14;
 
-	// Only the toggled-on layers count towards what is drawn
-	// AND towards the pitch range - bass alone gets a short
-	// box, not a tall one with empty space where hidden
-	// voices would have been.
-	const visibleNotes = $derived(
-		notes.filter((note) => noteLayers[note.layer])
-	);
+	// A song with no lyric line breaks has no phrases to page
+	// by - rather than keep two different windowing schemes,
+	// the whole song becomes one page in that case, spanning
+	// from the first note to the last.
+	const effectivePhrases = $derived.by((): MixerPhrase[] => {
+		if (phrases.length) return phrases;
+		if (!notes.length) return [];
+		const end = notes.reduce(
+			(max, note) => Math.max(max, note.start + note.length), 0
+		);
+		return [{ start: 0, end }];
+	});
+
+	// The switch happens once the current page's phrase has
+	// finished, not the instant the next one starts - the two
+	// are the same instant for contiguous phrases, but this is
+	// the rule that matters when a bar straddles the boundary:
+	// the outgoing phrase keeps that bar until it is done with
+	// it, rather than the incoming phrase claiming it early and
+	// cutting the still-sounding line short.
+	const currentPhrase = $derived.by((): MixerPhrase | null => {
+		if (!effectivePhrases.length) return null;
+		const found = effectivePhrases.find((phrase) => playhead < phrase.end);
+		return found ?? effectivePhrases[effectivePhrases.length - 1];
+	});
+
+	// Bars overlapping this phrase at all - a bar the phrase
+	// only partly covers still belongs to this page, since the
+	// alternative is a page whose last bar is silently missing
+	// the tail end of what is actually sounding.
+	const pageBars = $derived.by(() => {
+		if (!currentPhrase) return [];
+		return timeline.filter(
+			(bar) => bar.start < currentPhrase!.end && bar.end > currentPhrase!.start
+		);
+	});
+
+	const pageNotes = $derived.by(() => {
+		if (!currentPhrase) return [];
+		return notes.filter(
+			(note) =>
+				noteLayers[note.layer] &&
+				note.start >= currentPhrase!.start &&
+				note.start < currentPhrase!.end
+		);
+	});
 
 	const pitchRange = $derived.by(() => {
-		if (!visibleNotes.length) return { lowest: 60, highest: 72 };
-		let lowest = visibleNotes[0].midi;
-		let highest = visibleNotes[0].midi;
-		for (const note of visibleNotes) {
+		if (!pageNotes.length) return { lowest: 60, highest: 72 };
+		let lowest = pageNotes[0].midi;
+		let highest = pageNotes[0].midi;
+		for (const note of pageNotes) {
 			if (note.midi < lowest) lowest = note.midi;
 			if (note.midi > highest) highest = note.midi;
 		}
@@ -54,42 +98,29 @@
 		return names[midi % 12] + Math.floor(midi / 12 - 1);
 	}
 
-	// The scale is chosen so that a few bars fill the visible
-	// width, rather than a fixed pixels-per-second that packed
-	// the whole song in and crowded every label together the
-	// way bar 3 always did on the static chart. Falls back to
-	// the plain seconds-based scale when there is no bar data
-	// to measure a bar's length from.
-	const BARS_VISIBLE = 3;
-	const FALLBACK_PX_PER_SECOND = 60;
-
-	let viewportWidth = $state(600);
-
-	const pxPerSecond = $derived.by(() => {
-		if (timeline.length < 2) return FALLBACK_PX_PER_SECOND;
-		const barLength = timeline[1].start - timeline[0].start;
-		if (barLength <= 0) return FALLBACK_PX_PER_SECOND;
-		return viewportWidth / (barLength * BARS_VISIBLE);
-	});
-
-	const duration = $derived(
-		notes.reduce((max, note) => Math.max(max, note.start + note.length), 0)
-	);
-
-	const width = $derived(Math.max(duration * pxPerSecond, viewportWidth));
-
 	let container: HTMLElement | null = $state(null);
+	let viewportWidth = $state(600);
 
 	$effect(() => {
 		if (container) viewportWidth = container.clientWidth || viewportWidth;
 	});
 
-	$effect(() => {
-		if (follow && container) {
-			const target = playhead * pxPerSecond - viewportWidth / 2;
-			container.scrollLeft = Math.max(0, target);
-		}
+	// Equal-width bars, filling the page exactly. Constant
+	// tempo is assumed - a real time-signature change mid-song
+	// isn't modelled here - so equal width and equal time are
+	// the same thing, and the scale is just the page's own bar
+	// count substituted in where a fixed number used to be.
+	const pxPerSecond = $derived.by(() => {
+		if (!currentPhrase) return 60;
+		const span = currentPhrase.end - currentPhrase.start;
+		if (span <= 0) return 60;
+		return viewportWidth / span;
 	});
+
+	function x(time: number): number {
+		if (!currentPhrase) return 0;
+		return (time - currentPhrase.start) * pxPerSecond;
+	}
 </script>
 
 <div class="notes-toggles">
@@ -101,34 +132,38 @@
 	{/each}
 </div>
 
-{#if visibleNotes.length}
+{#if pageNotes.length && currentPhrase}
 	<div class="notes-container" bind:this={container}>
-		<svg {width} {height} viewBox="0 0 {width} {height}">
+		<svg width={viewportWidth} {height} viewBox="0 0 {viewportWidth} {height}">
 			{#if engine.loopFrom !== null && engine.loopTo !== null}
 				<rect
 					class="loop-region"
-					x={engine.loopFrom * pxPerSecond}
+					x={x(Math.max(engine.loopFrom, currentPhrase.start))}
 					y="0"
-					width={(engine.loopTo - engine.loopFrom) * pxPerSecond}
+					width={Math.max(
+						0,
+						x(Math.min(engine.loopTo, currentPhrase.end)) -
+							x(Math.max(engine.loopFrom, currentPhrase.start))
+					)}
 					{height}
 				/>
 			{/if}
 
-			{#each timeline as bar}
+			{#each pageBars as bar}
 				<line
 					class="bar-line"
-					x1={bar.start * pxPerSecond}
+					x1={x(bar.start)}
 					y1="0"
-					x2={bar.start * pxPerSecond}
+					x2={x(bar.start)}
 					y2={height}
 				/>
 			{/each}
 
-			{#each visibleNotes as note}
+			{#each pageNotes as note}
 				<g>
 					<rect
 						class="note-box"
-						x={note.start * pxPerSecond}
+						x={x(note.start)}
 						y={y(note.midi) + 1}
 						width={Math.max(note.length * pxPerSecond - 1, 2)}
 						height={ROW_HEIGHT - 2}
@@ -139,7 +174,7 @@
 					{#if note.length * pxPerSecond > 20}
 						<text
 							class="note-label"
-							x={note.start * pxPerSecond + (note.length * pxPerSecond) / 2}
+							x={x(note.start) + (note.length * pxPerSecond) / 2}
 							y={y(note.midi) + ROW_HEIGHT / 2}
 							fill={note.colour}
 						>
@@ -149,7 +184,7 @@
 					{#if note.word}
 						<text
 							class="note-word"
-							x={note.start * pxPerSecond + (note.length * pxPerSecond) / 2}
+							x={x(note.start) + (note.length * pxPerSecond) / 2}
 							y={y(note.midi) + ROW_HEIGHT + 10}
 						>
 							{note.word}
@@ -160,9 +195,9 @@
 
 			<line
 				class="playhead"
-				x1={playhead * pxPerSecond}
+				x1={x(playhead)}
 				y1="0"
-				x2={playhead * pxPerSecond}
+				x2={x(playhead)}
 				y2={height}
 			/>
 		</svg>
@@ -192,7 +227,6 @@
 		height: 12px;
 	}
 	.notes-container {
-		overflow-x: auto;
 		border: 1px solid var(--border-color-primary);
 		border-radius: 4px;
 		margin: 4px 0 8px;

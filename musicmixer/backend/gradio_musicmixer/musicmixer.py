@@ -119,6 +119,7 @@ class MusicMixer(Component):
             "layers": value.get("layers", []),
             "timeline": value.get("timeline", []),
             "notes": value.get("notes", []),
+            "phrases": value.get("phrases", []),
             "loop_start": value.get("loop_start"),
             "loop_end": value.get("loop_end"),
         }
@@ -139,6 +140,10 @@ class MusicMixer(Component):
                     "type": "array",
                     "items": {"type": "object"},
                 },
+                "phrases": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                },
                 "loop_start": {
                     "anyOf": [{"type": "number"}, {"type": "null"}]
                 },
@@ -149,7 +154,7 @@ class MusicMixer(Component):
         }
 
     def example_payload(self) -> Any:
-        return {"layers": [], "timeline": [], "notes": [], "loop_start": None, "loop_end": None}
+        return {"layers": [], "timeline": [], "notes": [], "phrases": [], "loop_start": None, "loop_end": None}
 
     def example_value(self) -> Any:
-        return {"layers": [], "timeline": [], "notes": [], "loop_start": None, "loop_end": None}
+        return {"layers": [], "timeline": [], "notes": [], "phrases": [], "loop_start": None, "loop_end": None}

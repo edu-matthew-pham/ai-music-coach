@@ -22,10 +22,16 @@ export interface MixerNote {
 	word?: string;
 }
 
+export interface MixerPhrase {
+	start: number;
+	end: number;
+}
+
 export interface MixerValue {
 	layers: MixerLayer[];
 	timeline: MixerBar[];
 	notes: MixerNote[];
+	phrases: MixerPhrase[];
 	loop_start: number | null;
 	loop_end: number | null;
 }
