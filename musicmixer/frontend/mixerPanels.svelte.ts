@@ -53,3 +53,10 @@ export const showNextPreview = $state({ value: false });
 // showing at all, which is why it stays tucked next to that
 // toggle rather than being its own separate control.
 export const previewSideBySide = $state({ value: false });
+
+// Two ways to show the same words - pills that light up one
+// at a time, or a flowing sentence where the sung words
+// change colour as they pass. Showing both at once was the
+// same information twice; this is one or the other, not a
+// combination.
+export const lyricsSentenceStyle = $state({ value: false });

@@ -1,13 +1,11 @@
 <script lang="ts">
+	import { lyricsSentenceStyle } from "./mixerPanels.svelte";
 	import type { MixerNote, MixerPhrase } from "./types";
 
-	// No pitch here, deliberately - this is the other half of
-	// the SingStar reference: words as pills in a row, the
-	// current one lit up, the next line already visible so
-	// there's a moment to read ahead before it arrives. The
-	// pitch-box view (NotesPanel) is a different, denser tool
-	// for a different question; this one just answers "what
-	// do I sing right now."
+	// One representation of the words, not two shown at once -
+	// pills that light up individually, or a flowing sentence
+	// whose words change colour as they pass. Showing both was
+	// the same information twice on screen.
 	interface Props {
 		notes: MixerNote[];
 		phrases: MixerPhrase[];
@@ -16,8 +14,6 @@
 
 	let { notes, phrases, playhead }: Props = $props();
 
-	// Words live on melody notes only - harmonies and bass
-	// never carry them, same rule the note view follows.
 	const words = $derived(
 		notes.filter((note) => note.layer === "Melody" && note.word)
 	);
@@ -31,10 +27,6 @@
 		return [{ start: 0, end, label: "Whole part" }];
 	});
 
-	// Same rule as the note view: the page changes once the
-	// current phrase has actually finished, not the instant
-	// the next one begins, so a still-sounding word is never
-	// swapped out from under the singer.
 	const currentIndex = $derived.by(() => {
 		if (!effectivePhrases.length) return -1;
 		const found = effectivePhrases.findIndex((phrase) => playhead < phrase.end);
@@ -63,8 +55,8 @@
 
 	// Whichever word the playhead is inside of, or has most
 	// recently passed - a gap between words (a held note, a
-	// short rest) should keep the last one lit rather than
-	// going dark until the next one starts.
+	// short rest) keeps the last one lit rather than going
+	// dark until the next one starts.
 	const activeWord = $derived.by(() => {
 		let active: MixerNote | null = null;
 		for (const note of currentWords) {
@@ -73,32 +65,43 @@
 		}
 		return active;
 	});
-
-	function caption(phrase: MixerPhrase | null): string {
-		if (!phrase) return "";
-		return phrase.label.replace(/^\d+\.\s*/, "");
-	}
 </script>
 
 {#if currentPhrase}
 	<div class="lyrics-panel">
-		<div class="word-row">
-			{#each currentWords as note}
-				<span class="word" class:active={note === activeWord}>
-					{note.word}
-				</span>
-			{/each}
-			{#if nextWords.length}
-				<span class="row-gap"></span>
-				{#each nextWords as note}
-					<span class="word next">{note.word}</span>
-				{/each}
-			{/if}
-		</div>
+		<label class="style-toggle">
+			<input type="checkbox" bind:checked={lyricsSentenceStyle.value} />
+			Sentence style
+		</label>
 
-		<p class="caption current">{caption(currentPhrase)}</p>
-		{#if nextPhrase}
-			<p class="caption next">{caption(nextPhrase)}</p>
+		{#if lyricsSentenceStyle.value}
+			<p class="sentence current">
+				{#each currentWords as note}
+					<span
+						class="sentence-word"
+						class:sung={note.start <= playhead}
+					>{note.word} </span>
+				{/each}
+			</p>
+			{#if nextWords.length}
+				<p class="sentence next">
+					{#each nextWords as note}<span>{note.word} </span>{/each}
+				</p>
+			{/if}
+		{:else}
+			<div class="word-row">
+				{#each currentWords as note}
+					<span class="word" class:active={note === activeWord}>
+						{note.word}
+					</span>
+				{/each}
+				{#if nextWords.length}
+					<span class="row-gap"></span>
+					{#each nextWords as note}
+						<span class="word next">{note.word}</span>
+					{/each}
+				{/if}
+			</div>
 		{/if}
 	</div>
 {:else}
@@ -109,12 +112,28 @@
 	.lyrics-panel {
 		padding: 12px 4px;
 	}
+	.style-toggle {
+		font-size: 11px;
+		color: var(--body-text-color-subdued);
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		cursor: pointer;
+		margin-bottom: 10px;
+		width: fit-content;
+	}
+	.style-toggle input[type="checkbox"] {
+		appearance: auto;
+		accent-color: #607d8b;
+		width: 12px;
+		height: 12px;
+	}
+
 	.word-row {
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
 		gap: 6px;
-		margin-bottom: 10px;
 	}
 	.word {
 		font-size: 15px;
@@ -137,17 +156,23 @@
 	.row-gap {
 		width: 16px;
 	}
-	.caption {
-		font-size: 18px;
-		margin: 2px 0;
+
+	.sentence {
+		font-size: 20px;
+		margin: 4px 0;
 	}
-	.caption.current {
-		font-weight: 600;
+	.sentence.next {
+		font-size: 16px;
+		opacity: 0.4;
 	}
-	.caption.next {
-		opacity: 0.5;
-		font-size: 15px;
+	.sentence-word {
+		color: var(--body-text-color-subdued);
 	}
+	.sentence-word.sung {
+		color: #2e7d32;
+		font-weight: 700;
+	}
+
 	.lyrics-empty {
 		font-size: 13px;
 		color: var(--body-text-color-subdued);
