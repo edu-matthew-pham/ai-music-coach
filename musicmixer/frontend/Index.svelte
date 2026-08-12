@@ -73,6 +73,18 @@
 		}
 	}
 
+	function toggleRepeat(): void {
+		// Repeat is read once, when play() builds the audio
+		// source - it can't take effect on a source that
+		// already exists. So a change while playing has to
+		// restart from here, with the new setting baked into
+		// the new source, rather than trying to mutate one
+		// already running.
+		if (engine.playing) {
+			engine.play(layers, engine.position());
+		}
+	}
+
 	function clearLoop(): void {
 		engine.clearLoop();
 		playhead = 0;
@@ -100,9 +112,11 @@
 				: "";
 		}
 		if (engine.loopTo === null) {
-			return `Play starts at ${engine.loopFrom.toFixed(1)}s. Shift-click a later bar to loop a stretch, or press Play.`;
+			return `Play starts at ${engine.loopFrom.toFixed(1)}s. Shift-click a later bar to select a stretch, or press Play.`;
 		}
-		return `Looping ${engine.loopFrom.toFixed(1)}s to ${engine.loopTo.toFixed(1)}s. Press Play to hear it round; Clear loop to release.`;
+		return engine.repeat
+			? `Repeating ${engine.loopFrom.toFixed(1)}s to ${engine.loopTo.toFixed(1)}s. Untick Repeat to play it once, or Clear selection to release it.`
+			: `Selected ${engine.loopFrom.toFixed(1)}s to ${engine.loopTo.toFixed(1)}s, playing once. Tick Repeat to loop it.`;
 	});
 </script>
 
@@ -119,7 +133,17 @@
 		<div class="transport">
 			<button onclick={() => engine.play(layers)}>Play</button>
 			<button onclick={() => engine.stop()}>Stop</button>
-			<button onclick={clearLoop}>Clear loop</button>
+			<button onclick={clearLoop}>Clear selection</button>
+			{#if engine.loopFrom !== null && engine.loopTo !== null}
+				<label class="repeat">
+					<input
+						type="checkbox"
+						bind:checked={engine.repeat}
+						onchange={toggleRepeat}
+					/>
+					Repeat
+				</label>
+			{/if}
 			<span class="time">{playhead.toFixed(1)}s</span>
 		</div>
 
@@ -200,6 +224,13 @@
 		font-size: 12px;
 		color: var(--body-text-color-subdued);
 		margin-left: auto;
+	}
+	.repeat {
+		font-size: 13px;
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		cursor: pointer;
 	}
 
 	.strip {

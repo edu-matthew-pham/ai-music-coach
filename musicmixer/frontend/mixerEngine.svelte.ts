@@ -51,6 +51,11 @@ class MixerEngine {
 	loopTo: number | null = $state(null);
 	levels: Record<string, number> = $state({});
 
+	// Whether a selected stretch repeats or plays once and
+	// stops. Defaults on: shift-clicking a second bar is
+	// usually done to work a hard passage on repeat.
+	repeat = $state(true);
+
 	position(): number {
 		if (!this.context || !this.playing) return this.offset;
 		let at = this.offset + (this.context.currentTime - this.startedAt);
@@ -153,7 +158,7 @@ class MixerEngine {
 			const source = this.context.createBufferSource();
 			source.buffer = this.buffers[layer.name];
 
-			if (this.loopFrom !== null && this.loopTo !== null) {
+			if (this.loopFrom !== null && this.loopTo !== null && this.repeat) {
 				source.loop = true;
 				source.loopStart = this.loopFrom;
 				source.loopEnd = this.loopTo;
@@ -161,13 +166,24 @@ class MixerEngine {
 
 			source.connect(this.gains[layer.name]);
 			source.start(this.startedAt, this.offset);
+
+			// A one-shot selection stops exactly at its end.
+			// Scheduled after start(), never before: the spec
+			// forbids stop() on a source that has not started,
+			// and calling it early threw per layer and left
+			// playback half-initialised.
+			if (this.loopFrom !== null && this.loopTo !== null && !this.repeat) {
+				source.stop(this.startedAt + (this.loopTo - this.offset));
+			}
+
 			this.sources.push(source);
 		}
 
-		// Reaching the end on its own, rather than being
-		// stopped, should still leave the transport usable
-		// without a second press.
-		if (this.sources.length && this.loopTo === null) {
+		// Reaching the end on its own - whether the whole
+		// song, or a one-shot selection's scheduled stop -
+		// should still leave the transport usable without a
+		// second press.
+		if (this.sources.length) {
 			this.sources[0].onended = () => {
 				this.playing = false;
 			};
