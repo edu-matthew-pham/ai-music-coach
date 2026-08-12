@@ -65,6 +65,18 @@
 		}
 		return active;
 	});
+
+	// A word ending in a hyphen is mid-syllable, not a word
+	// boundary - "Bil-" then "ly" should read as "Bil-ly"
+	// with nothing between them, while every real word gets
+	// a space after it. Computed here rather than left as a
+	// literal space in the markup, since that space sits
+	// right next to a closing tag and whitespace in exactly
+	// that position is the kind of thing template compilers
+	// sometimes trim - safer to make it an explicit string.
+	function separatorAfter(word: string | undefined): string {
+		return word?.endsWith("-") ? "" : " ";
+	}
 </script>
 
 {#if currentPhrase}
@@ -75,17 +87,13 @@
 		</label>
 
 		{#if lyricsSentenceStyle.value}
-			<p class="sentence current">
-				{#each currentWords as note}
-					<span
-						class="sentence-word"
-						class:sung={note.start <= playhead}
-					>{note.word} </span>
-				{/each}
-			</p>
+			<p class="sentence current">{#each currentWords as note}<span
+					class="sentence-word"
+					class:sung={note.start <= playhead}
+				>{note.word}{separatorAfter(note.word)}</span>{/each}</p>
 			{#if nextWords.length}
 				<p class="sentence next">
-					{#each nextWords as note}<span>{note.word} </span>{/each}
+					{#each nextWords as note}<span>{note.word}{separatorAfter(note.word)}</span>{/each}
 				</p>
 			{/if}
 		{:else}
