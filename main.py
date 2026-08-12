@@ -230,216 +230,222 @@ with gr.Blocks(
 
             gr.Markdown("## Arrange")
 
-            pitch_input = gr.Textbox(
-                label="Pitches",
-                value="C4 C4 G4 G4 A4 A4 G4",
-                info="Notes like C4, F#4 or Bb3. Write a rest as R."
-            )
+            with gr.Accordion("Edit the boxes directly", open=False):
 
-            duration_input = gr.Textbox(
-                label="Durations (beats)",
-                value="1 1 1 1 1 1 2",
-                info="One length per note, as a fraction of a beat. "
-                     "1 is a beat, 1/2 an eighth note, 3/2 a dotted "
-                     "beat, 1/3 a triplet. Decimals work too."
-            )
-
-            lyric_input = gr.Textbox(
-                label="Lyrics (optional)",
-                value="Twin- kle twin- kle lit- tle star",
-                lines=5,
-                max_lines=20,
-                info="One syllable per note. A trailing hyphen "
-                     "joins a word across notes, _ holds a "
-                     "syllable through another note. Each line is "
-                     "a phrase: press Enter to divide one, "
-                     "Backspace to join two."
-            )
-
-            with gr.Accordion(
-                "Correct the lyrics from the words",
-                open=False
-            ):
-
-                gr.Markdown(
-                    "An imported file's lyrics are whatever "
-                    "was typed into it: capitals, words split "
-                    "at odd places, the arranger's name among "
-                    "the words. Paste the words as written and "
-                    "they are corrected in place.\n\n"
-                    "Only the spelling changes. Nothing moves, "
-                    "and the number of syllables stays the "
-                    "same, so every word keeps the note it was "
-                    "sung on. A line that does not match is "
-                    "left as it was and named in the report.\n\n"
-                    "The line breaks come from the paste too: "
-                    "where the words are written as phrases, "
-                    "that is better phrasing than the import "
-                    "guessed. Press Update phrases afterwards."
+                pitch_input = gr.Textbox(
+                    label="Pitches",
+                    value="C4 C4 G4 G4 A4 A4 G4",
+                    info="Notes like C4, F#4 or Bb3. Write a rest as R."
                 )
 
-                pasted_lyrics = gr.Textbox(
-                    label="The words, one line per phrase",
-                    lines=6,
-                    placeholder="Twinkle twinkle little star\n"
-                                "How I wonder what you are"
+                duration_input = gr.Textbox(
+                    label="Durations (beats)",
+                    value="1 1 1 1 1 1 2",
+                    info="One length per note, as a fraction of a beat. "
+                         "1 is a beat, 1/2 an eighth note, 3/2 a dotted "
+                         "beat, 1/3 a triplet. Decimals work too."
                 )
 
-                correct_lyrics_button = gr.Button(
-                    "Correct lyrics",
-                    size="sm"
+                lyric_input = gr.Textbox(
+                    label="Lyrics (optional)",
+                    value="Twin- kle twin- kle lit- tle star",
+                    lines=5,
+                    max_lines=20,
+                    info="One syllable per note. A trailing hyphen "
+                         "joins a word across notes, _ holds a "
+                         "syllable through another note. Each line is "
+                         "a phrase: press Enter to divide one, "
+                         "Backspace to join two."
                 )
 
-                lyric_report = gr.Markdown()
+                with gr.Accordion(
+                    "Correct the lyrics from the words",
+                    open=False
+                ):
 
-            with gr.Row():
+                    gr.Markdown(
+                        "An imported file's lyrics are whatever "
+                        "was typed into it: capitals, words split "
+                        "at odd places, the arranger's name among "
+                        "the words. Paste the words as written and "
+                        "they are corrected in place.\n\n"
+                        "Only the spelling changes. Nothing moves, "
+                        "and the number of syllables stays the "
+                        "same, so every word keeps the note it was "
+                        "sung on. A line that does not match is "
+                        "left as it was and named in the report.\n\n"
+                        "The line breaks come from the paste too: "
+                        "where the words are written as phrases, "
+                        "that is better phrasing than the import "
+                        "guessed. Press Update phrases afterwards."
+                    )
 
-                update_phrases_button = gr.Button(
-                    "Update phrases",
-                    size="sm"
+                    pasted_lyrics = gr.Textbox(
+                        label="The words, one line per phrase",
+                        lines=6,
+                        placeholder="Twinkle twinkle little star\n"
+                                    "How I wonder what you are"
+                    )
+
+                    correct_lyrics_button = gr.Button(
+                        "Correct lyrics",
+                        size="sm"
+                    )
+
+                    lyric_report = gr.Markdown()
+
+                with gr.Row():
+
+                    update_phrases_button = gr.Button(
+                        "Update phrases",
+                        size="sm"
+                    )
+
+                    phrase_input = gr.Dropdown(
+                        [],
+                        label="Which phrase to practise",
+                        info="Each line of the lyrics is a phrase. "
+                             "Press Enter in the lyrics to add one, "
+                             "or Backspace to join two.",
+                        visible=False
+                    )
+
+                with gr.Row():
+
+                    key_input = gr.Dropdown(
+                        key_choices(),
+                        value="C",
+                        label="Key",
+                        info="A key signature belongs to a major key "
+                             "and its relative minor equally. Notes "
+                             "outside it are harmonised at the "
+                             "nearest scale note."
+                    )
+
+                    bpm_input = gr.Number(
+                        value=120,
+                        label="BPM"
+                    )
+
+                detect_key_button = gr.Button(
+                    "Detect key"
                 )
 
-                phrase_input = gr.Dropdown(
-                    [],
-                    label="Which phrase to practise",
-                    info="Each line of the lyrics is a phrase. "
-                         "Press Enter in the lyrics to add one, "
-                         "or Backspace to join two.",
-                    visible=False
-                )
+                # Transposing sits beside the key because it is
+                # the other half of the same question: the key
+                # box says how the music is written, this says
+                # how high it sits. Changing the key respells;
+                # transposing moves the sound.
+                with gr.Row():
 
-            with gr.Row():
+                    transpose_target = gr.Dropdown(
+                        key_choices(),
+                        value="C",
+                        label="Transpose to",
+                        info="Moves the notes, the key and the "
+                             "chords together, by the shortest "
+                             "way round."
+                    )
 
-                key_input = gr.Dropdown(
-                    key_choices(),
-                    value="C",
+                    transpose_button = gr.Button(
+                        "Transpose",
+                        size="sm"
+                    )
+
+                    octave_down_button = gr.Button(
+                        "Octave down",
+                        size="sm"
+                    )
+
+                    octave_up_button = gr.Button(
+                        "Octave up",
+                        size="sm"
+                    )
+
+                transpose_feedback = gr.Markdown()
+
+                key_report = gr.Textbox(
                     label="Key",
-                    info="A key signature belongs to a major key "
-                         "and its relative minor equally. Notes "
-                         "outside it are harmonised at the "
-                         "nearest scale note."
+                    interactive=False,
+                    visible=False,
+                    lines=8
                 )
 
-                bpm_input = gr.Number(
-                    value=120,
-                    label="BPM"
+                detect_chords_button = gr.Button(
+                    "Suggest chords",
+                    size="sm"
                 )
 
-            detect_key_button = gr.Button(
-                "Detect key"
+                chart_input = gr.Textbox(
+                    label="Chords (optional)",
+                    value="",
+                    info="A chart in bars of beats, as in "
+                         "| Dm . Bb . | F . . . |  Each token is one "
+                         "beat and a dot holds the chord on. The bars "
+                         "set the metre, so | C . . | is three four."
+                )
+
+                harmony_style_input = gr.Dropdown(
+                    HARMONY_STYLES,
+                    value="Thirds, chord-corrected",
+                    label="Harmony style",
+                    info="Both harmony lines are built this way. "
+                         "Corrected thirds shadow the tune and "
+                         "bend where the third would clash. Chord "
+                         "tones follow the chords instead. With "
+                         "no chart, all of them are plain thirds."
+                )
+
+                # Show Harmony Notes was removed here. It showed
+                # plain thirds whatever the style or chart, so it
+                # displayed something different from what played.
+                # The want behind it was real, and bigger than
+                # the button: letting the player edit the
+                # generated harmony, bass, or chord voicings by
+                # hand - the music editor direction. Parked, not
+                # rejected; if it returns, the lines become
+                # editable boxes like the chart, not a display.
+                with gr.Row():
+
+                    previous_button = gr.Button(
+                        "\u25c0 Previous phrase"
+                    )
+
+                    next_button = gr.Button(
+                        "Next phrase \u25b6"
+                    )
+
+        # -------------------------------------------------
+        # PLAYBACK: hear the parts mixed together
+        # -------------------------------------------------
+
+        with gr.Column(elem_id="playback"):
+
+            gr.Markdown("## Playback")
+
+            gr.Markdown(
+                "The parts sent separately and mixed in "
+                "the browser, so a level can move while "
+                "they are sounding. Nothing is made "
+                "again when a fader moves - only its "
+                "loudness changes.\n\n"
+                "Built from the boxes when the button is "
+                "pressed, for the whole piece. Edit "
+                "anything above and press again.\n\n"
+                "Has its own phrase list, to jump "
+                "straight to any phrase's exact start "
+                "and end, and its own chord strip along "
+                "the top: click a bar to jump there, "
+                "shift-click a second bar to loop that "
+                "stretch."
             )
 
-            # Transposing sits beside the key because it is
-            # the other half of the same question: the key
-            # box says how the music is written, this says
-            # how high it sits. Changing the key respells;
-            # transposing moves the sound.
-            with gr.Row():
-
-                transpose_target = gr.Dropdown(
-                    key_choices(),
-                    value="C",
-                    label="Transpose to",
-                    info="Moves the notes, the key and the "
-                         "chords together, by the shortest "
-                         "way round."
-                )
-
-                transpose_button = gr.Button(
-                    "Transpose",
-                    size="sm"
-                )
-
-                octave_down_button = gr.Button(
-                    "Octave down",
-                    size="sm"
-                )
-
-                octave_up_button = gr.Button(
-                    "Octave up",
-                    size="sm"
-                )
-
-            transpose_feedback = gr.Markdown()
-
-            key_report = gr.Textbox(
-                label="Key",
-                interactive=False,
-                visible=False,
-                lines=8
-            )
-
-            detect_chords_button = gr.Button(
-                "Suggest chords",
+            open_mixer_button = gr.Button(
+                "Generate Playback",
                 size="sm"
             )
 
-            chart_input = gr.Textbox(
-                label="Chords (optional)",
-                value="",
-                info="A chart in bars of beats, as in "
-                     "| Dm . Bb . | F . . . |  Each token is one "
-                     "beat and a dot holds the chord on. The bars "
-                     "set the metre, so | C . . | is three four."
-            )
-
-            harmony_style_input = gr.Dropdown(
-                HARMONY_STYLES,
-                value="Thirds, chord-corrected",
-                label="Harmony style",
-                info="Both harmony lines are built this way. "
-                     "Corrected thirds shadow the tune and "
-                     "bend where the third would clash. Chord "
-                     "tones follow the chords instead. With "
-                     "no chart, all of them are plain thirds."
-            )
-
-            # Show Harmony Notes was removed here. It showed
-            # plain thirds whatever the style or chart, so it
-            # displayed something different from what played.
-            # The want behind it was real, and bigger than
-            # the button: letting the player edit the
-            # generated harmony, bass, or chord voicings by
-            # hand - the music editor direction. Parked, not
-            # rejected; if it returns, the lines become
-            # editable boxes like the chart, not a display.
-            with gr.Row():
-
-                previous_button = gr.Button(
-                    "\u25c0 Previous phrase"
-                )
-
-                next_button = gr.Button(
-                    "Next phrase \u25b6"
-                )
-
-            with gr.Accordion(
-                "Playback", open=True, elem_id="playback"
-            ):
-
-                gr.Markdown(
-                    "The parts sent separately and mixed in "
-                    "the browser, so a level can move while "
-                    "they are sounding. Nothing is made "
-                    "again when a fader moves - only its "
-                    "loudness changes.\n\n"
-                    "Built from the boxes when the button is "
-                    "pressed, for the whole piece. Edit "
-                    "anything above and press again.\n\n"
-                    "Has its own phrase list, to jump "
-                    "straight to any phrase's exact start "
-                    "and end, and its own chord strip along "
-                    "the top: click a bar to jump there, "
-                    "shift-click a second bar to loop that "
-                    "stretch."
-                )
-
-                open_mixer_button = gr.Button(
-                    "Generate Playback",
-                    size="sm"
-                )
-
-                mixer_output = MusicMixer(show_label=False)
+            mixer_output = MusicMixer(show_label=False)
 
         # -------------------------------------------------
         # PRACTICE: sing it and see how it went
@@ -449,83 +455,85 @@ with gr.Blocks(
 
             gr.Markdown("## Practice")
 
-            gr.Markdown(
-                "Press record and the guide starts by itself: "
-                "four count-in clicks, then come in on the beat. "
-                "Wear headphones to keep the guide out of the "
-                "recording."
-            )
+            with gr.Accordion("Recording and comparing", open=False):
 
-            part_input = gr.Radio(
-                PART_CHOICES,
-                value="Melody",
-                label="Part you are performing",
-                info="Sets what the guide plays and what your "
-                     "recording is judged against. The bass part "
-                     "sings the root of each chord, so it needs a "
-                     "chord chart."
-            )
+                gr.Markdown(
+                    "Press record and the guide starts by itself: "
+                    "four count-in clicks, then come in on the beat. "
+                    "Wear headphones to keep the guide out of the "
+                    "recording."
+                )
 
-            guide_choice = gr.Radio(
-                GUIDE_CHOICES,
-                value="Clicks",
-                label="Guide while recording",
-                info="Clicks keeps the recording clean. The other "
-                     "part plays the opposite line, for practising "
-                     "harmony against the melody."
-            )
+                part_input = gr.Radio(
+                    PART_CHOICES,
+                    value="Melody",
+                    label="Part you are performing",
+                    info="Sets what the guide plays and what your "
+                         "recording is judged against. The bass part "
+                         "sings the root of each chord, so it needs a "
+                         "chord chart."
+                )
 
-            guide_audio = gr.Audio(
-                label="Guide",
-                autoplay=True,
-                interactive=False
-            )
+                guide_choice = gr.Radio(
+                    GUIDE_CHOICES,
+                    value="Clicks",
+                    label="Guide while recording",
+                    info="Clicks keeps the recording clean. The other "
+                         "part plays the opposite line, for practising "
+                         "harmony against the melody."
+                )
 
-            recorded_audio = gr.Audio(
-                sources=[
-                    "microphone",
-                    "upload"
-                ],
-                type="numpy",
-                label="Performance"
-            )
+                guide_audio = gr.Audio(
+                    label="Guide",
+                    autoplay=True,
+                    interactive=False
+                )
 
-            octave_input = gr.Dropdown(
-                list(OCTAVE_CHOICES),
-                value="Same octave",
-                label="Octave",
-                info="Pick the octave you actually played in. "
-                     "Singers often sit an octave below the "
-                     "written music."
-            )
+                recorded_audio = gr.Audio(
+                    sources=[
+                        "microphone",
+                        "upload"
+                    ],
+                    type="numpy",
+                    label="Performance"
+                )
 
-            second_opinion_input = gr.Checkbox(
-                value=False,
-                label="Second opinion on pitch",
-                info="Runs a second detector alongside the "
-                     "first and says where they differ. "
-                     "Useful on a microphone that loses the "
-                     "bottom of a low voice. Needs crepe "
-                     "installed; slower when on."
-            )
+                octave_input = gr.Dropdown(
+                    list(OCTAVE_CHOICES),
+                    value="Same octave",
+                    label="Octave",
+                    info="Pick the octave you actually played in. "
+                         "Singers often sit an octave below the "
+                         "written music."
+                )
 
-            compare_button = gr.Button(
-                "Compare Performance",
-                variant="primary"
-            )
+                second_opinion_input = gr.Checkbox(
+                    value=False,
+                    label="Second opinion on pitch",
+                    info="Runs a second detector alongside the "
+                         "first and says where they differ. "
+                         "Useful on a microphone that loses the "
+                         "bottom of a low voice. Needs crepe "
+                         "installed; slower when on."
+                )
 
-            performance_plot = gr.Plot(
-                label="Performance"
-            )
+                compare_button = gr.Button(
+                    "Compare Performance",
+                    variant="primary"
+                )
 
-            tuning_plot = gr.Plot(
-                label="Tuning"
-            )
+                performance_plot = gr.Plot(
+                    label="Performance"
+                )
 
-            feedback_output = gr.Textbox(
-                label="Feedback",
-                lines=10
-            )
+                tuning_plot = gr.Plot(
+                    label="Tuning"
+                )
+
+                feedback_output = gr.Textbox(
+                    label="Feedback",
+                    lines=10
+                )
 
     # -----------------------------------------------------
     # EVENTS

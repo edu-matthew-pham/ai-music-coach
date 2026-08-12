@@ -91,8 +91,8 @@ on the strong beats narrow it, and the key offers only
 seven chords to choose between. Either way the chart is
 yours to edit.
 
-Switch **Chords** on in the playback section to hear the
-chart strummed underneath, voiced below the melody so it
+Switch **Chords** on in Playback to hear the chart
+strummed underneath, voiced below the melody so it
 supports the line rather than covering it. A chord sounds
 when it arrives and again on each bar line it lasts
 through, so the harmony stays present under a long note.
@@ -101,6 +101,37 @@ The chart has to last as long as the music, but it does
 not have to line up with it note for note. A chord covers
 many notes, and a syncopated melody crosses the bar lines
 freely.
+
+## Playback
+
+Press **Generate Playback** to build the mixer for
+whatever is in the boxes right now, for the whole piece.
+Six layers - Melody, Harmony above, Harmony below, Bass,
+Chords, Metronome - each with its own level, mixed live in
+the browser so moving a fader changes only loudness rather
+than remaking anything. Edit the boxes and press the
+button again to rebuild.
+
+Click a bar on the chord strip to jump there. Shift-click
+a second bar to loop that stretch, and **Repeat** decides
+whether the loop plays once and stops or keeps going
+round. The phrase list above the strip jumps straight to a
+phrase's own start and end, which is not always the same
+as the bar it happens to fall in.
+
+**Notes** and **Lyrics** are their own toggles, and can
+both be on together. Notes draws the written pitches for
+the current phrase, one voice shown by default; Lyrics
+shows the words, either as pills that light up one at a
+time or a line of text coloured as it is sung.
+
+**Instruments** draws the key on a piano, a guitar, or a
+violin chart in first or third position. The instrument
+itself is always shown; **Scale** and **Chord** are
+separate layers on top of it, one marking every note in
+the key, the other marking only the chord sounding right
+now - so the same picture can show what the piece allows,
+or exactly what is playing.
 
 ## Keys and harmony
 
