@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { engine } from "./mixerEngine.svelte";
-	import { noteLayers, showNextPreview } from "./mixerPanels.svelte";
+	import { noteLayers, showNextPreview, previewSideBySide } from "./mixerPanels.svelte";
 	import type { MixerNote, MixerBar, MixerPhrase } from "./types";
 
 	// A static page per phrase, hard-cut to the next rather
@@ -75,6 +75,7 @@
 		bars: MixerBar[];
 		notes: MixerNote[];
 		pitchRange: { lowest: number; highest: number };
+		width: number;
 		height: number;
 		pxPerSecond: number;
 	}
@@ -116,16 +117,26 @@
 			bars,
 			notes: pageNotes,
 			pitchRange: { lowest, highest },
+			width,
 			height,
 			pxPerSecond
 		};
 	}
 
-	const currentPage = $derived(computePage(currentPhrase, viewportWidth));
+	const currentPage = $derived.by(() => {
+		const width = showNextPreview.value && previewSideBySide.value
+			? (viewportWidth - 8) / 2
+			: viewportWidth;
+		return computePage(currentPhrase, width);
+	});
 
-	const nextPage = $derived(
-		showNextPreview.value ? computePage(nextPhrase, viewportWidth) : null
-	);
+	const nextPage = $derived.by(() => {
+		if (!showNextPreview.value) return null;
+		const width = previewSideBySide.value
+			? (viewportWidth - 8) / 2
+			: viewportWidth;
+		return computePage(nextPhrase, width);
+	});
 
 	function y(page: Page, midi: number): number {
 		return (page.pitchRange.highest - midi) * ROW_HEIGHT;
@@ -138,9 +149,9 @@
 
 {#snippet pageSvg(page: Page, showPlayhead: boolean, dimmed: boolean)}
 	<svg
-		width={viewportWidth}
+		width={page.width}
 		height={page.height}
-		viewBox="0 0 {viewportWidth} {page.height}"
+		viewBox="0 0 {page.width} {page.height}"
 		class:dimmed
 	>
 		{#if showPlayhead && engine.loopFrom !== null && engine.loopTo !== null}
@@ -224,17 +235,25 @@
 		<input type="checkbox" bind:checked={showNextPreview.value} />
 		Preview next phrase
 	</label>
+	{#if showNextPreview.value}
+		<label class="layer-toggle">
+			<input type="checkbox" bind:checked={previewSideBySide.value} />
+			Side by side
+		</label>
+	{/if}
 </div>
 
 {#if currentPage}
-	<div class="notes-container" bind:this={container}>
-		{@render pageSvg(currentPage, true, false)}
-	</div>
-	{#if nextPage}
-		<div class="notes-container next-page">
-			{@render pageSvg(nextPage, false, true)}
+	<div class="pages" class:row={showNextPreview.value && previewSideBySide.value} bind:this={container}>
+		<div class="notes-container">
+			{@render pageSvg(currentPage, true, false)}
 		</div>
-	{/if}
+		{#if nextPage}
+			<div class="notes-container next-page">
+				{@render pageSvg(nextPage, false, true)}
+			</div>
+		{/if}
+	</div>
 {:else}
 	<p class="note-empty">No layers selected to show.</p>
 {/if}
@@ -262,6 +281,19 @@
 	}
 	.preview-toggle {
 		margin-left: auto;
+	}
+	.pages {
+		display: flex;
+		flex-direction: column;
+	}
+	.pages.row {
+		flex-direction: row;
+		gap: 8px;
+		align-items: flex-start;
+	}
+	.pages.row .notes-container {
+		flex: 1;
+		min-width: 0;
 	}
 	.notes-container {
 		border: 1px solid var(--border-color-primary);

@@ -46,3 +46,9 @@ export const noteLayers: Record<string, boolean> = $state({
 // component state for the usual reason: it should survive
 // a remount rather than silently reverting.
 export const showNextPreview = $state({ value: false });
+
+// Below (full width each, one under the other) or side by
+// side (half width each). Only meaningful once a preview is
+// showing at all, which is why it stays tucked next to that
+// toggle rather than being its own separate control.
+export const previewSideBySide = $state({ value: false });
