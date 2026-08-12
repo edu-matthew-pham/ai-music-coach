@@ -8,3 +8,6 @@ pychord
 chorder
 miditoolkit
 music21
+torchcrepe
+pretty_midi
+./musicmixer/dist/gradio_musicmixer-0.0.1-py3-none-any.whl

@@ -1,5 +1,5 @@
 .eggs/
-dist/
+#dist/
 *.pyc
 __pycache__/
 *.py[cod]
@@ -10,4 +10,3 @@ __tmp/*
 .ruff_cache
 node_modules
 backend/**/templates/
-musicmixer/testonly/
