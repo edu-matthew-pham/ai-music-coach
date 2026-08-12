@@ -21,6 +21,147 @@ from music import LAYER_NAMES, separate_layers
 from mixer_block import as_wav_data, _timeline, OPENING_LEVELS, LAYER_COLOURS
 
 
+def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,
+                    harmony_style, lyric_text, phrase_label):
+    """
+    Every note, in seconds, pitch-placed and layer-tagged.
+
+    Same shape as _timeline(), one level finer: a box per
+    note instead of per bar, for the mixer's note view. The
+    layers are read the same way separate_layers builds the
+    audio for them, so the picture and the sound can never
+    disagree about what the harmony or bass actually is.
+
+    Melody carries the words underneath it, same as
+    tuning_plot.py draws them. The generated harmony and
+    bass lines never have their own lyrics - they are not
+    independent sung parts, they are voices derived from
+    the melody. A second, independently sung melody line
+    (a duet, say) would be a different feature - another
+    imported voice with its own words - not something this
+    reads from what is here.
+    """
+
+    from music import selected_piece, harmony_line, bass_line
+    from notes import note_to_midi, is_rest
+
+    piece = selected_piece(
+        pitch_text, duration_text, lyric_text, key,
+        chart_text, phrase_label
+    )
+
+    per_beat = 60.0 / float(bpm)
+
+    def walk(pitches, durations, colour, layer, words=None):
+
+        notes = []
+        position = 0.0
+        word_at = 0
+
+        for pitch, length in zip(pitches, durations):
+
+            length = float(length)
+
+            if is_rest(pitch):
+                position += length
+                continue
+
+            entry = {
+                "start": position * per_beat,
+                "length": length * per_beat,
+                "midi": note_to_midi(pitch),
+                "layer": layer,
+                "colour": colour
+            }
+
+            if words is not None and word_at < len(words):
+                entry["word"] = words[word_at]
+                word_at += 1
+
+            notes.append(entry)
+            position += length
+
+        return notes
+
+    all_notes = []
+
+    all_notes += walk(
+        piece.pitches, piece.durations, LAYER_COLOURS["Melody"],
+        "Melody", words=piece.lyrics.split() if piece.lyrics else None
+    )
+
+    for name, steps in (("Harmony above", 2), ("Harmony below", -2)):
+
+        harmony = harmony_line(
+            piece.pitches, piece.durations, key,
+            steps=steps, style=harmony_style, chart_text=piece.chart
+        )
+
+        all_notes += walk(
+            harmony, piece.durations, LAYER_COLOURS[name], name
+        )
+
+    if piece.chart and piece.chart.strip():
+
+        bass = bass_line(piece.pitches, piece.durations, piece.chart)
+
+        all_notes += walk(
+            bass, piece.durations, LAYER_COLOURS["Bass"], "Bass"
+        )
+
+    return all_notes
+
+
+def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text):
+    """
+    Where each phrase starts and ends, in seconds.
+
+    A phrase is a line of the lyrics - the same unit the
+    retired phrase dropdown used, read the same way, via
+    Piece.phrases(). What's new here is only the units:
+    that gives note-index ranges, and the note view pages
+    by time, so they are walked through durations and
+    converted through the same per_beat arithmetic every
+    other seconds-based list in this file uses.
+
+    Falls back to treating the whole piece as one phrase
+    when there is no more than one - matching the dropdown,
+    which showed only "Whole part" in that case.
+    """
+
+    from piece import Piece
+    from music import MusicInputError
+
+    try:
+        piece = Piece.read(pitch_text, duration_text, lyric_text)
+
+    except MusicInputError:
+        return []
+
+    found = piece.phrases()
+
+    if len(found) <= 1:
+        return []
+
+    per_beat = 60.0 / float(bpm)
+
+    durations = [float(length) for length in piece.durations]
+
+    def time_at(index):
+        return sum(durations[:index]) * per_beat
+
+    phrases = []
+
+    for first, last in found:
+
+        phrases.append({
+            "start": time_at(first),
+            "end": time_at(last + 1)
+        })
+
+    return phrases
+
+
 def mixer_data(
     pitch_text,
     duration_text,
@@ -65,9 +206,20 @@ def mixer_data(
         lyric_text, phrase_label
     )
 
+    notes = _note_timeline(
+        pitch_text, duration_text, key, bpm, chart_text,
+        harmony_style, lyric_text, phrase_label
+    )
+
+    phrases = _phrase_timeline(
+        pitch_text, duration_text, key, bpm, lyric_text
+    )
+
     return {
         "layers": layers,
         "timeline": timeline,
+        "notes": notes,
+        "phrases": phrases,
         "loop_start": None,
         "loop_end": None
     }
