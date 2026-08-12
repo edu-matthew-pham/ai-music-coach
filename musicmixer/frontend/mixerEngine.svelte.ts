@@ -66,6 +66,20 @@ class MixerEngine {
 	// usually done to work a hard passage on repeat.
 	repeat = $state(true);
 
+	// Which panels are showing. A group jam on a big screen
+	// wants different things visible than one person
+	// practising alone at a laptop - rather than build one
+	// fixed layout, each panel can be shown or hidden
+	// independently, and every panel reads the same
+	// playhead/selection state below rather than owning any
+	// of its own. Adding a new panel later - note boxes, an
+	// instrument diagram - means adding one more entry here
+	// and one more block of markup, not redesigning this.
+	panels: Record<string, boolean> = $state({
+		strip: true,
+		faders: true
+	});
+
 	position(): number {
 		if (!this.context || !this.playing) return this.offset;
 		let at = this.offset + (this.context.currentTime - this.startedAt);

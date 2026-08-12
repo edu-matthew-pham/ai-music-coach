@@ -176,7 +176,20 @@
 			{/if}
 		</div>
 
-		{#if timeline.length}
+		<div class="panel-toggles">
+			{#if timeline.length}
+				<label class="panel-toggle">
+					<input type="checkbox" bind:checked={engine.panels.strip} />
+					Chart
+				</label>
+			{/if}
+			<label class="panel-toggle">
+				<input type="checkbox" bind:checked={engine.panels.faders} />
+				Mixer
+			</label>
+		</div>
+
+		{#if timeline.length && engine.panels.strip}
 			<div class="strip">
 				{#each timeline as bar (bar.bar)}
 					<button
@@ -205,33 +218,35 @@
 			<p class="note">{loopLabel}</p>
 		{/if}
 
-		<div class="faders">
-			{#each layers as layer (layer.name)}
-				<div class="fader-row">
-					<span class="name" style="color:{layer.colour}">
-						{layer.name}
-					</span>
-					<button
-						class="mute"
-						onclick={() => toggleMute(layer.name, layer.level)}
-					>
-						M
-					</button>
-					<input
-						type="range"
-						min="0"
-						max="1"
-						step="0.05"
-						bind:value={engine.levels[layer.name]}
-						oninput={() => levelChanged(layer.name)}
-					/>
-					<span class="value">
-						{Math.round((engine.levels[layer.name] ?? 0) * 100)}%
-					</span>
-				</div>
-			{/each}
+		{#if engine.panels.faders}
+			<div class="faders">
+				{#each layers as layer (layer.name)}
+					<div class="fader-row">
+						<span class="name" style="color:{layer.colour}">
+							{layer.name}
+						</span>
+						<button
+							class="mute"
+							onclick={() => toggleMute(layer.name, layer.level)}
+						>
+							M
+						</button>
+						<input
+							type="range"
+							min="0"
+							max="1"
+							step="0.05"
+							bind:value={engine.levels[layer.name]}
+							oninput={() => levelChanged(layer.name)}
+						/>
+						<span class="value">
+							{Math.round((engine.levels[layer.name] ?? 0) * 100)}%
+						</span>
+					</div>
+				{/each}
+			</div>
+		{/if}
 		</div>
-	</div>
 </Block>
 
 <style>
@@ -273,6 +288,25 @@
 		accent-color: #2e7d32;
 		width: 15px;
 		height: 15px;
+	}
+	.panel-toggles {
+		display: flex;
+		gap: 14px;
+		margin-bottom: 8px;
+	}
+	.panel-toggle {
+		font-size: 12px;
+		color: var(--body-text-color-subdued);
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		cursor: pointer;
+	}
+	.panel-toggle input[type="checkbox"] {
+		appearance: auto;
+		accent-color: #607d8b;
+		width: 13px;
+		height: 13px;
 	}
 
 	.strip {
