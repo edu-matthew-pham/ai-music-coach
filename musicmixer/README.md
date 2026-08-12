@@ -13,24 +13,91 @@ pip install gradio_musicmixer
 ## Usage
 
 ```python
+"""
+demo/app.py - the component with real music in it.
+
+The generated demo passed no value, which was useful for
+checking the component mounts but shows an empty shell.
+This loads an actual song through the same mixer_data()
+the app itself will use, so what appears here is what will
+appear in the app: six faders, a chord strip, and a loop
+region that reports back.
+
+Run from the component folder with `gradio cc dev`, then
+open the backend server (127.0.0.1:7861). The frontend
+dev server on 7862 only adds hot reload and is broken in
+this version pairing.
+"""
+
+import sys
+from pathlib import Path
 
 import gradio as gr
+
 from gradio_musicmixer import MusicMixer
 
+# The app itself lives one level up. Added to the path so
+# this demo uses the real separate_layers and timeline
+# rather than a copy that could drift from them.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-example = MusicMixer().example_value()
+from mixer_data import mixer_data, loop_region  # noqa: E402
+from music import load_wellerman  # noqa: E402
 
-demo = gr.Interface(
-    lambda x:x,
-    MusicMixer(),  # interactive version of your component
-    MusicMixer(),  # static version of your component
-    # examples=[[example]],  # uncomment this line to view the "example version" of your component
-)
+
+def build():
+    """
+    The Wellerman, whole, through the real data path.
+    """
+
+    pitches, durations, lyrics, key, chart, tempo = load_wellerman()
+
+    return mixer_data(
+        pitches,
+        durations,
+        key,
+        tempo,
+        chart,
+        lyric_text=lyrics,
+        phrase_label="Whole part"
+    )
+
+
+def report(value):
+    print("[test.py] report() loop_start:", value.get("loop_start") if value else None,
+          "loop_end:", value.get("loop_end") if value else None)
+    region = loop_region(value)
+    if region is None:
+        return "Nothing looped yet. Click a bar, then shift-click a later one."
+    start, end = region
+    return f"Looping {start:.2f}s to {end:.2f}s ({end - start:.2f}s long)."
+
+
+with gr.Blocks() as demo:
+
+    gr.Markdown(
+        "## MusicMixer\n"
+        "Press **Build** to load the Wellerman, then Play. "
+        "Move a fader while it is playing - the level should "
+        "change without anything being rebuilt.\n\n"
+        "Click a bar to jump there. Shift-click a later bar "
+        "to loop that stretch. The line underneath is Python "
+        "receiving the loop region back from the browser."
+    )
+
+    build_button = gr.Button("Build the mixer", variant="primary")
+
+    mixer = MusicMixer(label="Mix it live", key="mixer")
+
+    readout = gr.Markdown()
+
+    build_button.click(fn=build, inputs=None, outputs=mixer)
+
+    mixer.change(fn=report, inputs=mixer, outputs=readout)
 
 
 if __name__ == "__main__":
     demo.launch()
-
 ```
 
 ## `MusicMixer`
@@ -52,25 +119,12 @@ if __name__ == "__main__":
 <td align="left" style="width: 25%;">
 
 ```python
-str | Callable | None
+dict | Callable | None
 ```
 
 </td>
 <td align="left"><code>value = None</code></td>
-<td align="left">default text to provide in textbox. If a function is provided, the function will be called each time the app loads to set the initial value of this component.</td>
-</tr>
-
-<tr>
-<td align="left"><code>placeholder</code></td>
-<td align="left" style="width: 25%;">
-
-```python
-str | None
-```
-
-</td>
-<td align="left"><code>value = None</code></td>
-<td align="left">placeholder hint to provide behind textbox.</td>
+<td align="left">a dict with `layers`, `timeline`,</td>
 </tr>
 
 <tr>
@@ -83,7 +137,7 @@ str | I18nData | None
 
 </td>
 <td align="left"><code>value = None</code></td>
-<td align="left">the label for this component, displayed above the component if `show_label` is `True` and is also used as the header if there are a table of examples for this component. If None and used in a `gr.Interface`, the label will be the name of the parameter this component corresponds to.</td>
+<td align="left">shown above the component if show_label</td>
 </tr>
 
 <tr>
@@ -91,12 +145,12 @@ str | I18nData | None
 <td align="left" style="width: 25%;">
 
 ```python
-Timer | float | None
+'Timer | float | None'
 ```
 
 </td>
 <td align="left"><code>value = None</code></td>
-<td align="left">Continuously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.</td>
+<td align="left">recalculates `value` on a timer if `value`</td>
 </tr>
 
 <tr>
@@ -109,7 +163,7 @@ Component | Sequence[Component] | set[Component] | None
 
 </td>
 <td align="left"><code>value = None</code></td>
-<td align="left">Components that are used as inputs to calculate `value` if `value` is a function (has no effect otherwise). `value` is recalculated any time the inputs change.</td>
+<td align="left">components `value` is recalculated from,</td>
 </tr>
 
 <tr>
@@ -122,7 +176,7 @@ bool | None
 
 </td>
 <td align="left"><code>value = None</code></td>
-<td align="left">if True, will display label.</td>
+<td align="left">whether to display the label.</td>
 </tr>
 
 <tr>
@@ -135,7 +189,7 @@ int | None
 
 </td>
 <td align="left"><code>value = None</code></td>
-<td align="left">relative size compared to adjacent Components. For example if Components A and B are in a Row, and A has scale=2, and B has scale=1, A will be twice as wide as B. Should be an integer. scale applies in Rows, and to top-level Components in Blocks where fill_height=True.</td>
+<td align="left">relative width compared to siblings in a</td>
 </tr>
 
 <tr>
@@ -148,20 +202,7 @@ int
 
 </td>
 <td align="left"><code>value = 160</code></td>
-<td align="left">minimum pixel width, will wrap if not sufficient screen space to satisfy this value. If a certain scale value results in this Component being narrower than min_width, the min_width parameter will be respected first.</td>
-</tr>
-
-<tr>
-<td align="left"><code>interactive</code></td>
-<td align="left" style="width: 25%;">
-
-```python
-bool | None
-```
-
-</td>
-<td align="left"><code>value = None</code></td>
-<td align="left">if True, will be rendered as an editable textbox; if False, editing will be disabled. If not provided, this is inferred based on whether the component is used as an input or output.</td>
+<td align="left">minimum pixel width before wrapping.</td>
 </tr>
 
 <tr>
@@ -169,25 +210,12 @@ bool | None
 <td align="left" style="width: 25%;">
 
 ```python
-bool | Literal['hidden']
-```
-
-</td>
-<td align="left"><code>value = True</code></td>
-<td align="left">If False, component will be hidden. If "hidden", component will be visually hidden and not take up space in the layout but still exist in the DOM</td>
-</tr>
-
-<tr>
-<td align="left"><code>rtl</code></td>
-<td align="left" style="width: 25%;">
-
-```python
 bool
 ```
 
 </td>
-<td align="left"><code>value = False</code></td>
-<td align="left">If True and `type` is "text", sets the direction of the text to right-to-left (cursor appears on the left of the text). Default is False, which renders cursor on the right.</td>
+<td align="left"><code>value = True</code></td>
+<td align="left">whether the component is shown.</td>
 </tr>
 
 <tr>
@@ -200,7 +228,7 @@ str | None
 
 </td>
 <td align="left"><code>value = None</code></td>
-<td align="left">An optional string that is assigned as the id of this component in the HTML DOM. Can be used for targeting CSS styles.</td>
+<td align="left">HTML id, for CSS targeting.</td>
 </tr>
 
 <tr>
@@ -213,7 +241,7 @@ list[str] | str | None
 
 </td>
 <td align="left"><code>value = None</code></td>
-<td align="left">An optional list of strings that are assigned as the classes of this component in the HTML DOM. Can be used for targeting CSS styles.</td>
+<td align="left">HTML classes, for CSS targeting.</td>
 </tr>
 
 <tr>
@@ -226,7 +254,7 @@ bool
 
 </td>
 <td align="left"><code>value = True</code></td>
-<td align="left">If False, component will not render be rendered in the Blocks context. Should be used if the intention is to assign event listeners now but render the component later.</td>
+<td align="left">if False, do not render in the Blocks</td>
 </tr>
 
 <tr>
@@ -239,7 +267,7 @@ int | str | tuple[int | str, ...] | None
 
 </td>
 <td align="left"><code>value = None</code></td>
-<td align="left">in a gr.render, Components with the same key across re-renders are treated as the same component, not a new component. Properties set in 'preserved_by_key' are not reset across a re-render.</td>
+<td align="left">identifies this component as the same one</td>
 </tr>
 
 <tr>
@@ -252,7 +280,7 @@ list[str] | str | None
 
 </td>
 <td align="left"><code>value = "value"</code></td>
-<td align="left">A list of parameters from this component's constructor. Inside a gr.render() function, if a component is re-rendered with the same key, these (and only these) parameters will be preserved in the UI (if they have been changed by the user or an event listener) instead of re-rendered based on the values provided during constructor.</td>
+<td align="left">constructor parameters kept</td>
 </tr>
 </tbody></table>
 
@@ -263,7 +291,6 @@ list[str] | str | None
 |:-----|:------------|
 | `change` | Triggered when the value of the MusicMixer changes either because of user input (e.g. a user types in a textbox) OR because of a function update (e.g. an image receives a value from the output of an event trigger). See `.input()` for a listener that is only triggered by user input. |
 | `input` | This listener is triggered when the user changes the value of the MusicMixer. |
-| `submit` | This listener is triggered when the user presses the Enter key while the MusicMixer is focused. |
 
 
 
@@ -276,13 +303,13 @@ The impact on the users predict function varies depending on whether the compone
 
 The code snippet below is accurate in cases where the component is used as both an input and an output.
 
-- **As output:** Is passed, passes text value as a {str} into the function.
-- **As input:** Should return, expects a {str} returned from function and sets textarea value to it.
+- **As output:** Is passed, the same dict, unchanged. A handler reading.
+- **As input:** Should return, a dict built by mixer_data() - layers and.
 
  ```python
  def predict(
-     value: str| None
- ) -> str| None:
+     value: dict| None
+ ) -> dict| None:
      return value
  ```
  

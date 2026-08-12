@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
-from gradio.components.base import Component, FormComponent
+from gradio.components.base import Component
 from gradio.events import Events
 from gradio.i18n import I18nData
 
@@ -11,31 +11,35 @@ if TYPE_CHECKING:
     from gradio.components import Timer
 
 
-class MusicMixer(FormComponent):
+class MusicMixer(Component):
     """
-    Creates a very simple textbox for user to enter string input or display string output.
+    A live mixer: several sound layers played together in
+    the browser, a chord strip that follows them, and a
+    loop region chosen by clicking it.
+
+    Unlike gr.HTML, the value travels both ways. Python
+    sets layers and timeline; the browser sets loop_start
+    and loop_end whenever a person selects a stretch to
+    listen to or sing against - which is the entire reason
+    this exists rather than an HTML block.
     """
 
     EVENTS = [
         Events.change,
         Events.input,
-        Events.submit,
     ]
 
     def __init__(
         self,
-        value: str | Callable | None = None,
+        value: dict | Callable | None = None,
         *,
-        placeholder: str | None = None,
         label: str | I18nData | None = None,
-        every: Timer | float | None = None,
+        every: "Timer | float | None" = None,
         inputs: Component | Sequence[Component] | set[Component] | None = None,
         show_label: bool | None = None,
         scale: int | None = None,
         min_width: int = 160,
-        interactive: bool | None = None,
-        visible: bool | Literal["hidden"] = True,
-        rtl: bool = False,
+        visible: bool = True,
         elem_id: str | None = None,
         elem_classes: list[str] | str | None = None,
         render: bool = True,
@@ -44,25 +48,30 @@ class MusicMixer(FormComponent):
     ):
         """
         Parameters:
-            value: default text to provide in textbox. If a function is provided, the function will be called each time the app loads to set the initial value of this component.
-            placeholder: placeholder hint to provide behind textbox.
-            label: the label for this component, displayed above the component if `show_label` is `True` and is also used as the header if there are a table of examples for this component. If None and used in a `gr.Interface`, the label will be the name of the parameter this component corresponds to.
-            every: Continuously calls `value` to recalculate it if `value` is a function (has no effect otherwise). Can provide a Timer whose tick resets `value`, or a float that provides the regular interval for the reset Timer.
-            inputs: Components that are used as inputs to calculate `value` if `value` is a function (has no effect otherwise). `value` is recalculated any time the inputs change.
-            show_label: if True, will display label.
-            scale: relative size compared to adjacent Components. For example if Components A and B are in a Row, and A has scale=2, and B has scale=1, A will be twice as wide as B. Should be an integer. scale applies in Rows, and to top-level Components in Blocks where fill_height=True.
-            min_width: minimum pixel width, will wrap if not sufficient screen space to satisfy this value. If a certain scale value results in this Component being narrower than min_width, the min_width parameter will be respected first.
-            interactive: if True, will be rendered as an editable textbox; if False, editing will be disabled. If not provided, this is inferred based on whether the component is used as an input or output.
-            visible: If False, component will be hidden. If "hidden", component will be visually hidden and not take up space in the layout but still exist in the DOM
-            rtl: If True and `type` is "text", sets the direction of the text to right-to-left (cursor appears on the left of the text). Default is False, which renders cursor on the right.
-            elem_id: An optional string that is assigned as the id of this component in the HTML DOM. Can be used for targeting CSS styles.
-            elem_classes: An optional list of strings that are assigned as the classes of this component in the HTML DOM. Can be used for targeting CSS styles.
-            render: If False, component will not render be rendered in the Blocks context. Should be used if the intention is to assign event listeners now but render the component later.
-            key: in a gr.render, Components with the same key across re-renders are treated as the same component, not a new component. Properties set in 'preserved_by_key' are not reset across a re-render.
-            preserved_by_key: A list of parameters from this component's constructor. Inside a gr.render() function, if a component is re-rendered with the same key, these (and only these) parameters will be preserved in the UI (if they have been changed by the user or an event listener) instead of re-rendered based on the values provided during constructor.
+            value: a dict with `layers`, `timeline`,
+                `loop_start` and `loop_end`. If a function is
+                provided, it is called each time the app
+                loads to set the initial value.
+            label: shown above the component if show_label
+                is True.
+            every: recalculates `value` on a timer if `value`
+                is a function.
+            inputs: components `value` is recalculated from,
+                if `value` is a function.
+            show_label: whether to display the label.
+            scale: relative width compared to siblings in a
+                Row.
+            min_width: minimum pixel width before wrapping.
+            visible: whether the component is shown.
+            elem_id: HTML id, for CSS targeting.
+            elem_classes: HTML classes, for CSS targeting.
+            render: if False, do not render in the Blocks
+                context yet.
+            key: identifies this component as the same one
+                across a gr.render() re-render.
+            preserved_by_key: constructor parameters kept
+                across a re-render with the same key.
         """
-        self.placeholder = placeholder
-        self.rtl = rtl
         super().__init__(
             label=label,
             every=every,
@@ -70,7 +79,6 @@ class MusicMixer(FormComponent):
             show_label=show_label,
             scale=scale,
             min_width=min_width,
-            interactive=interactive,
             visible=visible,
             elem_id=elem_id,
             elem_classes=elem_classes,
@@ -80,29 +88,63 @@ class MusicMixer(FormComponent):
             preserved_by_key=preserved_by_key,
         )
 
-    def preprocess(self, payload: str | None) -> str | None:
+    def preprocess(self, payload: dict | None) -> dict | None:
         """
         Parameters:
-            payload: the text entered in the textarea.
+            payload: the value as the browser last reported
+                it - layers and timeline as they were sent,
+                loop_start / loop_end as a person set them by
+                clicking the strip.
         Returns:
-            Passes text value as a {str} into the function.
+            The same dict, unchanged. A handler reading
+            loop_start / loop_end is how it finds out what
+            stretch was selected.
         """
-        return None if payload is None else str(payload)
+        return payload
 
-    def postprocess(self, value: str | None) -> str | None:
+    def postprocess(self, value: dict | None) -> dict | None:
         """
         Parameters:
-            value: Expects a {str} returned from function and sets textarea value to it.
+            value: a dict built by mixer_data() - layers and
+                timeline to send down. loop_start / loop_end
+                are normally left unset here, so a freshly
+                built mixer opens with nothing looped.
         Returns:
-            The value to display in the textarea.
+            The dict sent to the browser.
         """
-        return None if value is None else str(value)
+        if value is None:
+            return None
+
+        return {
+            "layers": value.get("layers", []),
+            "timeline": value.get("timeline", []),
+            "loop_start": value.get("loop_start"),
+            "loop_end": value.get("loop_end"),
+        }
 
     def api_info(self) -> dict[str, Any]:
-        return {"type": "string"}
+        return {
+            "type": "object",
+            "properties": {
+                "layers": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                },
+                "timeline": {
+                    "type": "array",
+                    "items": {"type": "object"},
+                },
+                "loop_start": {
+                    "anyOf": [{"type": "number"}, {"type": "null"}]
+                },
+                "loop_end": {
+                    "anyOf": [{"type": "number"}, {"type": "null"}]
+                },
+            },
+        }
 
     def example_payload(self) -> Any:
-        return "Hello!!"
+        return {"layers": [], "timeline": [], "loop_start": None, "loop_end": None}
 
     def example_value(self) -> Any:
-        return "Hello!!"
+        return {"layers": [], "timeline": [], "loop_start": None, "loop_end": None}
