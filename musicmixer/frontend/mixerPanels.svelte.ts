@@ -26,3 +26,17 @@ export const panels: Record<string, boolean> = $state({
 	faders: true,
 	notes: false
 });
+
+// Which layers show inside the note view. Separate from
+// panels above: this isn't "is the note view visible" but
+// "which voices does it draw" - melody only by default,
+// since showing all four at once is what crowded the box
+// labels together in the first place. Kept module-scoped
+// for the same remount-survival reason as everything else
+// here.
+export const noteLayers: Record<string, boolean> = $state({
+	Melody: true,
+	"Harmony above": false,
+	"Harmony below": false,
+	Bass: false
+});

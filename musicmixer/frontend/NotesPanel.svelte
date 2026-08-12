@@ -1,45 +1,43 @@
 <script lang="ts">
 	import { engine } from "./mixerEngine.svelte";
-	import type { MixerNote } from "./types";
+	import { noteLayers } from "./mixerPanels.svelte";
+	import type { MixerNote, MixerBar } from "./types";
 
 	// This panel is read-only by design, for now. Selecting a
 	// stretch is still the chord strip's job - both panels
 	// read the same playhead and loop bounds, so toggling
 	// this on adds a picture without adding a second, competing
-	// way to choose what plays. If clicking inside the note
-	// view to select turns out to be wanted later, it can call
-	// the same engine.select() the strip already does; nothing
-	// here would need to change to support that.
+	// way to choose what plays.
 	interface Props {
 		notes: MixerNote[];
+		timeline: MixerBar[];
 		playhead: number;
 		follow: boolean;
 	}
 
-	let { notes, playhead, follow }: Props = $props();
+	let { notes, timeline, playhead, follow }: Props = $props();
 
-	const PX_PER_SECOND = 60;
 	const ROW_HEIGHT = 14;
 
+	// Only the toggled-on layers count towards what is drawn
+	// AND towards the pitch range - bass alone gets a short
+	// box, not a tall one with empty space where hidden
+	// voices would have been.
+	const visibleNotes = $derived(
+		notes.filter((note) => noteLayers[note.layer])
+	);
+
 	const pitchRange = $derived.by(() => {
-		if (!notes.length) return { lowest: 60, highest: 72 };
-		let lowest = notes[0].midi;
-		let highest = notes[0].midi;
-		for (const note of notes) {
+		if (!visibleNotes.length) return { lowest: 60, highest: 72 };
+		let lowest = visibleNotes[0].midi;
+		let highest = visibleNotes[0].midi;
+		for (const note of visibleNotes) {
 			if (note.midi < lowest) lowest = note.midi;
 			if (note.midi > highest) highest = note.midi;
 		}
-		// A row of headroom either side, so a note at the
-		// very top or bottom of the range is not drawn
-		// flush against the edge.
 		return { lowest: lowest - 1, highest: highest + 1 };
 	});
 
-	const duration = $derived(
-		notes.reduce((max, note) => Math.max(max, note.start + note.length), 0)
-	);
-
-	const width = $derived(Math.max(duration * PX_PER_SECOND, 200));
 	const height = $derived(
 		(pitchRange.highest - pitchRange.lowest + 1) * ROW_HEIGHT
 	);
@@ -56,45 +54,92 @@
 		return names[midi % 12] + Math.floor(midi / 12 - 1);
 	}
 
+	// The scale is chosen so that a few bars fill the visible
+	// width, rather than a fixed pixels-per-second that packed
+	// the whole song in and crowded every label together the
+	// way bar 3 always did on the static chart. Falls back to
+	// the plain seconds-based scale when there is no bar data
+	// to measure a bar's length from.
+	const BARS_VISIBLE = 3;
+	const FALLBACK_PX_PER_SECOND = 60;
+
+	let viewportWidth = $state(600);
+
+	const pxPerSecond = $derived.by(() => {
+		if (timeline.length < 2) return FALLBACK_PX_PER_SECOND;
+		const barLength = timeline[1].start - timeline[0].start;
+		if (barLength <= 0) return FALLBACK_PX_PER_SECOND;
+		return viewportWidth / (barLength * BARS_VISIBLE);
+	});
+
+	const duration = $derived(
+		notes.reduce((max, note) => Math.max(max, note.start + note.length), 0)
+	);
+
+	const width = $derived(Math.max(duration * pxPerSecond, viewportWidth));
+
 	let container: HTMLElement | null = $state(null);
 
 	$effect(() => {
+		if (container) viewportWidth = container.clientWidth || viewportWidth;
+	});
+
+	$effect(() => {
 		if (follow && container) {
-			const target = playhead * PX_PER_SECOND - container.clientWidth / 2;
+			const target = playhead * pxPerSecond - viewportWidth / 2;
 			container.scrollLeft = Math.max(0, target);
 		}
 	});
 </script>
 
-{#if notes.length}
+<div class="notes-toggles">
+	{#each Object.keys(noteLayers) as name}
+		<label class="layer-toggle">
+			<input type="checkbox" bind:checked={noteLayers[name]} />
+			{name}
+		</label>
+	{/each}
+</div>
+
+{#if visibleNotes.length}
 	<div class="notes-container" bind:this={container}>
 		<svg {width} {height} viewBox="0 0 {width} {height}">
 			{#if engine.loopFrom !== null && engine.loopTo !== null}
 				<rect
 					class="loop-region"
-					x={engine.loopFrom * PX_PER_SECOND}
+					x={engine.loopFrom * pxPerSecond}
 					y="0"
-					width={(engine.loopTo - engine.loopFrom) * PX_PER_SECOND}
+					width={(engine.loopTo - engine.loopFrom) * pxPerSecond}
 					{height}
 				/>
 			{/if}
 
-			{#each notes as note}
+			{#each timeline as bar}
+				<line
+					class="bar-line"
+					x1={bar.start * pxPerSecond}
+					y1="0"
+					x2={bar.start * pxPerSecond}
+					y2={height}
+				/>
+			{/each}
+
+			{#each visibleNotes as note}
 				<g>
 					<rect
 						class="note-box"
-						x={note.start * PX_PER_SECOND}
+						x={note.start * pxPerSecond}
 						y={y(note.midi) + 1}
-						width={Math.max(note.length * PX_PER_SECOND - 1, 2)}
+						width={Math.max(note.length * pxPerSecond - 1, 2)}
 						height={ROW_HEIGHT - 2}
 						fill={note.colour}
 						fill-opacity={note.layer === "Melody" ? 0.22 : 0.14}
 						stroke={note.colour}
 					/>
-					{#if note.length * PX_PER_SECOND > 20}
+					{#if note.length * pxPerSecond > 20}
 						<text
 							class="note-label"
-							x={note.start * PX_PER_SECOND + (note.length * PX_PER_SECOND) / 2}
+							x={note.start * pxPerSecond + (note.length * pxPerSecond) / 2}
 							y={y(note.midi) + ROW_HEIGHT / 2}
 							fill={note.colour}
 						>
@@ -104,7 +149,7 @@
 					{#if note.word}
 						<text
 							class="note-word"
-							x={note.start * PX_PER_SECOND + (note.length * PX_PER_SECOND) / 2}
+							x={note.start * pxPerSecond + (note.length * pxPerSecond) / 2}
 							y={y(note.midi) + ROW_HEIGHT + 10}
 						>
 							{note.word}
@@ -115,23 +160,42 @@
 
 			<line
 				class="playhead"
-				x1={playhead * PX_PER_SECOND}
+				x1={playhead * pxPerSecond}
 				y1="0"
-				x2={playhead * PX_PER_SECOND}
+				x2={playhead * pxPerSecond}
 				y2={height}
 			/>
 		</svg>
 	</div>
 {:else}
-	<p class="note-empty">No notes to show yet.</p>
+	<p class="note-empty">No layers selected to show.</p>
 {/if}
 
 <style>
+	.notes-toggles {
+		display: flex;
+		gap: 12px;
+		margin: 4px 0;
+	}
+	.layer-toggle {
+		font-size: 11px;
+		color: var(--body-text-color-subdued);
+		display: flex;
+		align-items: center;
+		gap: 3px;
+		cursor: pointer;
+	}
+	.layer-toggle input[type="checkbox"] {
+		appearance: auto;
+		accent-color: #607d8b;
+		width: 12px;
+		height: 12px;
+	}
 	.notes-container {
 		overflow-x: auto;
 		border: 1px solid var(--border-color-primary);
 		border-radius: 4px;
-		margin: 8px 0;
+		margin: 4px 0 8px;
 	}
 	.note-box {
 		stroke-width: 1;
@@ -151,6 +215,11 @@
 	}
 	.loop-region {
 		fill: #fff3e0;
+	}
+	.bar-line {
+		stroke: var(--border-color-primary);
+		stroke-width: 1;
+		opacity: 0.5;
 	}
 	.playhead {
 		stroke: #2e7d32;

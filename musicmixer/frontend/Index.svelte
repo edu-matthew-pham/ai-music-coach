@@ -146,7 +146,7 @@
 		{/if}
 
 		{#if panels.notes}
-			<NotesPanel {notes} {playhead} {follow} />
+			<NotesPanel {notes} {timeline} {playhead} {follow} />
 		{/if}
 
 		{#if panels.faders}
