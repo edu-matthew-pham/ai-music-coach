@@ -40,3 +40,9 @@ export const noteLayers: Record<string, boolean> = $state({
 	"Harmony below": false,
 	Bass: false
 });
+
+// Whether the note view shows a dimmed preview of the next
+// phrase below the current one - lives here rather than as
+// component state for the usual reason: it should survive
+// a remount rather than silently reverting.
+export const showNextPreview = $state({ value: false });

@@ -1,18 +1,14 @@
 <script lang="ts">
 	import { engine } from "./mixerEngine.svelte";
-	import { noteLayers } from "./mixerPanels.svelte";
+	import { noteLayers, showNextPreview } from "./mixerPanels.svelte";
 	import type { MixerNote, MixerBar, MixerPhrase } from "./types";
 
 	// A static page per phrase, hard-cut to the next rather
 	// than scrolled - the way SingStar shows a line of notes:
 	// still, until the line finishes, then instantly replaced.
-	// Scrolling made you track two moving things at once (the
-	// playhead and the background sliding under it), which
-	// was the actual readability problem; a still page removes
-	// one of them entirely.
 	//
 	// This panel is read-only by design, for now. Selecting a
-	// stretch is still the chord strip's job.
+	// stretch is still the chord strip's or phrase list's job.
 	interface Props {
 		notes: MixerNote[];
 		timeline: MixerBar[];
@@ -24,10 +20,6 @@
 
 	const ROW_HEIGHT = 14;
 
-	// A song with no lyric line breaks has no phrases to page
-	// by - rather than keep two different windowing schemes,
-	// the whole song becomes one page in that case, spanning
-	// from the first note to the last.
 	const effectivePhrases = $derived.by((): MixerPhrase[] => {
 		if (phrases.length) return phrases;
 		if (!notes.length) return [];
@@ -38,57 +30,24 @@
 	});
 
 	// The switch happens once the current page's phrase has
-	// finished, not the instant the next one starts - the two
-	// are the same instant for contiguous phrases, but this is
-	// the rule that matters when a bar straddles the boundary:
-	// the outgoing phrase keeps that bar until it is done with
-	// it, rather than the incoming phrase claiming it early and
-	// cutting the still-sounding line short.
-	const currentPhrase = $derived.by((): MixerPhrase | null => {
-		if (!effectivePhrases.length) return null;
-		const found = effectivePhrases.find((phrase) => playhead < phrase.end);
-		return found ?? effectivePhrases[effectivePhrases.length - 1];
+	// finished, not the instant the next one starts - the
+	// rule that matters when a bar straddles the boundary:
+	// the outgoing phrase keeps it until done with it.
+	const currentIndex = $derived.by(() => {
+		if (!effectivePhrases.length) return -1;
+		const found = effectivePhrases.findIndex((phrase) => playhead < phrase.end);
+		return found === -1 ? effectivePhrases.length - 1 : found;
 	});
 
-	// Bars overlapping this phrase at all - a bar the phrase
-	// only partly covers still belongs to this page, since the
-	// alternative is a page whose last bar is silently missing
-	// the tail end of what is actually sounding.
-	const pageBars = $derived.by(() => {
-		if (!currentPhrase) return [];
-		return timeline.filter(
-			(bar) => bar.start < currentPhrase!.end && bar.end > currentPhrase!.start
-		);
-	});
-
-	const pageNotes = $derived.by(() => {
-		if (!currentPhrase) return [];
-		return notes.filter(
-			(note) =>
-				noteLayers[note.layer] &&
-				note.start >= currentPhrase!.start &&
-				note.start < currentPhrase!.end
-		);
-	});
-
-	const pitchRange = $derived.by(() => {
-		if (!pageNotes.length) return { lowest: 60, highest: 72 };
-		let lowest = pageNotes[0].midi;
-		let highest = pageNotes[0].midi;
-		for (const note of pageNotes) {
-			if (note.midi < lowest) lowest = note.midi;
-			if (note.midi > highest) highest = note.midi;
-		}
-		return { lowest: lowest - 1, highest: highest + 1 };
-	});
-
-	const height = $derived(
-		(pitchRange.highest - pitchRange.lowest + 1) * ROW_HEIGHT
+	const currentPhrase = $derived(
+		currentIndex >= 0 ? effectivePhrases[currentIndex] : null
 	);
 
-	function y(midi: number): number {
-		return (pitchRange.highest - midi) * ROW_HEIGHT;
-	}
+	const nextPhrase = $derived(
+		currentIndex >= 0 && currentIndex + 1 < effectivePhrases.length
+			? effectivePhrases[currentIndex + 1]
+			: null
+	);
 
 	function noteName(midi: number): string {
 		const names = [
@@ -105,23 +64,154 @@
 		if (container) viewportWidth = container.clientWidth || viewportWidth;
 	});
 
-	// Equal-width bars, filling the page exactly. Constant
-	// tempo is assumed - a real time-signature change mid-song
-	// isn't modelled here - so equal width and equal time are
-	// the same thing, and the scale is just the page's own bar
-	// count substituted in where a fixed number used to be.
-	const pxPerSecond = $derived.by(() => {
-		if (!currentPhrase) return 60;
-		const span = currentPhrase.end - currentPhrase.start;
-		if (span <= 0) return 60;
-		return viewportWidth / span;
-	});
+	// Everything a page needs to draw itself: which bars,
+	// which notes, the pitch range those notes need, and a
+	// scale that fits this phrase's own bars to the width
+	// available - shared by current and next so a preview
+	// is drawn with the same rules as the active page, not
+	// a simplified stand-in.
+	interface Page {
+		phrase: MixerPhrase;
+		bars: MixerBar[];
+		notes: MixerNote[];
+		pitchRange: { lowest: number; highest: number };
+		height: number;
+		pxPerSecond: number;
+	}
 
-	function x(time: number): number {
-		if (!currentPhrase) return 0;
-		return (time - currentPhrase.start) * pxPerSecond;
+	function computePage(phrase: MixerPhrase | null, width: number): Page | null {
+		if (!phrase) return null;
+
+		const bars = timeline.filter(
+			(bar) => bar.start < phrase.end && bar.end > phrase.start
+		);
+
+		const pageNotes = notes.filter(
+			(note) =>
+				noteLayers[note.layer] &&
+				note.start >= phrase.start &&
+				note.start < phrase.end
+		);
+
+		let lowest = 60;
+		let highest = 72;
+
+		if (pageNotes.length) {
+			lowest = pageNotes[0].midi;
+			highest = pageNotes[0].midi;
+			for (const note of pageNotes) {
+				if (note.midi < lowest) lowest = note.midi;
+				if (note.midi > highest) highest = note.midi;
+			}
+			lowest -= 1;
+			highest += 1;
+		}
+
+		const height = (highest - lowest + 1) * ROW_HEIGHT;
+		const span = phrase.end - phrase.start;
+		const pxPerSecond = span > 0 ? width / span : 60;
+
+		return {
+			phrase,
+			bars,
+			notes: pageNotes,
+			pitchRange: { lowest, highest },
+			height,
+			pxPerSecond
+		};
+	}
+
+	const currentPage = $derived(computePage(currentPhrase, viewportWidth));
+
+	const nextPage = $derived(
+		showNextPreview.value ? computePage(nextPhrase, viewportWidth) : null
+	);
+
+	function y(page: Page, midi: number): number {
+		return (page.pitchRange.highest - midi) * ROW_HEIGHT;
+	}
+
+	function x(page: Page, time: number): number {
+		return (time - page.phrase.start) * page.pxPerSecond;
 	}
 </script>
+
+{#snippet pageSvg(page: Page, showPlayhead: boolean, dimmed: boolean)}
+	<svg
+		width={viewportWidth}
+		height={page.height}
+		viewBox="0 0 {viewportWidth} {page.height}"
+		class:dimmed
+	>
+		{#if showPlayhead && engine.loopFrom !== null && engine.loopTo !== null}
+			<rect
+				class="loop-region"
+				x={x(page, Math.max(engine.loopFrom, page.phrase.start))}
+				y="0"
+				width={Math.max(
+					0,
+					x(page, Math.min(engine.loopTo, page.phrase.end)) -
+						x(page, Math.max(engine.loopFrom, page.phrase.start))
+				)}
+				height={page.height}
+			/>
+		{/if}
+
+		{#each page.bars as bar}
+			<line
+				class="bar-line"
+				x1={x(page, bar.start)}
+				y1="0"
+				x2={x(page, bar.start)}
+				y2={page.height}
+			/>
+		{/each}
+
+		{#each page.notes as note}
+			<g>
+				<rect
+					class="note-box"
+					x={x(page, note.start)}
+					y={y(page, note.midi) + 1}
+					width={Math.max(note.length * page.pxPerSecond - 1, 2)}
+					height={ROW_HEIGHT - 2}
+					fill={note.colour}
+					fill-opacity={note.layer === "Melody" ? 0.22 : 0.14}
+					stroke={note.colour}
+				/>
+				{#if note.length * page.pxPerSecond > 20}
+					<text
+						class="note-label"
+						x={x(page, note.start) + (note.length * page.pxPerSecond) / 2}
+						y={y(page, note.midi) + ROW_HEIGHT / 2}
+						fill={note.colour}
+					>
+						{noteName(note.midi)}
+					</text>
+				{/if}
+				{#if note.word}
+					<text
+						class="note-word"
+						x={x(page, note.start) + (note.length * page.pxPerSecond) / 2}
+						y={y(page, note.midi) + ROW_HEIGHT + 10}
+					>
+						{note.word}
+					</text>
+				{/if}
+			</g>
+		{/each}
+
+		{#if showPlayhead}
+			<line
+				class="playhead"
+				x1={x(page, playhead)}
+				y1="0"
+				x2={x(page, playhead)}
+				y2={page.height}
+			/>
+		{/if}
+	</svg>
+{/snippet}
 
 <div class="notes-toggles">
 	{#each Object.keys(noteLayers) as name}
@@ -130,78 +220,21 @@
 			{name}
 		</label>
 	{/each}
+	<label class="layer-toggle preview-toggle">
+		<input type="checkbox" bind:checked={showNextPreview.value} />
+		Preview next phrase
+	</label>
 </div>
 
-{#if pageNotes.length && currentPhrase}
+{#if currentPage}
 	<div class="notes-container" bind:this={container}>
-		<svg width={viewportWidth} {height} viewBox="0 0 {viewportWidth} {height}">
-			{#if engine.loopFrom !== null && engine.loopTo !== null}
-				<rect
-					class="loop-region"
-					x={x(Math.max(engine.loopFrom, currentPhrase.start))}
-					y="0"
-					width={Math.max(
-						0,
-						x(Math.min(engine.loopTo, currentPhrase.end)) -
-							x(Math.max(engine.loopFrom, currentPhrase.start))
-					)}
-					{height}
-				/>
-			{/if}
-
-			{#each pageBars as bar}
-				<line
-					class="bar-line"
-					x1={x(bar.start)}
-					y1="0"
-					x2={x(bar.start)}
-					y2={height}
-				/>
-			{/each}
-
-			{#each pageNotes as note}
-				<g>
-					<rect
-						class="note-box"
-						x={x(note.start)}
-						y={y(note.midi) + 1}
-						width={Math.max(note.length * pxPerSecond - 1, 2)}
-						height={ROW_HEIGHT - 2}
-						fill={note.colour}
-						fill-opacity={note.layer === "Melody" ? 0.22 : 0.14}
-						stroke={note.colour}
-					/>
-					{#if note.length * pxPerSecond > 20}
-						<text
-							class="note-label"
-							x={x(note.start) + (note.length * pxPerSecond) / 2}
-							y={y(note.midi) + ROW_HEIGHT / 2}
-							fill={note.colour}
-						>
-							{noteName(note.midi)}
-						</text>
-					{/if}
-					{#if note.word}
-						<text
-							class="note-word"
-							x={x(note.start) + (note.length * pxPerSecond) / 2}
-							y={y(note.midi) + ROW_HEIGHT + 10}
-						>
-							{note.word}
-						</text>
-					{/if}
-				</g>
-			{/each}
-
-			<line
-				class="playhead"
-				x1={x(playhead)}
-				y1="0"
-				x2={x(playhead)}
-				y2={height}
-			/>
-		</svg>
+		{@render pageSvg(currentPage, true, false)}
 	</div>
+	{#if nextPage}
+		<div class="notes-container next-page">
+			{@render pageSvg(nextPage, false, true)}
+		</div>
+	{/if}
 {:else}
 	<p class="note-empty">No layers selected to show.</p>
 {/if}
@@ -209,6 +242,7 @@
 <style>
 	.notes-toggles {
 		display: flex;
+		flex-wrap: wrap;
 		gap: 12px;
 		margin: 4px 0;
 	}
@@ -226,10 +260,19 @@
 		width: 12px;
 		height: 12px;
 	}
+	.preview-toggle {
+		margin-left: auto;
+	}
 	.notes-container {
 		border: 1px solid var(--border-color-primary);
 		border-radius: 4px;
 		margin: 4px 0 8px;
+	}
+	.next-page {
+		opacity: 0.55;
+	}
+	svg.dimmed {
+		background: var(--background-fill-secondary, #fafafa);
 	}
 	.note-box {
 		stroke-width: 1;
