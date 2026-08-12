@@ -10,6 +10,7 @@
 	import PanelToggles from "./PanelToggles.svelte";
 	import ChordStrip from "./ChordStrip.svelte";
 	import FaderPanel from "./FaderPanel.svelte";
+	import NotesPanel from "./NotesPanel.svelte";
 
 	// This file is deliberately thin: it wires Gradio's value
 	// in and out, and holds the handful of actions that touch
@@ -27,6 +28,7 @@
 
 	const layers = $derived(gradio.props.value?.layers ?? []);
 	const timeline = $derived(gradio.props.value?.timeline ?? []);
+	const notes = $derived(gradio.props.value?.notes ?? []);
 
 	// Fader positions default from the engine (survives a
 	// remount) and fall back to each layer's opening level
@@ -137,10 +139,14 @@
 			onToggleRepeat={toggleRepeat}
 		/>
 
-		<PanelToggles hasTimeline={timeline.length > 0} />
+		<PanelToggles hasTimeline={timeline.length > 0} hasNotes={notes.length > 0} />
 
 		{#if panels.strip}
 			<ChordStrip {timeline} {playhead} {follow} onSelectBar={selectBar} />
+		{/if}
+
+		{#if panels.notes}
+			<NotesPanel {notes} {playhead} {follow} />
 		{/if}
 
 		{#if panels.faders}

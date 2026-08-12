@@ -23,5 +23,6 @@
 
 export const panels: Record<string, boolean> = $state({
 	strip: true,
-	faders: true
+	faders: true,
+	notes: false
 });

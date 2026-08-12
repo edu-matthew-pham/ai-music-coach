@@ -3,9 +3,10 @@
 
 	interface Props {
 		hasTimeline: boolean;
+		hasNotes: boolean;
 	}
 
-	let { hasTimeline }: Props = $props();
+	let { hasTimeline, hasNotes }: Props = $props();
 </script>
 
 <div class="panel-toggles">
@@ -15,12 +16,17 @@
 			Chart
 		</label>
 	{/if}
+	{#if hasNotes}
+		<label class="panel-toggle">
+			<input type="checkbox" bind:checked={panels.notes} />
+			Notes
+		</label>
+	{/if}
 	<label class="panel-toggle">
 		<input type="checkbox" bind:checked={panels.faders} />
 		Mixer
 	</label>
 </div>
-
 <style>
 	.panel-toggles {
 		display: flex;
