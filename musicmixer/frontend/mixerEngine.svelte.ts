@@ -151,7 +151,13 @@ class MixerEngine {
 	}
 
 	async play(layers: MixerLayerData[], from?: number): Promise<void> {
-		const resumeFrom = from ?? this.loopFrom ?? this.position();
+		// offset is kept correct by every select() branch -
+		// the start of a newly completed range, or wherever a
+		// preview click last moved to - so trusting it here
+		// is what makes a preview click during playback
+		// actually resume from where it was clicked, rather
+		// than snapping back to the range's start regardless.
+		const resumeFrom = from ?? this.offset;
 
 		this.stopSources();
 		this.playing = false;
@@ -210,21 +216,52 @@ class MixerEngine {
 	// playhead. Playing straight from a click made the
 	// visual update depend on the async audio path; a
 	// selection is a plain assignment and cannot go stale.
-	select(bar: MixerBarData, shiftKey: boolean): void {
-		if (shiftKey && this.anchor !== null) {
+	// A loop is only discarded when a click clearly means to
+	// leave it. Clicking somewhere inside the selected range
+	// is scrubbing - it moves where playback starts without
+	// touching the range, the way markers work in a video
+	// editor. Clicking outside the range means you have moved
+	// on from it, so it is replaced with a fresh anchor here.
+	// A shift-click after a range is already complete always
+	// starts over too, inside or outside, since shift is an
+	// unambiguous "define a new range" gesture either way.
+	select(bar: MixerBarData, shiftKey: boolean): boolean {
+		const hadRange = this.loopFrom !== null && this.loopTo !== null;
+		const previousFrom = this.loopFrom;
+		const previousTo = this.loopTo;
+
+		const insideRange =
+			hadRange &&
+			bar.start >= this.loopFrom! - 0.001 &&
+			bar.end <= this.loopTo! + 0.001;
+
+		if (shiftKey && this.anchor !== null && !hadRange) {
+			// Completing a range from the existing anchor - the
+			// min/max works the same whether the bar just
+			// clicked is later or earlier than the first one.
 			const start = Math.min(this.anchor.start, bar.start);
 			const end = Math.max(this.anchor.end, bar.end);
 			this.loopFrom = start;
 			this.loopTo = Math.max(end, start + 0.05);
+			this.offset = this.loopFrom;
+		} else if (!shiftKey && insideRange) {
+			// A scrub: move the playhead, leave the range and
+			// its anchor exactly as they were.
+			this.offset = bar.start;
 		} else {
+			// Nothing selected yet, a click outside the current
+			// range, or a shift-click after a range was already
+			// complete: start over here.
 			this.anchor = bar;
 			this.loopFrom = bar.start;
 			this.loopTo = null;
+			this.offset = bar.start;
 		}
 
 		this.stopSources();
 		this.playing = false;
-		this.offset = this.loopFrom ?? bar.start;
+
+		return this.loopFrom !== previousFrom || this.loopTo !== previousTo;
 	}
 
 	clearLoop(): void {
