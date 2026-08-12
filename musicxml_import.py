@@ -38,9 +38,9 @@ import re
 import zipfile
 from fractions import Fraction
 
-from chord_detector import chart_from_notes
+from chord_detector import chart_from_notes, fill_gaps, write_chart
 from midi_import import spelling_key
-from notes import REST, midi_to_note
+from notes import NOTE_SEMITONES, REST, midi_to_note
 
 
 # Lengths are rounded to something notation can express.
@@ -59,6 +59,66 @@ PHRASE_REST = 1
 LONGEST_REST = 4
 
 
+# MusicXML's own vocabulary for a chord symbol's kind,
+# mapped to the app's own quality tokens (chords.py's
+# CHORD_QUALITIES). Covers every quality the app can
+# represent; a kind not listed here has no exact match and
+# falls back to its triad shape instead (see _printed_chart).
+KIND_TO_QUALITY = {
+    "major": "",
+    "minor": "m",
+    "dominant": "7",
+    "dominant-seventh": "7",
+    "minor-seventh": "m7",
+    "major-seventh": "maj7",
+    "diminished": "dim",
+    "augmented": "aug",
+    "suspended-second": "sus2",
+    "suspended-fourth": "sus4",
+    "major-sixth": "6",
+    "minor-sixth": "m6",
+}
+
+# When a printed chord's own kind has no exact match above
+# - a ninth, an altered chord, a half-diminished seventh -
+# music21 still classifies its underlying triad. Falling
+# back to that triad is the same move invariant 12 makes
+# for a detected chart: the chart holds one name because it
+# must parse and play, and a plainer name that plays is
+# worth more here than an exact one that doesn't fit the
+# app's vocabulary. "other" (a chord with no clear triad,
+# such as a bare suspension) has nothing to fall back to
+# and is dropped rather than guessed.
+QUALITY_FALLBACK = {
+    "major": "",
+    "minor": "m",
+    "diminished": "dim",
+    "augmented": "aug",
+}
+
+
+def _sung(notes):
+    """
+    A stream's notes, without the chord symbols hiding
+    among them.
+
+    music21 models a printed chord symbol as a kind of
+    chord, so it passes every "just the notes" filter a
+    real, played chord passes too. Left in, a symbol
+    printed above the staff becomes a phantom note in the
+    melody, or phantom polyphony in the chart - wrong in a
+    way nothing here would notice, because it looks exactly
+    like a very quiet chord.
+    """
+
+    from music21 import harmony
+
+    return [
+        item for item in notes
+        if not isinstance(item, harmony.ChordSymbol)
+    ]
+
+
 def parts_in(path):
     """
     The parts of a score, named as the score names them.
@@ -74,7 +134,7 @@ def parts_in(path):
 
     for index, part in enumerate(score.parts):
 
-        notes = list(part.flatten().notes)
+        notes = _sung(part.flatten().notes)
 
         if not notes:
             continue
@@ -114,6 +174,95 @@ def _read(path):
     from music21 import converter
 
     return converter.parse(path)
+
+
+def _printed_chart(parts, total_beats, beats_per_bar):
+    """
+    The chart as the score itself states it, read from
+    every chord symbol in the file - not detected from
+    polyphony, because a score that already prints its
+    harmony has said what it is. Invariant 5: this is
+    reading, not suggesting, and a human's own printed
+    symbol is stronger evidence than anything derived from
+    the notes.
+
+    Read across every part rather than the chosen singing
+    part: a chord symbol is written once for the system,
+    not per voice, so the part carrying the tune is not
+    necessarily the part carrying the symbols. Where a file
+    duplicates the same symbols onto every staff (a
+    grand-staff piano part often does), duplicates at the
+    same beat are read once.
+
+    Takes flattened parts, not score.recurse(): a symbol's
+    own .offset resets to zero at every measure, and only
+    flattening turns that into one running count from the
+    start of the piece - the same reason the polyphony
+    reading below flattens each part before reading offsets
+    from it. Reading offsets straight from recurse() looked
+    plausible on the first bar and wrong on every bar after
+    it, since every measure's symbols collided into the
+    first few beats.
+
+    Returns "" if the file has no chord symbols, or if
+    every one it has falls outside what a chart here can
+    represent - the caller falls back to detection exactly
+    as it would for a file with no symbols at all.
+    """
+
+    from music21 import harmony
+
+    symbols = sorted(
+        (
+            symbol
+            for part in parts
+            for symbol in part.flatten().getElementsByClass(
+                harmony.ChordSymbol
+            )
+        ),
+        key=lambda symbol: symbol.offset
+    )
+
+    by_beat = {}
+
+    for symbol in symbols:
+
+        root_name = symbol.root().name.replace("-", "b")
+
+        if root_name not in NOTE_SEMITONES:
+            continue
+
+        quality = KIND_TO_QUALITY.get(symbol.chordKind)
+
+        if quality is None:
+            quality = QUALITY_FALLBACK.get(symbol.quality)
+
+        if quality is None:
+            continue
+
+        # A chart here holds one token per beat, so a
+        # symbol arriving between beats - an eighth-note
+        # pickup into the next bar, say - has to give up
+        # that timing. Floored to the beat it starts
+        # within, not rounded to the nearest one: rounding
+        # can push a symbol a whole beat late (Python
+        # rounds a half beat to even, so 3.5 becomes 4, not
+        # 3), which would land a pickup chord in the bar
+        # after the one it was written into.
+        beat = int(symbol.offset)
+
+        by_beat.setdefault(beat, root_name + quality)
+
+    if not by_beat:
+        return ""
+
+    chords = sorted(
+        (float(beat), 0.0, name) for beat, name in by_beat.items()
+    )
+
+    return write_chart(
+        fill_gaps(chords, total_beats), total_beats, beats_per_bar
+    )
 
 
 def _round(length):
@@ -256,7 +405,7 @@ def verses_in(path, part_label=None):
 
     parts = [
         part for part in score.parts
-        if list(part.flatten().notes)
+        if _sung(part.flatten().notes)
     ]
 
     if not parts:
@@ -266,7 +415,7 @@ def verses_in(path, part_label=None):
 
     numbers = set()
 
-    for item in part.flatten().notes:
+    for item in _sung(part.flatten().notes):
         for lyric in item.lyrics:
             if lyric.number:
                 numbers.add(lyric.number)
@@ -327,7 +476,7 @@ def import_musicxml(path, part_label=None, verse=1):
 
     parts = [
         part for part in score.parts
-        if list(part.flatten().notes)
+        if _sung(part.flatten().notes)
     ]
 
     if not parts:
@@ -361,7 +510,7 @@ def import_musicxml(path, part_label=None, verse=1):
 
     bpm = int(round(marks[0].number)) if marks else 100
 
-    items = list(part.flatten().notesAndRests)
+    items = _sung(part.flatten().notesAndRests)
 
     merged = _merge_ties(items)
 
@@ -371,7 +520,7 @@ def import_musicxml(path, part_label=None, verse=1):
     # the format's way of saying it.
     marked = any(
         lyric.syllabic in ("begin", "middle", "end")
-        for note in part.flatten().notes
+        for note in _sung(part.flatten().notes)
         for lyric in note.lyrics
     )
 
@@ -379,7 +528,7 @@ def import_musicxml(path, part_label=None, verse=1):
 
     verses = len({
         lyric.number
-        for note in part.flatten().notes
+        for note in _sung(part.flatten().notes)
         for lyric in note.lyrics
         if lyric.number
     })
@@ -453,7 +602,7 @@ def import_musicxml(path, part_label=None, verse=1):
 
     for other in parts:
 
-        for item in other.flatten().notes:
+        for item in _sung(other.flatten().notes):
 
             start = float(item.offset)
             length = float(item.quarterLength)
@@ -472,12 +621,15 @@ def import_musicxml(path, part_label=None, verse=1):
         if number != REST
     ]) or "C"
 
-    chart = ""
+    chart = _printed_chart(parts, float(total), beats_per_bar)
 
-    if polyphony:
+    chart_source = "printed" if chart else None
+
+    if not chart and polyphony:
         chart = chart_from_notes(
             polyphony, float(total), beats_per_bar, key
         )
+        chart_source = "detected" if chart else None
 
     pitch_text = " ".join(
         REST if number == REST else midi_to_note(number, key)
@@ -580,10 +732,17 @@ def import_musicxml(path, part_label=None, verse=1):
                 f"{verse} was taken."
             )
 
-    if chart:
+    if chart_source == "printed":
         feedback += (
-            " The chords were read from every voice "
-            "sounding together, and can be edited."
+            " The chords are the score's own printed "
+            "symbols, and can be edited."
+        )
+
+    elif chart_source == "detected":
+        feedback += (
+            " The score prints no chord symbols, so the "
+            "chords were read from every voice sounding "
+            "together instead, and can be edited."
         )
 
     return (
