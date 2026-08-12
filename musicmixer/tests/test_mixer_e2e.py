@@ -120,6 +120,42 @@ class TestSelection:
         expect(page.locator(f"text={NOTHING_LOOPED}")).to_be_visible()
 
 
+class TestSongChange:
+    def test_a_loop_in_one_song_does_not_survive_a_different_song(
+        self, page: Page, mixer_url: str
+    ):
+        # The bug: a loop is seconds into a specific song's
+        # timeline. Loading a different song used to leave the
+        # old loop sitting there in the engine, meaning nothing
+        # until Play was next pressed, at which point it would
+        # loop the wrong stretch of the new song - or a stretch
+        # past its end entirely.
+        build_mixer(page, mixer_url)
+
+        bar(page, 2).click()
+        bar(page, 6).click(modifiers=["Shift"])
+
+        # Confirm the loop is really set before switching songs
+        # - otherwise this test would pass even if nothing
+        # about the fix worked.
+        expect(page.locator(".bar.looped").first).to_be_visible()
+
+        page.get_by_role("button", name="Load a different song").click()
+
+        # The new song's own bar 1 arriving is the sign that the
+        # remount has actually happened with new music, not just
+        # that the click registered.
+        expect(bar(page, 1)).to_be_visible(timeout=15000)
+
+        # No bar should carry a loop from a song that is no
+        # longer loaded, and the strip's own note should read
+        # exactly as it would if nothing had ever been selected.
+        expect(page.locator(".bar.looped")).to_have_count(0)
+        expect(
+            page.locator("text=Click a bar to select where Play starts")
+        ).to_be_visible()
+
+
 class TestToggles:
     def test_repeat_only_appears_once_a_range_exists(self, page: Page, mixer_url: str):
         build_mixer(page, mixer_url)

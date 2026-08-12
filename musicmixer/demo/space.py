@@ -67,7 +67,7 @@ from gradio_musicmixer import MusicMixer
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from mixer_data import mixer_data, loop_region  # noqa: E402
-from music import load_wellerman  # noqa: E402
+from music import load_wellerman, load_twinkle  # noqa: E402
 
 
 def build():
@@ -76,6 +76,31 @@ def build():
     \"\"\"
 
     pitches, durations, lyrics, key, chart, tempo = load_wellerman()
+
+    return mixer_data(
+        pitches,
+        durations,
+        key,
+        tempo,
+        chart,
+        lyric_text=lyrics,
+        phrase_label="Whole part"
+    )
+
+
+def build_other():
+    \"\"\"
+    A second, different song through the same real data
+    path - Twinkle rather than the Wellerman.
+
+    Exists for the song-swap test: loading a different song
+    into a mixer that already has a loop selected is the one
+    thing the single-song demo could never exercise on its
+    own, and it is exactly the case the fingerprint fix in
+    the engine is for.
+    \"\"\"
+
+    pitches, durations, lyrics, key, chart, tempo = load_twinkle()
 
     return mixer_data(
         pitches,
@@ -111,12 +136,14 @@ with gr.Blocks() as demo:
     )
 
     build_button = gr.Button("Build the mixer", variant="primary")
+    build_other_button = gr.Button("Load a different song")
 
     mixer = MusicMixer(label="Mix it live", key="mixer")
 
     readout = gr.Markdown()
 
     build_button.click(fn=build, inputs=None, outputs=mixer)
+    build_other_button.click(fn=build_other, inputs=None, outputs=mixer)
 
     mixer.change(fn=report, inputs=mixer, outputs=readout)
 

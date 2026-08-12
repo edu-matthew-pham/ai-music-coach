@@ -45,6 +45,15 @@ class MixerEngine {
 	// remounts are frequent here and decoding is not free.
 	private fingerprint = "";
 
+	// A second fingerprint, checked separately from the one
+	// above. That one only matters when play() actually runs;
+	// this one is checked the moment new layers arrive from
+	// Python, in noteLayers() below, so a loop selected against
+	// one song's timeline never survives into a different
+	// song's - it would otherwise sit there in seconds that
+	// mean nothing until Play was pressed and forced a decode.
+	private selectionFingerprint = "";
+
 	playing = $state(false);
 	offset = $state(0);
 	loopFrom: number | null = $state(null);
@@ -83,6 +92,44 @@ class MixerEngine {
 		return out.buffer;
 	}
 
+	// Length alone can collide: two different phrases of the
+	// same duration fingerprint identically, and the old
+	// buffers would keep playing under the new song's timeline.
+	// A few characters from each end of the base64 catches a
+	// real content difference at near-enough-zero cost - cheap
+	// enough to run on every remount, unlike walking the whole
+	// string, which this component (Gradio 6 rebuilds it on
+	// every click) would otherwise do constantly.
+	private computeFingerprint(layers: MixerLayerData[]): string {
+		const EDGE = 24;
+
+		return layers
+			.map((layer) => {
+				const wav = layer.wav;
+				return (
+					layer.name + ":" + wav.length + ":" +
+					wav.slice(0, EDGE) + ":" + wav.slice(-EDGE)
+				);
+			})
+			.join("|");
+	}
+
+	// Called whenever the component sees a new set of layers,
+	// before anything has necessarily been decoded - so a
+	// stale loop is cleared the moment new music arrives, not
+	// only once Play is next pressed. A loop is seconds into a
+	// specific song; carried into a different one it is just a
+	// stretch of arbitrary time, possibly past the new song's
+	// end.
+	noteLayers(layers: MixerLayerData[]): void {
+		const fingerprint = this.computeFingerprint(layers);
+
+		if (fingerprint !== this.selectionFingerprint) {
+			this.clearLoop();
+			this.selectionFingerprint = fingerprint;
+		}
+	}
+
 	private async ensureAudio(layers: MixerLayerData[]): Promise<void> {
 		if (!this.context) {
 			this.context = new (window.AudioContext ||
@@ -105,9 +152,7 @@ class MixerEngine {
 			this.master = master;
 		}
 
-		const fingerprint = layers
-			.map((layer) => layer.name + ":" + layer.wav.length)
-			.join("|");
+		const fingerprint = this.computeFingerprint(layers);
 
 		if (this.fingerprint === fingerprint) return;
 

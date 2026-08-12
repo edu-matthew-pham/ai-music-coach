@@ -34,6 +34,17 @@
 	const notes = $derived(gradio.props.value?.notes ?? []);
 	const phrases = $derived(gradio.props.value?.phrases ?? []);
 
+	// A loop is seconds into a particular song. Carried over
+	// into a different one it means nothing - possibly a
+	// stretch past the new song's own end - so it is cleared
+	// here, the moment new layers are seen, rather than only
+	// once Play is next pressed and forces a decode. Run
+	// before the loop-seeding block below: a freshly built
+	// mixer always sends loop_start as null anyway, so this
+	// ordering just means nothing is left to re-seed by
+	// mistake.
+	engine.noteLayers(layers);
+
 	// Fader positions default from the engine (survives a
 	// remount) and fall back to each layer's opening level
 	// only the first time that layer is ever seen.
