@@ -33,69 +33,18 @@ shows up in the browser console rather than a pytest
 report.
 """
 
-import base64
 import html
-import io
 import json
-
-import numpy as np
-from scipy.io import wavfile
 
 from music import LAYER_NAMES, separate_layers
 
-
-# Levels a part starts at, matching what the sliders used
-# to default to: the tune audible, a click under it, the
-# rest waiting to be brought in.
-OPENING_LEVELS = {
-    "Melody": 1.0,
-    "Harmony above": 0.0,
-    "Harmony below": 0.0,
-    "Bass": 0.0,
-    "Chords": 0.0,
-    "Metronome": 0.5
-}
-
-# The colours the app already uses for these voices, so a
-# fader and the part it moves are recognisably the same
-# thing on the picture.
-LAYER_COLOURS = {
-    "Melody": "#2e7d32",
-    "Harmony above": "#e65100",
-    "Harmony below": "#6a1b9a",
-    "Bass": "#00695c",
-    "Chords": "#37474f",
-    "Metronome": "#90a4ae"
-}
-
-
-def as_wav_data(track, sample_rate):
-    """
-    One layer as a sound file the browser can decode.
-
-    Sent as data inside the page rather than as a file to
-    fetch, because a fetch needs a route and a route needs
-    the parts to outlive the request that made them. The
-    cost is size, and the size is the reason a phrase is a
-    better thing to mix than a whole song.
-    """
-
-    samples = np.asarray(track, dtype=np.float32)
-
-    # Sixteen bit, which every browser decodes, and a
-    # quarter of the size of float.
-    peak = float(np.max(np.abs(samples))) if len(samples) else 0.0
-
-    if peak > 1.0:
-        samples = samples / peak
-
-    encoded = (samples * 32767).astype(np.int16)
-
-    buffer = io.BytesIO()
-
-    wavfile.write(buffer, sample_rate, encoded)
-
-    return base64.b64encode(buffer.getvalue()).decode("ascii")
+# These used to be defined here and were borrowed by
+# mixer_data.py. Now the other way round: mixer_data.py is
+# the module still standing once this file is deleted (the
+# gr.HTML mixer is being replaced by the MusicMixer
+# component), so it owns them and this file borrows them
+# back for as long as it still exists.
+from mixer_data import as_wav_data, OPENING_LEVELS, LAYER_COLOURS, _timeline
 
 
 def mixer_html(
@@ -160,77 +109,6 @@ def mixer_html(
     )
 
     return _page(layers, missing, seconds, timeline)
-
-
-def _timeline(pitch_text, duration_text, key, bpm, chart_text,
-              lyric_text, phrase_label):
-    """
-    The bars of the chart, in seconds.
-
-    So the block can follow the music rather than only play
-    it: which chord is sounding now, where to jump to, and
-    which stretch to go round again.
-
-    Beats are turned into seconds here because the browser
-    should not have to know what a beat is. It knows where
-    it is in a sound file, and this says what is happening
-    at that moment.
-    """
-
-    from music import selected_piece
-    from chords import read_chart
-
-    piece = selected_piece(
-        pitch_text, duration_text, lyric_text, key,
-        chart_text, phrase_label
-    )
-
-    if not piece.chart or not piece.chart.strip():
-        return []
-
-    chords, bars = read_chart(piece.chart)
-
-    per_beat = 60.0 / float(bpm)
-
-    # The words under each bar, so the strip reads as the
-    # song rather than as a row of chord names. Matched by
-    # when they are sung, which is what the picture does.
-    words_at = []
-
-    position = 0.0
-    tokens = iter(piece.lyrics.split() if piece.lyrics else [])
-
-    for pitch, length in zip(piece.pitches, piece.durations):
-
-        if pitch != "R":
-
-            try:
-                words_at.append((position, next(tokens)))
-
-            except StopIteration:
-                pass
-
-        position += float(length)
-
-    strip = []
-
-    for number, (start, length, name) in enumerate(chords):
-
-        words = " ".join(
-            word for beat, word in words_at
-            if start <= beat < start + length
-        )
-
-        strip.append({
-            "name": name,
-            "start": start * per_beat,
-            "end": (start + length) * per_beat,
-            "bar": number + 1,
-            "words": words
-        })
-
-    return strip
-
 
 
 # JavaScript for the live mixer.  gr.HTML executes this through

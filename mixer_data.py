@@ -4,21 +4,152 @@
 The data half of the mixer, unchanged by the move to a
 component.
 
-separate_layers, as_wav_data and the timeline logic already
-exist and are already tested - moving from an HTML block to
-a real component changes delivery, not synthesis. This
-module is the seam: it assembles the dictionary the
-MusicMixer component's value expects, from the same
-functions mixer_block.py used.
+separate_layers and the timeline logic already exist and
+are already tested - moving from an HTML block to a real
+component changes delivery, not synthesis. This module is
+the seam: it assembles the dictionary the MusicMixer
+component's value expects.
 
-Kept separate from mixer_block.py deliberately, so the old
-block and the new component can both exist while the
-component is being proven, and mixer_block.py can be
-deleted without touching this file.
+as_wav_data, the timeline builder, and the opening levels
+and colours used to live in mixer_block.py and were
+borrowed from there. They live here now, since this module
+is the one still standing once mixer_block.py (the old
+gr.HTML block) is deleted. mixer_block.py, while it still
+exists, imports them back from here instead of defining its
+own copy.
 """
 
+import base64
+import io
+
+import numpy as np
+from scipy.io import wavfile
+
 from music import LAYER_NAMES, separate_layers
-from mixer_block import as_wav_data, _timeline, OPENING_LEVELS, LAYER_COLOURS
+
+
+# Levels a part starts at, matching what the sliders used
+# to default to: the tune audible, a click under it, the
+# rest waiting to be brought in.
+OPENING_LEVELS = {
+    "Melody": 1.0,
+    "Harmony above": 0.0,
+    "Harmony below": 0.0,
+    "Bass": 0.0,
+    "Chords": 0.0,
+    "Metronome": 0.5
+}
+
+# The colours the app already uses for these voices, so a
+# fader and the part it moves are recognisably the same
+# thing on the picture.
+LAYER_COLOURS = {
+    "Melody": "#2e7d32",
+    "Harmony above": "#e65100",
+    "Harmony below": "#6a1b9a",
+    "Bass": "#00695c",
+    "Chords": "#37474f",
+    "Metronome": "#90a4ae"
+}
+
+
+def as_wav_data(track, sample_rate):
+    """
+    One layer as a sound file the browser can decode.
+
+    Sent as data inside the page rather than as a file to
+    fetch, because a fetch needs a route and a route needs
+    the parts to outlive the request that made them. The
+    cost is size, and the size is the reason a phrase is a
+    better thing to mix than a whole song.
+    """
+
+    samples = np.asarray(track, dtype=np.float32)
+
+    # Sixteen bit, which every browser decodes, and a
+    # quarter of the size of float.
+    peak = float(np.max(np.abs(samples))) if len(samples) else 0.0
+
+    if peak > 1.0:
+        samples = samples / peak
+
+    encoded = (samples * 32767).astype(np.int16)
+
+    buffer = io.BytesIO()
+
+    wavfile.write(buffer, sample_rate, encoded)
+
+    return base64.b64encode(buffer.getvalue()).decode("ascii")
+
+
+def _timeline(pitch_text, duration_text, key, bpm, chart_text,
+              lyric_text, phrase_label):
+    """
+    The bars of the chart, in seconds.
+
+    So the mixer can follow the music rather than only play
+    it: which chord is sounding now, where to jump to, and
+    which stretch to go round again.
+
+    Beats are turned into seconds here because the browser
+    should not have to know what a beat is. It knows where
+    it is in a sound file, and this says what is happening
+    at that moment.
+    """
+
+    from music import selected_piece
+    from chords import read_chart
+
+    piece = selected_piece(
+        pitch_text, duration_text, lyric_text, key,
+        chart_text, phrase_label
+    )
+
+    if not piece.chart or not piece.chart.strip():
+        return []
+
+    chords, bars = read_chart(piece.chart)
+
+    per_beat = 60.0 / float(bpm)
+
+    # The words under each bar, so the strip reads as the
+    # song rather than as a row of chord names. Matched by
+    # when they are sung, which is what the picture does.
+    words_at = []
+
+    position = 0.0
+    tokens = iter(piece.lyrics.split() if piece.lyrics else [])
+
+    for pitch, length in zip(piece.pitches, piece.durations):
+
+        if pitch != "R":
+
+            try:
+                words_at.append((position, next(tokens)))
+
+            except StopIteration:
+                pass
+
+        position += float(length)
+
+    strip = []
+
+    for number, (start, length, name) in enumerate(chords):
+
+        words = " ".join(
+            word for beat, word in words_at
+            if start <= beat < start + length
+        )
+
+        strip.append({
+            "name": name,
+            "start": start * per_beat,
+            "end": (start + length) * per_beat,
+            "bar": number + 1,
+            "words": words
+        })
+
+    return strip
 
 
 def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,
