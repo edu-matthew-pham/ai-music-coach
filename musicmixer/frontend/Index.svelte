@@ -232,6 +232,18 @@
 		gap: 4px;
 		cursor: pointer;
 	}
+	.repeat input[type="checkbox"] {
+		/* Gradio's theme resets input appearance broadly
+		   enough that a checked box drew no checkmark at all
+		   - it wasn't disappearing, there was simply nothing
+		   left to render once checked. Forced back on and
+		   given an explicit colour rather than an inherited
+		   one that might match its own background. */
+		appearance: auto;
+		accent-color: #2e7d32;
+		width: 15px;
+		height: 15px;
+	}
 
 	.strip {
 		display: flex;
