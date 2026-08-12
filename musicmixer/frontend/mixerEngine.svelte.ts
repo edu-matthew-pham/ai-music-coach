@@ -51,6 +51,16 @@ class MixerEngine {
 	loopTo: number | null = $state(null);
 	levels: Record<string, number> = $state({});
 
+	// The first bar clicked, kept separately from loopFrom/
+	// loopTo. A shift-click computes the range against this
+	// fixed point - min of both starts, max of both ends -
+	// so selecting backwards (click bar 4, shift-click bar 1)
+	// works the same as selecting forwards. Without it, the
+	// range math assumed the second click was always later,
+	// and a backward selection collapsed to a few
+	// hundredths of a second rather than spanning the bars.
+	private anchor: MixerBarData | null = null;
+
 	// Whether a selected stretch repeats or plays once and
 	// stops. Defaults on: shift-clicking a second bar is
 	// usually done to work a hard passage on repeat.
@@ -201,9 +211,13 @@ class MixerEngine {
 	// visual update depend on the async audio path; a
 	// selection is a plain assignment and cannot go stale.
 	select(bar: MixerBarData, shiftKey: boolean): void {
-		if (shiftKey && this.loopFrom !== null) {
-			this.loopTo = Math.max(bar.end, this.loopFrom + 0.05);
+		if (shiftKey && this.anchor !== null) {
+			const start = Math.min(this.anchor.start, bar.start);
+			const end = Math.max(this.anchor.end, bar.end);
+			this.loopFrom = start;
+			this.loopTo = Math.max(end, start + 0.05);
 		} else {
+			this.anchor = bar;
 			this.loopFrom = bar.start;
 			this.loopTo = null;
 		}
@@ -214,6 +228,7 @@ class MixerEngine {
 	}
 
 	clearLoop(): void {
+		this.anchor = null;
 		this.loopFrom = null;
 		this.loopTo = null;
 		this.offset = 0;
