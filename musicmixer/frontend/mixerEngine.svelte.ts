@@ -117,6 +117,14 @@ class MixerEngine {
 
 	private stopSources(): void {
 		for (const source of this.sources) {
+			// Detached first: calling stop() on a source also
+			// fires its onended event, per the Web Audio spec -
+			// so a deliberate stop looks identical to reaching
+			// the end. Left attached, the old source's handler
+			// fires after the fact and wrongly clears `playing`
+			// even though a newer playback has since started.
+			source.onended = null;
+
 			try {
 				source.stop();
 			} catch (err) {

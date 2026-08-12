@@ -60,9 +60,17 @@
 	}
 
 	function selectBar(bar: MixerBarData, event: MouseEvent | KeyboardEvent): void {
+		// Seeking while playing should keep playing - only a
+		// click while stopped is selection-only.
+		const wasPlaying = engine.playing;
+
 		engine.select(bar, event.shiftKey);
 		playhead = engine.position();
 		reportValue();
+
+		if (wasPlaying) {
+			engine.play(layers, engine.loopFrom ?? bar.start);
+		}
 	}
 
 	function clearLoop(): void {
