@@ -2,13 +2,14 @@
 	import { diagramInstruments, diagramLayers } from "./mixerPanels.svelte";
 	import type { MixerBar, MixerDiagrams } from "./types";
 
-	// Two transparent layers per instrument, stacked: the
-	// key's scale (drawn once, doesn't move) underneath, the
-	// current bar's chord tones on top. Python guarantees
-	// both share one coordinate system for a given
-	// (key, instrument) pair, so no positioning happens here
-	// - this component only decides which strings to look up
-	// and whether each layer is visible.
+	// Three layers per instrument, stacked: structure (the
+	// instrument itself - keys, frets, strings) always at
+	// the bottom and never toggled off, the key's scale
+	// above it, the current bar's chord tones above that.
+	// Python guarantees all three share one coordinate
+	// system for a given instrument, so no positioning
+	// happens here - this component only decides which
+	// layers are visible and which chord to look up.
 	//
 	// The current chord is found the same way ChordStrip
 	// finds the current bar: the first timeline entry the
@@ -55,30 +56,31 @@
 {:else}
 	<div class="instrument-grid">
 		{#each chosenInstruments as name}
+			{@const structureSvg = diagrams.structure?.[name]}
 			{@const scaleSvg = diagrams.scale?.[name]}
 			{@const chordSvg = currentBar
 				? diagrams.chords?.[name]?.[currentBar.name]
 				: undefined}
 			<div class="instrument-card">
 				<h4>{name}</h4>
-				<div class="diagram-stack">
-					{#if diagramLayers.scale && scaleSvg}
-						<div class="layer scale-layer">{@html scaleSvg}</div>
-					{/if}
-					{#if diagramLayers.chord && chordSvg}
-						<div
-							class="layer chord-layer"
-							class:stacked={diagramLayers.scale && scaleSvg}
-						>{@html chordSvg}</div>
-					{/if}
-					{#if !diagramLayers.scale && !diagramLayers.chord}
-						<p class="instrument-empty">No layer selected.</p>
-					{:else if diagramLayers.chord && !chordSvg}
-						<p class="instrument-empty">
-							{currentBar ? "No chord picture for this bar." : "Nothing playing yet."}
-						</p>
-					{/if}
-				</div>
+				{#if structureSvg}
+					<div class="diagram-stack">
+						<div class="layer structure-layer">{@html structureSvg}</div>
+						{#if diagramLayers.scale && scaleSvg}
+							<div class="layer stacked scale-layer">{@html scaleSvg}</div>
+						{/if}
+						{#if diagramLayers.chord && chordSvg}
+							<div class="layer stacked chord-layer">{@html chordSvg}</div>
+						{/if}
+						{#if diagramLayers.chord && !chordSvg}
+							<p class="instrument-empty">
+								{currentBar ? "No chord picture for this bar." : "Nothing playing yet."}
+							</p>
+						{/if}
+					</div>
+				{:else}
+					<p class="instrument-empty">No picture for this instrument yet.</p>
+				{/if}
 			</div>
 		{/each}
 	</div>
@@ -127,7 +129,7 @@
 	.layer {
 		width: 100%;
 	}
-	.chord-layer.stacked {
+	.layer.stacked {
 		position: absolute;
 		top: 0;
 		left: 0;

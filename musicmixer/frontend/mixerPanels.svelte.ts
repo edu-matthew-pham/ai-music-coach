@@ -75,11 +75,9 @@ export const notesShowLabels = $state({ value: true });
 // this is for whoever wants the words bigger regardless.
 export const lyricsLarge = $state({ value: false });
 
-// Which instruments the diagram panel draws. Same pattern
-// as noteLayers: not "is the panel visible" but "which
-// pictures does it draw once it is". Empty by default -
-// nothing is drawn until something is chosen, the same way
-// the retired static Instruments section worked.
+// Instrument-toggle and layer-toggle (structure not
+// included: it isn't a toggle, it's the ground everything
+// else stands on).
 export const diagramInstruments: Record<string, boolean> = $state({
 	Piano: false,
 	Guitar: false,
@@ -89,10 +87,28 @@ export const diagramInstruments: Record<string, boolean> = $state({
 
 // The two transparent layers a chosen instrument stacks:
 // the key's scale (static for the song) and the current
-// bar's chord (changes as the mixer plays). Chord defaults
-// on because it's the live one - the scale is available a
-// click away, same as everything else here.
+// bar's chord (changes as the mixer plays). Both sit on
+// top of the always-there structure layer, which has no
+// toggle of its own. Chord defaults on because it's the
+// live one - the scale is available a click away, same as
+// everything else here.
 export const diagramLayers = $state({
 	scale: false,
 	chord: true
+});
+
+// Whether the Instruments panel sits beside the Mixer
+// panel (a row) rather than stacked below it (the default,
+// same as every other panel). Only meaningful once both
+// are showing at once - a layout choice, not a visibility
+// one, so it lives separately from panels above.
+export const instrumentsBesideMixer = $state({ value: false });
+
+// How the side-by-side row behaves when the two panels
+// don't both fit: drop the Instruments panel to its own
+// line below ("wrap"), or let both panels compress to fit
+// on one line ("shrink"). Only read when
+// instrumentsBesideMixer is on.
+export const sideBySideLayout = $state<{ value: "wrap" | "shrink" }>({
+	value: "wrap"
 });

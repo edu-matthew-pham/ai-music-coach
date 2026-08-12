@@ -1,5 +1,9 @@
 <script lang="ts">
-	import { panels } from "./mixerPanels.svelte";
+	import {
+		panels,
+		instrumentsBesideMixer,
+		sideBySideLayout
+	} from "./mixerPanels.svelte";
 
 	interface Props {
 		hasTimeline: boolean;
@@ -36,6 +40,23 @@
 			<input type="checkbox" bind:checked={panels.instruments} />
 			Instruments
 		</label>
+		<label class="panel-toggle">
+			<input type="checkbox" bind:checked={instrumentsBesideMixer.value} />
+			Beside mixer
+		</label>
+		{#if instrumentsBesideMixer.value}
+			<label class="panel-toggle">
+				<input
+					type="checkbox"
+					checked={sideBySideLayout.value === "shrink"}
+					onchange={(event) =>
+						(sideBySideLayout.value = event.currentTarget.checked
+							? "shrink"
+							: "wrap")}
+				/>
+				Shrink to fit
+			</label>
+		{/if}
 	{/if}
 </div>
 <style>

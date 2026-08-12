@@ -6,7 +6,7 @@
 	import { Block } from "@gradio/atoms";
 	import { onDestroy } from "svelte";
 	import { engine } from "./mixerEngine.svelte";
-	import { panels } from "./mixerPanels.svelte";
+	import { panels, instrumentsBesideMixer, sideBySideLayout } from "./mixerPanels.svelte";
 	import Transport from "./Transport.svelte";
 	import PanelToggles from "./PanelToggles.svelte";
 	import ChordStrip from "./ChordStrip.svelte";
@@ -35,7 +35,7 @@
 	const notes = $derived(gradio.props.value?.notes ?? []);
 	const phrases = $derived(gradio.props.value?.phrases ?? []);
 	const diagrams = $derived(
-		gradio.props.value?.diagrams ?? { scale: {}, chords: {} }
+		gradio.props.value?.diagrams ?? { structure: {}, scale: {}, chords: {} }
 	);
 
 	// A loop is seconds into a particular song. Carried over
@@ -176,7 +176,7 @@
 		<PanelToggles
 			hasTimeline={timeline.length > 0}
 			hasNotes={notes.length > 0}
-			hasDiagrams={Object.keys(diagrams.scale ?? {}).length > 0}
+			hasDiagrams={Object.keys(diagrams.structure ?? {}).length > 0}
 		/>
 
 		{#if panels.strip}
@@ -192,12 +192,24 @@
 			<LyricsPanel {notes} {phrases} {playhead} />
 		{/if}
 
-		{#if panels.faders}
-			<FaderPanel {layers} onLevelChanged={levelChanged} />
-		{/if}
+		{#if panels.faders || panels.instruments}
+			<div
+				class="mixer-and-instruments"
+				class:beside={instrumentsBesideMixer.value && panels.faders && panels.instruments}
+				class:shrink={sideBySideLayout.value === "shrink"}
+			>
+				{#if panels.faders}
+					<div class="mixer-and-instruments-item">
+						<FaderPanel {layers} onLevelChanged={levelChanged} />
+					</div>
+				{/if}
 
-		{#if panels.instruments}
-			<InstrumentPanel {diagrams} {timeline} {playhead} />
+				{#if panels.instruments}
+					<div class="mixer-and-instruments-item">
+						<InstrumentPanel {diagrams} {timeline} {playhead} />
+					</div>
+				{/if}
+			</div>
 		{/if}
 	</div>
 </Block>
@@ -205,5 +217,26 @@
 <style>
 	.mixer {
 		font-family: sans-serif;
+	}
+	.mixer-and-instruments {
+		display: flex;
+		flex-direction: column;
+	}
+	.mixer-and-instruments.beside {
+		flex-direction: row;
+		flex-wrap: wrap;
+		gap: 16px;
+		align-items: flex-start;
+	}
+	.mixer-and-instruments.beside .mixer-and-instruments-item {
+		flex: 1 1 320px;
+		min-width: 280px;
+	}
+	.mixer-and-instruments.beside.shrink {
+		flex-wrap: nowrap;
+	}
+	.mixer-and-instruments.beside.shrink .mixer-and-instruments-item {
+		flex: 1 1 0;
+		min-width: 0;
 	}
 </style>
