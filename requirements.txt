@@ -3,8 +3,6 @@ numpy
 librosa
 matplotlib
 mido
-transformers
-torch
 pytest
 pychord
 chorder
