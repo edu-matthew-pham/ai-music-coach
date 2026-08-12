@@ -1,22 +1,19 @@
 # mixer_data.py
 
 """
-The data half of the mixer, unchanged by the move to a
+The data half of the mixer, feeding the real MusicMixer
 component.
 
 separate_layers and the timeline logic already exist and
 are already tested - moving from an HTML block to a real
-component changes delivery, not synthesis. This module is
+component changed delivery, not synthesis. This module is
 the seam: it assembles the dictionary the MusicMixer
 component's value expects.
 
 as_wav_data, the timeline builder, and the opening levels
-and colours used to live in mixer_block.py and were
-borrowed from there. They live here now, since this module
-is the one still standing once mixer_block.py (the old
-gr.HTML block) is deleted. mixer_block.py, while it still
-exists, imports them back from here instead of defining its
-own copy.
+and colours used to live in mixer_block.py, the old gr.HTML
+mixer. That file is gone now (main.py talks to the real
+component directly); this is where they live.
 """
 
 import base64

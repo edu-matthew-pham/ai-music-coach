@@ -6,8 +6,9 @@ import gradio as gr
 
 from harmony import key_choices
 from instrument_diagrams import INSTRUMENTS, show_instruments
+from gradio_musicmixer import MusicMixer
 from lyric_merge import merge_lyrics
-from mixer_block import MIXER_JS, mixer_html
+from mixer_data import mixer_data
 from help_text import HELP_TEXT
 from music import (
     MusicInputError,
@@ -482,15 +483,14 @@ with gr.Blocks(
                     "again when a fader moves - only its "
                     "loudness changes.\n\n"
                     "Built from the boxes when the button is "
-                    "pressed. Edit anything above and press "
-                    "again.\n\n"
-                    "The chart runs along the top and "
-                    "follows the music. Click a bar to jump "
-                    "there; shift-click a second bar to go "
-                    "round that stretch until you have it. "
-                    "A phrase is quicker to build than a "
-                    "whole song, since the parts travel to "
-                    "the browser as sound."
+                    "pressed, for the whole piece. Edit "
+                    "anything above and press again.\n\n"
+                    "The mixer has its own phrase list, to "
+                    "jump straight to any phrase's exact "
+                    "start and end, and its own chord strip "
+                    "along the top: click a bar to jump "
+                    "there, shift-click a second bar to loop "
+                    "that stretch."
                 )
 
                 open_mixer_button = gr.Button(
@@ -498,7 +498,7 @@ with gr.Blocks(
                     size="sm"
                 )
 
-                mixer_output = gr.HTML(js_on_load=MIXER_JS)
+                mixer_output = MusicMixer(show_label=False)
 
             target_plot = gr.Plot(
                 label="Target Music"
@@ -628,6 +628,28 @@ with gr.Blocks(
         return gr.update(
             value=suggest_key(pitch_text, duration_text),
             visible=True
+        )
+
+    def build_mixer(pitch_text, duration_text, key, bpm,
+                    chart_text, harmony_style, lyric_text):
+        """
+        Build the live mixer for the whole piece.
+
+        The mixer has its own phrase list, reached from
+        Piece.phrases() directly, and jumps to a phrase's
+        exact start and end in seconds. Handing it one
+        phrase's worth of music instead of the whole part
+        would mean its phrase list still showed the whole
+        song's phrases but the audio underneath only ever
+        covered one of them - clicking any other phrase
+        would jump outside what had actually been sent.
+        Always building the whole part is what the Wellerman
+        demo does too, for the same reason.
+        """
+
+        return mixer_data(
+            pitch_text, duration_text, key, bpm, chart_text,
+            harmony_style, lyric_text, phrase_label="Whole part"
         )
 
     def phrases_now(pitch_text, duration_text, lyric_text,
@@ -932,7 +954,7 @@ with gr.Blocks(
     ]
 
     open_mixer_button.click(
-        fn=guard(mixer_html),
+        fn=guard(build_mixer),
         inputs=[
             pitch_input,
             duration_input,
@@ -940,8 +962,7 @@ with gr.Blocks(
             bpm_input,
             chart_input,
             harmony_style_input,
-            lyric_input,
-            phrase_input
+            lyric_input
         ],
         outputs=mixer_output
     )
