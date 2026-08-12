@@ -111,6 +111,23 @@
 		timeline.find((bar) => playhead >= bar.start && playhead < bar.end)
 	);
 
+	// On by default: while playing, the strip scrolls to keep
+	// the current bar in view. Off, it stays put - useful for
+	// glancing ahead or back in the chart without the view
+	// yanking away from wherever you were looking.
+	let follow = $state(true);
+	let barElements: Record<number, HTMLElement> = {};
+
+	$effect(() => {
+		if (follow && currentBar && barElements[currentBar.bar]) {
+			barElements[currentBar.bar].scrollIntoView({
+				behavior: "smooth",
+				inline: "center",
+				block: "nearest"
+			});
+		}
+	});
+
 	const loopLabel = $derived.by(() => {
 		if (engine.loopFrom === null) {
 			return timeline.length
@@ -151,6 +168,12 @@
 				</label>
 			{/if}
 			<span class="time">{playhead.toFixed(1)}s</span>
+			{#if timeline.length}
+				<label class="repeat">
+					<input type="checkbox" bind:checked={follow} />
+					Follow
+				</label>
+			{/if}
 		</div>
 
 		{#if timeline.length}
@@ -164,6 +187,7 @@
 							engine.loopTo !== null &&
 							bar.start >= engine.loopFrom - 0.001 &&
 							bar.end <= engine.loopTo + 0.001}
+						bind:this={barElements[bar.bar]}
 						onclick={(event) => selectBar(bar, event)}
 						onkeydown={(event) => {
 							if (event.key === "Enter" || event.key === " ") {
