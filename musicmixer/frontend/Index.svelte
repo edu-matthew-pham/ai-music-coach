@@ -4,7 +4,7 @@
 	import type { MixerPhrase } from "./types";
 	import { Gradio } from "@gradio/utils";
 	import { Block } from "@gradio/atoms";
-	import { onDestroy } from "svelte";
+	import { onDestroy, onMount } from "svelte";
 	import { engine } from "./mixerEngine.svelte";
 	import { panels, instrumentsBesideMixer, sideBySideLayout } from "./mixerPanels.svelte";
 	import Transport from "./Transport.svelte";
@@ -166,6 +166,62 @@
 		engine.setLevel(name, engine.levels[name]);
 		gradio.dispatch("input");
 	}
+
+	// Full screen covers the whole viewport by making
+	// Gradio's own wrapper element position: fixed (the CSS
+	// rule lives in main.py's global stylesheet, since a
+	// component's scoped styles can't reach out to style
+	// Gradio's own Block wrapper) - found by the same elem_id
+	// main.py gave it, rather than a second hardcoded string
+	// here that could drift from the one there.
+	//
+	// The toggle lives inside .mixer, not as a separate
+	// Gradio button outside it: a control outside the element
+	// being fullscreened gets visually covered the instant
+	// fullscreen activates, since the wrapper now sits above
+	// everything else in the page - Escape ends up the only
+	// thing that still works. Inside, the button stays in the
+	// fullscreened box itself and keeps working as a real
+	// toggle, not just an escape hatch.
+	let fullscreenActive = $state(false);
+
+	function wrapperElement(): HTMLElement | null {
+		const id = gradio.shared.elem_id;
+		return id ? document.getElementById(id) : null;
+	}
+
+	// Full screen replaces whatever the page was scrolled to
+	// with the mixer covering everything; exiting should land
+	// back on the Playback section rather than wherever the
+	// page underneath happened to be, or nowhere in
+	// particular. Same scrollIntoView the nav bar's own
+	// Playback link already uses (anchor_link in main.py), so
+	// exiting behaves like following that link.
+	function scrollToPlayback(): void {
+		document.getElementById("playback")
+			?.scrollIntoView({ behavior: "smooth" });
+	}
+
+	function toggleFullscreen(): void {
+		const wrapper = wrapperElement();
+		if (!wrapper) return;
+		fullscreenActive = wrapper.classList.toggle("fullscreen-mode");
+		document.body.style.overflow = fullscreenActive ? "hidden" : "";
+		if (!fullscreenActive) scrollToPlayback();
+	}
+
+	onMount(() => {
+		function handleEscape(event: KeyboardEvent): void {
+			if (event.key !== "Escape" || !fullscreenActive) return;
+			wrapperElement()?.classList.remove("fullscreen-mode");
+			document.body.style.overflow = "";
+			fullscreenActive = false;
+			scrollToPlayback();
+		}
+
+		window.addEventListener("keydown", handleEscape);
+		return () => window.removeEventListener("keydown", handleEscape);
+	});
 </script>
 
 <Block
@@ -178,6 +234,16 @@
 	padding={true}
 >
 	<div class="mixer" bind:clientWidth={containerWidth}>
+		<button
+			type="button"
+			class="fullscreen-toggle"
+			onclick={toggleFullscreen}
+			aria-pressed={fullscreenActive}
+			title={fullscreenActive ? "Exit full screen" : "Full screen"}
+		>
+			{fullscreenActive ? "\u2715 Exit full screen" : "\u26f6 Full screen"}
+		</button>
+
 		<Transport
 			{layers}
 			{playhead}
@@ -235,6 +301,24 @@
 <style>
 	.mixer {
 		font-family: sans-serif;
+		position: relative;
+	}
+	.fullscreen-toggle {
+		position: absolute;
+		top: 0;
+		right: 0;
+		font: inherit;
+		font-size: 11px;
+		padding: 4px 10px;
+		border: 1px solid var(--border-color-primary);
+		border-radius: 6px;
+		background: var(--background-fill-primary);
+		color: var(--body-text-color-subdued);
+		cursor: pointer;
+		z-index: 1;
+	}
+	.fullscreen-toggle:hover {
+		background: var(--background-fill-secondary, #f5f5f5);
 	}
 	.mixer-and-instruments {
 		display: flex;

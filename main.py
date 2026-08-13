@@ -467,19 +467,18 @@ with gr.Blocks(
                 "stretch."
             )
 
-            with gr.Row():
+            open_mixer_button = gr.Button(
+                "Generate Playback",
+                size="sm"
+            )
 
-                open_mixer_button = gr.Button(
-                    "Generate Playback",
-                    size="sm"
-                )
-
-                fullscreen_button = gr.Button(
-                    "\u26f6 Full screen",
-                    elem_id="playback-fullscreen-toggle",
-                    size="sm"
-                )
-
+            # Full screen is its own toggle inside the mixer's
+            # own box (Index.svelte), not a Gradio button out
+            # here - a control outside the element that goes
+            # fullscreen gets covered the moment it does, since
+            # the box now sits above everything else on the
+            # page. #mixer-widget below is what that toggle
+            # reaches for.
             mixer_output = MusicMixer(
                 show_label=False, elem_id="mixer-widget"
             )
@@ -885,41 +884,6 @@ with gr.Blocks(
             lyric_input
         ],
         outputs=mixer_output
-    )
-
-    # Purely visual, so no Python round trip: the class does
-    # everything, and the fixed-position CSS rule above does
-    # the rest. Targets the mixer widget's own box, not the
-    # whole Playback column, so the heading and blurb are not
-    # dragged into the fullscreen view along with it. Escape
-    # exits from anywhere, not just a second click on the
-    # button, which is what a full-screen toggle is expected
-    # to do - the listener is attached once and guarded
-    # against being attached again, since this wiring runs
-    # again on the page's own event bindings but the window
-    # itself persists across that.
-    fullscreen_button.click(
-        fn=None,
-        js="""
-        () => {
-            const widget = document.getElementById('mixer-widget');
-            const active = widget.classList.toggle('fullscreen-mode');
-            document.body.style.overflow = active ? 'hidden' : '';
-
-            if (!window.__playbackFullscreenEscape) {
-                window.__playbackFullscreenEscape = (event) => {
-                    if (event.key === 'Escape') {
-                        document.getElementById('mixer-widget')
-                            .classList.remove('fullscreen-mode');
-                        document.body.style.overflow = '';
-                    }
-                };
-                window.addEventListener(
-                    'keydown', window.__playbackFullscreenEscape
-                );
-            }
-        }
-        """
     )
 
     def cycle_phrase(step):
