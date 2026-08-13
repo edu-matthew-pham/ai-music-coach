@@ -191,15 +191,62 @@
 	}
 	.diagram-stack {
 		position: relative;
+		/* Sized by its one normal-flow child, the structure
+		   layer below - the stacked overlays are absolute
+		   and don't contribute to this box's own size. */
+		display: inline-block;
 	}
 	.layer {
-		width: 100%;
+		display: block;
+	}
+	.structure-layer :global(svg) {
+		/* The svg tags themselves are injected via {@html}
+		   from Python and arrive with their own explicit
+		   width="100%" attribute - styling the wrapping div
+		   alone (two earlier attempts) never reaches past
+		   that, since Svelte's scoped styles don't apply
+		   inside {@html} content without :global(), and a
+		   div sized to "auto" around a child that's itself
+		   sized to "100% of the div" is circular and
+		   resolves unpredictably rather than to the child's
+		   own intrinsic size.
+		   Targeting the actual <svg> here and fixing its
+		   height while leaving width unset lets the browser
+		   compute width from the drawing's own intrinsic
+		   aspect ratio, so every instrument renders at the
+		   same height with no letterbox gap and no
+		   distortion.
+		   120px is a DISPLAY size, deliberately not the same
+		   number as the shared viewBox height in
+		   instrument_diagrams.py's PIANO_LAYOUT/
+		   FRETBOARD_LAYOUT/VIOLIN_LAYOUT (196) - those are
+		   internal drawing-space units, not screen pixels,
+		   and setting this to 196 rendered everything at its
+		   full native coordinate size, which is genuinely
+		   huge. This number is a UI judgement call for the
+		   panel, free to retune by eye once it's visible in
+		   a real build; it only needs to stay the same
+		   across every instrument, not match anything in
+		   Python. */
+		display: block;
+		width: auto;
+		height: 100px;
 	}
 	.layer.stacked {
+		/* An overlay has to fill exactly the box the
+		   structure layer already established, not size
+		   itself independently. */
 		position: absolute;
 		top: 0;
 		left: 0;
+		width: 100%;
+		height: 100%;
 		pointer-events: none;
+	}
+	.layer.stacked :global(svg) {
+		display: block;
+		width: 100%;
+		height: 100%;
 	}
 	.instrument-empty {
 		font-size: 12px;

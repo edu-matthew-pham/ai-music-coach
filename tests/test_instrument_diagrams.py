@@ -1,1717 +1,409 @@
-# instrument_diagrams.py
-
 """
-Where the notes of a key sit on an instrument.
+The diagrams have to agree with the music.
 
-A singer working out a line by ear often wants to find it
-on something with frets or keys. These draw the key onto
-three instruments: every note is shown, and the seven that
-belong to the key are marked. Showing only the seven would
-hide what a wrong note looks like, which is half of what a
-diagram is for.
-
-Nothing here holds state. Each function takes a key name
-and returns a picture of it, so a change to the key box
-draws a new diagram rather than updating an old one.
-
-The pictures are SVG, built as text. Drawing them with a
-plotting library would mean an image per key per
-instrument and a figure to close; a fretboard is a few
-rectangles and circles, and text is cheaper.
+A picture of a key is only useful if the positions it
+marks are the notes the app would play and spell. These
+check the theory underneath the drawing, and that the
+drawing is well formed enough to render.
 """
 
-from harmony import MAJOR_SCALES, RELATIVE_MINORS
-from notes import NOTE_SEMITONES, SHARP_NAMES
+import re
+
+import pytest
+
+from harmony import MAJOR_SCALES
+from notes import NOTE_SEMITONES
+from instrument_diagrams import (
+    INSTRUMENTS,
+    STRING_TUNINGS,
+    FRETS_SHOWN,
+    diagram_for,
+    fretboard_diagram,
+    name_for,
+    piano_diagram,
+    semitones_in,
+    show_instrument,
+    _note_at
+)
 
 
-# Flat keys spell their black notes with flats, sharp keys
-# with sharps. The same sound either way; the diagram
-# should agree with the boxes rather than teach a second
-# name for the note the player is reading.
-FLAT_NAMES = [
-    "C", "Db", "D", "Eb", "E", "F",
-    "Gb", "G", "Ab", "A", "Bb", "B"
-]
-
-FLAT_KEYS = {"F", "Bb", "Eb", "Ab", "Db", "Gb", "Cb"}
+def test_a_key_holds_seven_notes():
+    for key in MAJOR_SCALES:
+        assert len(semitones_in(key)) == 7
 
 
-# The colours the app already uses for its voices, so a
-# diagram sits beside the pictures without introducing a
-# third palette.
-IN_KEY_COLOUR = "#2e7d32"
-HOME_COLOUR = "#e65100"
-OFF_KEY_COLOUR = "#c8c8c8"
-LINE_COLOUR = "#37474f"
-LABEL_COLOUR = "#555555"
-
-
-# How each string is tuned, lowest string first, as note
-# names with octaves. Guitar sounds an octave below what it
-# reads, which matters for nothing here: the diagram is
-# about which finger position gives which note name.
-STRING_TUNINGS = {
-    "Guitar": ["E2", "A2", "D3", "G3", "B3", "E4"]
-}
-
-# The violin's strings, lowest first, and where each hand
-# position's frame begins. The stored number is one
-# semitone below where the first finger's low placement
-# falls, the way the nut sits one below the low first
-# finger in first position.
-#
-# In third position the hand has shifted so the first
-# finger lands where the third finger was: five semitones
-# above the open string, a perfect fourth. The frame
-# therefore starts at four. Writing five here was an
-# off-by-one that put the whole hand a semitone sharp.
-VIOLIN_STRINGS = ["G3", "D4", "A4", "E5"]
-
-POSITION_STARTS = {
-    "First position": 0,
-    "Third position": 4
-}
-
-# How far above its frame a hand reaches: four fingers
-# covering roughly seven semitones.
-POSITION_REACH = 7
-
-# The most fingers a hand has.
-FINGERS = 4
-
-
-# Layout numbers, named once so a chord overlay can find
-# the exact same spot the key diagram marked. Duplicating
-# these as separate literals in an overlay function would
-# let the two drift apart pixel by pixel; sharing the one
-# dict is what keeps a transparent overlay actually
-# transparent-in-register rather than merely see-through.
-PIANO_LAYOUT = {
-    "octaves": 3,
-    "white_width": 44,
-    "white_height": 170,
-    "black_width": 26,
-    "black_height": 105,
-}
-
-FRETBOARD_LAYOUT = {
-    "left": 46,
-    "top": 26,
-    "fret_width": 52,
-    "string_gap": 30,
-}
-
-VIOLIN_LAYOUT = {
-    "left": 46,
-    "top": 26,
-    "semitone_width": 60,
-    "string_gap": 42,
-}
-
-
-def fingering_for(open_string, key, frame):
+def test_the_semitones_are_the_scale_the_app_harmonises_from():
     """
-    Which finger takes which note, on one string.
-
-    The fingers are ordinal, not spaced: within a position
-    the four fingers take the next four notes of the key
-    in order, whatever the gaps between them happen to be.
-    A key with a half step early in the hand and one with
-    a whole step there use the same four fingers - they
-    just sit differently, which is the whole of what a
-    hand shape is.
-
-    Mapping semitone distance to a finger instead - one
-    finger per tone, with a low and a high placement each
-    - stamps the same number on two notes whenever the key
-    puts scale notes a half step apart inside the hand,
-    and then never reaches the fourth finger at all. That
-    is a model of a hand with four fixed places rather
-    than four fingers.
-
-    The open string is not here: it needs no finger, so it
-    belongs to every position and is drawn at the nut
-    whatever the hand is doing.
+    The diagram and the harmony must draw on one idea of
+    the key, or the picture teaches a scale the app will
+    not sing.
     """
 
-    in_key = semitones_in(key)
+    for key, scale in MAJOR_SCALES.items():
 
-    reachable = [
-        step
-        for step in range(frame + 1, frame + POSITION_REACH + 1)
-        if _note_at(open_string, step) in in_key
-    ]
-
-    return [
-        (step, finger)
-        for finger, step in enumerate(reachable[:FINGERS], start=1)
-    ]
-
-FRETS_SHOWN = 12
-
-# The dots inlaid on a guitar neck, which is how players
-# find their place without counting.
-MARKER_FRETS = {3, 5, 7, 9}
+        assert semitones_in(key) == {
+            NOTE_SEMITONES[note] % 12 for note in scale
+        }
 
 
-def semitones_in(key):
+def test_a_key_written_in_flats_is_drawn_in_flats():
     """
-    The seven semitone classes a key contains.
-
-    Held as numbers rather than names so that a diagram can
-    ask "is this position in the key" without knowing which
-    dialect either side is spelled in.
+    In F the fourth is Bb. A# is the same sound in the
+    wrong dialect, and a player reading Bb in the boxes
+    should not have to translate.
     """
 
-    scale = MAJOR_SCALES.get(key)
+    assert name_for(10, "F") == "Bb"
+    assert name_for(10, "Bb") == "Bb"
 
-    if scale is None:
-        raise KeyError(
-            f"'{key}' is not a key this app knows."
-        )
-
-    return {NOTE_SEMITONES[note] % 12 for note in scale}
+    assert name_for(10, "D") == "A#"
+    assert name_for(6, "G") == "F#"
 
 
-def name_for(semitone, key):
+def test_an_unknown_key_is_refused_rather_than_guessed():
+    with pytest.raises(KeyError):
+        semitones_in("H")
+
+
+def test_a_string_stopped_at_a_fret_sounds_the_right_note():
     """
-    What to call a semitone in a given key's dialect.
-    """
-
-    if key in FLAT_KEYS:
-        return FLAT_NAMES[semitone % 12]
-
-    return SHARP_NAMES[semitone % 12]
-
-
-def describe_key(key):
-    """
-    The key written the way the app names it elsewhere.
+    Twelve frets is an octave, and the fifth fret of the
+    low E is the A the next string is tuned to - the way
+    a guitar is tuned by ear.
     """
 
-    minor = RELATIVE_MINORS.get(key)
+    assert _note_at("E2", 0) == _note_at("E2", 12)
 
-    if minor:
-        return f"{key} major / {minor} minor"
+    assert _note_at("E2", 5) == _note_at("A2", 0)
+    assert _note_at("A2", 5) == _note_at("D3", 0)
 
-    return key
-
-
-def _note_at(open_string, fret):
-    """
-    The semitone sounded by a string stopped at a fret.
-    """
-
-    letter = open_string[:-1]
-    octave = int(open_string[-1])
-
-    return (NOTE_SEMITONES[letter] + octave * 12 + fret) % 12
+    # The violin is tuned in fifths, seven semitones apart.
+    assert _note_at("G3", 7) == _note_at("D4", 0)
 
 
-def _escape(text):
-    """
-    Text safe to put inside an SVG element.
-    """
+def test_every_instrument_draws_every_key():
+    for key in MAJOR_SCALES:
+        for instrument in INSTRUMENTS:
 
-    return (
-        str(text)
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
+            picture = diagram_for(key, instrument)
 
+            assert picture.startswith("<svg")
+            assert picture.endswith("</svg>")
 
-def _colour_for(semitone, key, home):
-    """
-    How a position is marked: home, in the key, or outside.
-    """
+            # Every tag opened is closed: a malformed
+            # picture renders as nothing at all.
+            opened = len(re.findall(r"<(rect|circle|line|text)\b", picture))
 
-    if semitone == home:
-        return HOME_COLOUR
-
-    if semitone in semitones_in(key):
-        return IN_KEY_COLOUR
-
-    return OFF_KEY_COLOUR
-
-
-def piano_structure():
-    """
-    The keyboard on its own, no key involved - the mixer's
-    always-there background layer. Same picture whatever
-    key is chosen, because a keyboard's keys don't move.
-    """
-
-    parts, width, height = _piano_structure_parts()
-
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {width} {height}" '
-        f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="A keyboard, three octaves">'
-        + "".join(parts) +
-        "</svg>"
-    )
-
-
-def piano_scale_overlay(key):
-    """
-    Just the key's in-key marks, transparent background,
-    positioned exactly as piano_diagram places them - for
-    stacking on piano_structure as the mixer's Scale layer.
-    """
-
-    _, width, height = _piano_structure_parts()
-    parts = _piano_scale_parts(key)
-
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {width} {height}" '
-        f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="The notes of '
-        f'{_escape(describe_key(key))} highlighted on a '
-        f'keyboard">'
-        + "".join(parts) +
-        "</svg>"
-    )
-
-
-def piano_diagram(key):
-    """
-    Three octaves of a keyboard with the key's notes
-    marked. One octave shows the pattern; three show it
-    repeating, which is how a keyboard is actually read -
-    a line moves across octaves, and the shape a hand
-    finds is the same shape everywhere.
-
-    White and black keys are drawn as they sit, because
-    that is how they are found: a player looks for the
-    group of two black keys, not for a pitch class.
-
-    The marking is a spot near the front of each key, not
-    a filled key. Colouring the keys themselves turns most
-    of a keyboard into one block of colour and hides the
-    black keys inside it, which is the shape a player is
-    actually navigating by.
-
-    Built from piano_structure and piano_scale_overlay so
-    the standalone diagram and the mixer's separately
-    toggleable layers can never draw the keyboard two
-    different ways.
-    """
-
-    structure_parts, width, height = _piano_structure_parts()
-    scale_parts = _piano_scale_parts(key)
-
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {width} {height}" '
-        f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="A keyboard octave with the '
-        f'notes of {_escape(describe_key(key))} marked">'
-        + "".join(structure_parts) + "".join(scale_parts) +
-        "</svg>"
-    )
-
-
-def _piano_structure_parts():
-    """
-    The keyboard itself: white and black keys, nothing
-    marked on them. Key-independent - three octaves look
-    the same whatever key is chosen - so this is the part
-    of the picture that never needs to change or be
-    toggled off.
-    """
-
-    octaves = PIANO_LAYOUT["octaves"]
-
-    white_semitones = [
-        semitone + octave * 12
-        for octave in range(octaves)
-        for semitone in [0, 2, 4, 5, 7, 9, 11]
-    ]
-
-    black_after = {
-        semitone + octave * 12: raised + octave * 12
-        for octave in range(octaves)
-        for semitone, raised in
-        {0: 1, 2: 3, 5: 6, 7: 8, 9: 10}.items()
-    }
-
-    white_width = PIANO_LAYOUT["white_width"]
-    white_height = PIANO_LAYOUT["white_height"]
-    black_width = PIANO_LAYOUT["black_width"]
-    black_height = PIANO_LAYOUT["black_height"]
-
-    parts = []
-
-    for index in range(len(white_semitones)):
-
-        x = index * white_width
-
-        parts.append(
-            f'<rect x="{x}" y="0" width="{white_width}" '
-            f'height="{white_height}" fill="#ffffff" '
-            f'stroke="{LINE_COLOUR}" stroke-width="1.5"/>'
-        )
-
-    for index, semitone in enumerate(white_semitones):
-
-        raised = black_after.get(semitone)
-
-        if raised is None:
-            continue
-
-        x = (index + 1) * white_width - black_width / 2
-
-        parts.append(
-            f'<rect x="{x}" y="0" width="{black_width}" '
-            f'height="{black_height}" fill="#212121" '
-            f'stroke="{LINE_COLOUR}" stroke-width="1.5"/>'
-        )
-
-    width = len(white_semitones) * white_width
-
-    return parts, width, white_height
-
-
-def _piano_scale_parts(key):
-    """
-    Just the in-key marks a piano_diagram draws on top of
-    its keys - no keyboard underneath. What the mixer's
-    Scale layer shows, stacked on the always-visible
-    structure from _piano_structure_parts.
-    """
-
-    home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
-    in_key = semitones_in(key)
-
-    octaves = PIANO_LAYOUT["octaves"]
-
-    white_semitones = [
-        semitone + octave * 12
-        for octave in range(octaves)
-        for semitone in [0, 2, 4, 5, 7, 9, 11]
-    ]
-
-    black_after = {
-        semitone + octave * 12: raised + octave * 12
-        for octave in range(octaves)
-        for semitone, raised in
-        {0: 1, 2: 3, 5: 6, 7: 8, 9: 10}.items()
-    }
-
-    white_width = PIANO_LAYOUT["white_width"]
-    white_height = PIANO_LAYOUT["white_height"]
-    black_width = PIANO_LAYOUT["black_width"]
-    black_height = PIANO_LAYOUT["black_height"]
-
-    parts = []
-
-    def spot(x, y, semitone, radius):
-        """
-        The mark on a key that is in the key.
-        """
-
-        colour = (
-            HOME_COLOUR if semitone % 12 == home
-            else IN_KEY_COLOUR
-        )
-
-        return (
-            f'<circle cx="{x}" cy="{y}" r="{radius}" '
-            f'fill="{colour}"/>'
-            f'<text x="{x}" y="{y + 4}" text-anchor="middle" '
-            f'font-size="11" font-family="sans-serif" '
-            f'fill="#ffffff">'
-            f'{_escape(name_for(semitone, key))}</text>'
-        )
-
-    for index, semitone in enumerate(white_semitones):
-
-        x = index * white_width
-
-        if semitone % 12 in in_key:
-            parts.append(
-                spot(
-                    x + white_width / 2,
-                    white_height - 28,
-                    semitone,
-                    14
-                )
+            closed = (
+                len(re.findall(r"/>", picture))
+                + len(re.findall(r"</text>", picture))
             )
 
-    # Black keys second, so they sit over the white ones.
-    for index, semitone in enumerate(white_semitones):
-
-        raised = black_after.get(semitone)
-
-        if raised is None:
-            continue
-
-        x = (index + 1) * white_width - black_width / 2
-
-        if raised % 12 in in_key:
-            parts.append(
-                spot(
-                    x + black_width / 2,
-                    black_height - 22,
-                    raised,
-                    12
-                )
-            )
-
-    return parts
+            assert closed >= opened
 
 
-def fretboard_structure(instrument="Guitar"):
+def test_the_neck_marks_every_position_not_only_the_key():
     """
-    The neck itself - nut, frets, strings, fret numbers,
-    inlay dots - with nothing marked on it. Key-independent:
-    a fretboard is the same physical object whatever key is
-    chosen, so this is the mixer's always-there background
-    for a Guitar or similar string instrument.
+    A player needs to see the note to avoid as much as the
+    note to play, so the positions outside the key are
+    drawn faintly rather than left out.
     """
 
-    parts, width, height = _fretboard_structure_parts(instrument)
+    from instrument_diagrams import OFF_KEY_COLOUR, IN_KEY_COLOUR
 
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {width} {height}" '
-        f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="A {_escape(instrument)} neck">'
-        + "".join(parts) +
-        "</svg>"
+    picture = fretboard_diagram("C", "Guitar")
+
+    strings = len(STRING_TUNINGS["Guitar"])
+
+    positions = len(re.findall(r"<circle", picture))
+
+    # Every string at every fret, plus the inlaid dots.
+    assert positions >= strings * (FRETS_SHOWN + 1)
+
+    assert OFF_KEY_COLOUR in picture
+    assert IN_KEY_COLOUR in picture
+
+
+def test_every_instrument_draws_the_same_height():
+    """
+    Piano, Guitar, and both violin positions are shown side
+    by side in the mixer's instrument panel - a picture much
+    shorter or taller than its neighbours reads as a layout
+    accident, not a deliberate choice, so all four share one
+    height even though their widths genuinely differ.
+    """
+
+    import re
+
+    heights = set()
+
+    for instrument in INSTRUMENTS:
+        picture = diagram_for("C", instrument)
+        box = re.search(r'viewBox="0 0 (\d+) (\d+)"', picture)
+        heights.add(box.group(2))
+
+    assert len(heights) == 1
+
+
+def test_home_is_marked_apart_from_the_rest_of_the_key():
+    from instrument_diagrams import HOME_COLOUR
+
+    for instrument in INSTRUMENTS:
+        assert HOME_COLOUR in diagram_for("C", instrument)
+
+
+def test_the_piano_draws_twelve_keys_to_the_octave():
+    picture = piano_diagram("C")
+
+    # Seven white and five black per octave, three octaves.
+    assert len(re.findall(r"<rect", picture)) == 36
+
+
+def test_the_view_says_what_it_is_showing():
+    shown = show_instrument("F", "Guitar")
+
+    assert "F major / D minor" in shown
+    assert "Bb" in shown
+    assert "<svg" in shown
+
+
+def test_no_key_asks_for_one_instead_of_drawing_nothing():
+    assert "<svg" not in show_instrument("", "Piano")
+    assert "<svg" not in show_instrument(None, "Piano")
+
+
+def test_choosing_no_instrument_says_so_rather_than_going_blank():
+    """
+    Every box unticked is a legitimate choice, not a fault:
+    the function says what to do instead of returning an
+    empty string that would render as broken.
+    """
+
+    from instrument_diagrams import show_instruments
+
+    shown = show_instruments("C", [])
+
+    assert "<svg" not in shown
+    assert "instrument" in shown.lower()
+
+
+def test_an_unknown_instrument_is_ignored_rather_than_guessed():
+    """
+    A stale value must not take the page down - but nor
+    should it be quietly drawn as something else. Silently
+    substituting a piano for an instrument nobody asked
+    for is a lie the picture cannot own up to, so unknown
+    names are dropped and the section says what to do.
+    """
+
+    shown = show_instrument("C", "Kazoo")
+
+    assert "<svg" not in shown
+    assert "instrument" in shown.lower()
+
+    # And a stale name alongside a real one leaves the
+    # real one drawn.
+    from instrument_diagrams import show_instruments
+
+    both = show_instruments("C", ["Kazoo", "Piano"])
+
+    assert both.count("<svg") == 1
+    assert "Piano" in both
+
+
+def test_the_violin_chart_reads_in_fingers_not_frets():
+    """
+    D major in first position: the A string reads open,
+    one, two, three - and the third finger lands on home.
+    """
+
+    from instrument_diagrams import violin_chart
+
+    picture = violin_chart("D", "First position")
+
+    assert picture.startswith("<svg")
+
+    # Finger numbers are what the chart prints.
+    for finger in "01234":
+        assert f">{finger}</text>" in picture
+
+
+def test_the_first_finger_lands_on_the_perfect_fourth():
+    """
+    Third position is defined by its first finger playing
+    what the third finger played in first position: five
+    semitones above the open string, a perfect fourth.
+
+    This chart once put the whole hand a semitone sharp,
+    so the definition is pinned at the semitone: on the A
+    string, third position's first finger is D.
+    """
+
+    from instrument_diagrams import (
+        POSITION_STARTS, fingering_for, _note_at, name_for
     )
 
+    def fingers_on(string, key, position):
+        frame = POSITION_STARTS[position]
+        return {
+            finger: name_for(_note_at(string, step), key)
+            for step, finger in fingering_for(string, key, frame)
+        }
 
-def fretboard_scale_overlay(key, instrument="Guitar"):
+    # D major, A string: the third finger's note in first
+    # position is the first finger's in third.
+    first = fingers_on("A4", "D", "First position")
+    third = fingers_on("A4", "D", "Third position")
+
+    assert first[3] == "D"
+    assert third[1] == "D"
+
+    # Which is five semitones above the open string: a
+    # perfect fourth, not a fifth.
+    assert _note_at("A4", 5) == _note_at("D4", 0)
+
+
+def test_each_finger_is_used_once_on_a_string():
     """
-    Just the key's marks - every fretted position, coloured
-    home/in-key/off-key - transparent background, positioned
-    exactly as fretboard_diagram places them. The mixer's
-    Scale layer, stacked on fretboard_structure.
+    The fingers are ordinal: within a position the four of
+    them take the next four notes of the key in order. A
+    chart that stamps the same number on two notes and
+    never reaches the fourth is modelling a hand with four
+    fixed places rather than four fingers.
+
+    This chart did exactly that on the A and E strings in
+    third position - two threes, no four.
     """
 
-    _, width, height = _fretboard_structure_parts(instrument)
-    parts = _fretboard_scale_parts(key, instrument)
-
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {width} {height}" '
-        f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="The notes of '
-        f'{_escape(describe_key(key))} highlighted on a '
-        f'{_escape(instrument)} neck">'
-        + "".join(parts) +
-        "</svg>"
+    from harmony import MAJOR_SCALES
+    from instrument_diagrams import (
+        VIOLIN_STRINGS, POSITION_STARTS, fingering_for
     )
 
+    for key in MAJOR_SCALES:
+        for position, frame in POSITION_STARTS.items():
+            for string in VIOLIN_STRINGS:
 
-def fretboard_diagram(key, instrument="Guitar"):
-    """
-    A fingerboard with every position marked.
+                fingers = [
+                    finger
+                    for step, finger in
+                    fingering_for(string, key, frame)
+                ]
 
-    Positions outside the key are drawn faintly rather than
-    left out: a player needs to see the note they should
-    not play as much as the ones they should, and an empty
-    space says nothing about why it is empty.
+                assert fingers == sorted(fingers)
 
-    The violin has no frets. The diagram still divides the
-    neck into semitones, which is where the fingers go; the
-    lines are a ruler, not a promise that anything stops
-    the string there.
-
-    Built from fretboard_structure and
-    fretboard_scale_overlay so the standalone diagram and
-    the mixer's separately toggleable layers can never draw
-    the neck two different ways.
-    """
-
-    structure_parts, width, height = _fretboard_structure_parts(instrument)
-    scale_parts = _fretboard_scale_parts(key, instrument)
-
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {width} {height}" '
-        f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="A {_escape(instrument)} neck with '
-        f'the notes of {_escape(describe_key(key))} marked">'
-        + "".join(structure_parts) + "".join(scale_parts) +
-        "</svg>"
-    )
-
-
-def _fretboard_structure_parts(instrument="Guitar"):
-    """
-    Nut, frets, strings, fret numbers, inlay dots - no key
-    involved, nothing marked. Raises for an instrument this
-    app cannot draw, same as the diagram functions do.
-    """
-
-    tuning = STRING_TUNINGS.get(instrument)
-
-    if tuning is None:
-        raise KeyError(
-            f"'{instrument}' is not an instrument this "
-            f"app can draw."
-        )
-
-    left = FRETBOARD_LAYOUT["left"]
-    top = FRETBOARD_LAYOUT["top"]
-    fret_width = FRETBOARD_LAYOUT["fret_width"]
-    string_gap = FRETBOARD_LAYOUT["string_gap"]
-
-    height = top + (len(tuning) - 1) * string_gap + 30
-    width = left + FRETS_SHOWN * fret_width + 20
-
-    parts = []
-
-    # The inlaid dots first, behind everything.
-    for fret in MARKER_FRETS:
-        parts.append(
-            f'<circle cx="{left + fret * fret_width - fret_width / 2}" '
-            f'cy="{top + (len(tuning) - 1) * string_gap / 2}" '
-            f'r="7" fill="#eceff1"/>'
-        )
-
-    for fret in range(FRETS_SHOWN + 1):
-
-        x = left + fret * fret_width
-
-        # The nut is the thick line at the top of the neck.
-        thickness = 4 if fret == 0 else 1
-
-        parts.append(
-            f'<line x1="{x}" y1="{top}" x2="{x}" '
-            f'y2="{top + (len(tuning) - 1) * string_gap}" '
-            f'stroke="{LINE_COLOUR}" stroke-width="{thickness}"/>'
-        )
-
-        if fret:
-            parts.append(
-                f'<text x="{x - fret_width / 2}" y="{height - 8}" '
-                f'text-anchor="middle" font-size="11" '
-                f'font-family="sans-serif" fill="{LABEL_COLOUR}">'
-                f'{fret}</text>'
-            )
-
-    # Strings run left to right, lowest drawn at the bottom
-    # the way a player looking down at the neck sees them.
-    for index, open_string in enumerate(reversed(tuning)):
-
-        y = top + index * string_gap
-
-        parts.append(
-            f'<line x1="{left}" y1="{y}" '
-            f'x2="{left + FRETS_SHOWN * fret_width}" y2="{y}" '
-            f'stroke="{LINE_COLOUR}" stroke-width="1"/>'
-        )
-
-        parts.append(
-            f'<text x="{left - 12}" y="{y + 4}" '
-            f'text-anchor="end" font-size="12" '
-            f'font-family="sans-serif" fill="{LABEL_COLOUR}">'
-            f'{_escape(open_string)}</text>'
-        )
-
-    return parts, width, height
-
-
-def _fretboard_scale_parts(key, instrument="Guitar"):
-    """
-    Just the marks fretboard_diagram draws on top of the
-    neck - every fretted position, coloured home/in-key/
-    off-key - no neck underneath. What the mixer's Scale
-    layer shows, stacked on _fretboard_structure_parts.
-    """
-
-    tuning = STRING_TUNINGS.get(instrument)
-
-    if tuning is None:
-        raise KeyError(
-            f"'{instrument}' is not an instrument this "
-            f"app can draw."
-        )
-
-    home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
-
-    left = FRETBOARD_LAYOUT["left"]
-    top = FRETBOARD_LAYOUT["top"]
-    fret_width = FRETBOARD_LAYOUT["fret_width"]
-    string_gap = FRETBOARD_LAYOUT["string_gap"]
-
-    parts = []
-
-    for index, open_string in enumerate(reversed(tuning)):
-
-        y = top + index * string_gap
-
-        for fret in range(FRETS_SHOWN + 1):
-
-            semitone = _note_at(open_string, fret)
-
-            colour = _colour_for(semitone, key, home)
-
-            # An open string sits on the nut; a stopped note
-            # sits between its fret and the one before.
-            x = (
-                left if fret == 0
-                else left + fret * fret_width - fret_width / 2
-            )
-
-            in_key = semitone in semitones_in(key)
-
-            parts.append(
-                f'<circle cx="{x}" cy="{y}" '
-                f'r="{11 if in_key else 8}" fill="{colour}" '
-                f'stroke="#ffffff" stroke-width="1.5"/>'
-            )
-
-            if in_key:
-                parts.append(
-                    f'<text x="{x}" y="{y + 4}" '
-                    f'text-anchor="middle" font-size="10" '
-                    f'font-family="sans-serif" fill="#ffffff">'
-                    f'{_escape(name_for(semitone, key))}</text>'
+                assert len(fingers) == len(set(fingers)), (
+                    f"{key} {position} {string}: {fingers}"
                 )
 
-    return parts
+                assert fingers == list(range(1, len(fingers) + 1))
 
 
-def violin_structure(position="First position"):
+def test_a_hand_reaches_all_four_fingers_in_a_major_key():
     """
-    The nut, the semitone ruler, and the strings - nothing
-    fingered. Key-independent: the neck and the hand frame
-    a position defines don't move with the key, only which
-    of its marked points light up does. The mixer's
-    always-there background for a violin chart.
+    Seven semitones of a major scale always hold four
+    notes, so every string in every key gives a full hand.
     """
 
-    parts, width, height = _violin_structure_parts(position)
-
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {width} {height}" '
-        f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="A violin neck in '
-        f'{_escape(position.lower())}">'
-        + "".join(parts) +
-        "</svg>"
+    from harmony import MAJOR_SCALES
+    from instrument_diagrams import (
+        VIOLIN_STRINGS, POSITION_STARTS, fingering_for
     )
 
+    for key in MAJOR_SCALES:
+        for frame in POSITION_STARTS.values():
+            for string in VIOLIN_STRINGS:
 
-def violin_scale_overlay(key, position="First position"):
+                assert len(
+                    fingering_for(string, key, frame)
+                ) == 4
+
+
+def test_the_open_string_belongs_to_every_position():
     """
-    Just the key's finger marks, transparent background,
-    positioned exactly as violin_chart places them - for
-    stacking on violin_structure as the mixer's Scale
-    layer.
+    An open string needs no finger, so no shift takes it
+    away: both charts draw the nought at the nut. What a
+    shifted hand loses is the nut itself - its first
+    finger starts five semitones up.
     """
 
-    _, width, height = _violin_structure_parts(position)
-    parts = _violin_scale_parts(key, position)
+    from instrument_diagrams import violin_chart
 
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {width} {height}" '
-        f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="The notes of '
-        f'{_escape(describe_key(key))} highlighted on a '
-        f'violin chart in {_escape(position.lower())}">'
-        + "".join(parts) +
-        "</svg>"
+    first = violin_chart("C", "First position")
+    third = violin_chart("C", "Third position")
+
+    assert ">0</text>" in first
+    assert ">0</text>" in third
+
+
+def test_the_two_charts_share_one_ruler_of_the_neck():
+    """
+    Both charts count semitones from the open string, so
+    third position visibly sits further along the neck:
+    its ruler reaches twelve where first position's stops
+    at seven, and its first fingered mark stands past
+    where the first position's hand ends.
+    """
+
+    from instrument_diagrams import violin_chart
+
+    first = violin_chart("C", "First position")
+    third = violin_chart("C", "Third position")
+
+    assert ">7</text>" in first
+    assert ">11</text>" not in first
+
+    # The frame starts at four and the hand reaches seven
+    # more: the ruler runs to eleven.
+    assert ">11</text>" in third
+
+
+def test_the_fourth_finger_matches_the_next_string_open():
+    """
+    In first position the fourth finger sounds the note
+    the next string plays open - the tuning check every
+    violinist makes.
+    """
+
+    from instrument_diagrams import (
+        VIOLIN_STRINGS, _note_at
     )
 
+    for lower, upper in zip(VIOLIN_STRINGS, VIOLIN_STRINGS[1:]):
+        assert _note_at(lower, 7) == _note_at(upper, 0)
 
-def violin_chart(key, position="First position"):
+
+def test_both_positions_are_offered_as_instruments():
+    from instrument_diagrams import INSTRUMENTS, show_instrument
+
+    assert "Violin, first position" in INSTRUMENTS
+    assert "Violin, third position" in INSTRUMENTS
+
+    for instrument in INSTRUMENTS:
+        assert "<svg" in show_instrument("D", instrument)
+
+
+def test_an_unknown_position_is_refused():
+    from instrument_diagrams import violin_chart
+
+    with pytest.raises(KeyError):
+        violin_chart("C", "Ninth position")
+
+
+def test_the_piano_spans_three_octaves():
     """
-    A fingering chart laid along the neck.
-
-    Horizontal like the guitar's, strings as lines with the
-    lowest at the bottom, and the ruler underneath counting
-    semitones from the open string - so the two position
-    charts share one map of the neck, and third position
-    visibly sits further along it than first.
-
-    Each mark is a finger number, which is what a violinist
-    reads, with the note name small beside it. Placement is
-    proportional to semitones, so the half-step pairs that
-    make one key's hand shape differ from another's show as
-    geometry.
-
-    The open string is drawn at the nut in every position:
-    it needs no finger, so no shift takes it away. What a
-    shifted hand loses is the nut itself - its first finger
-    starts five semitones up, where the third finger was.
-
-    Only the key's notes are drawn, on a faint semitone
-    ruler: this is a picture of a hand shape, not a map of
-    every destination the way the guitar's is.
-
-    Built from violin_structure and violin_scale_overlay so
-    the standalone chart and the mixer's separately
-    toggleable layers can never draw the neck two different
-    ways.
+    One octave shows the pattern; three show it repeating,
+    which is how a keyboard is read. Every octave carries
+    the same marks.
     """
 
-    structure_parts, width, height = _violin_structure_parts(position)
-    scale_parts = _violin_scale_parts(key, position)
+    import re
 
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {width} {height}" '
-        f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="A violin chart of '
-        f'{_escape(describe_key(key))} in '
-        f'{_escape(position.lower())}, along the neck">'
-        + "".join(structure_parts) + "".join(scale_parts) +
-        "</svg>"
-    )
+    from instrument_diagrams import piano_diagram
 
+    picture = piano_diagram("F")
 
-def _violin_structure_parts(position="First position"):
-    """
-    The nut, the semitone ruler, and the strings - no key
-    involved, nothing fingered. Raises for an unknown
-    position, same as violin_chart does.
-    """
+    assert len(re.findall(r"<rect", picture)) == 36
 
-    start = POSITION_STARTS.get(position)
-
-    if start is None:
-        raise KeyError(
-            f"'{position}' is not a position this app "
-            f"can draw."
-        )
-
-    furthest = start + POSITION_REACH
-
-    left = VIOLIN_LAYOUT["left"]
-    top = VIOLIN_LAYOUT["top"]
-    semitone_width = VIOLIN_LAYOUT["semitone_width"]
-    string_gap = VIOLIN_LAYOUT["string_gap"]
-
-    height = top + (len(VIOLIN_STRINGS) - 1) * string_gap + 44
-    width = left + furthest * semitone_width + 30
-
-    parts = []
-
-    strings_bottom = top + (len(VIOLIN_STRINGS) - 1) * string_gap
-
-    # The nut.
-    parts.append(
-        f'<line x1="{left}" y1="{top - 8}" x2="{left}" '
-        f'y2="{strings_bottom + 8}" '
-        f'stroke="{LINE_COLOUR}" stroke-width="5"/>'
-    )
-
-    # The semitone ruler: faint lines, counted underneath.
-    for step in range(1, furthest + 1):
-
-        x = left + step * semitone_width
-
-        parts.append(
-            f'<line x1="{x}" y1="{top - 4}" x2="{x}" '
-            f'y2="{strings_bottom + 4}" '
-            f'stroke="#eceff1" stroke-width="1"/>'
-        )
-
-        parts.append(
-            f'<text x="{x}" y="{height - 8}" '
-            f'text-anchor="middle" font-size="11" '
-            f'font-family="sans-serif" fill="{LABEL_COLOUR}">'
-            f'{step}</text>'
-        )
-
-    # Strings left to right along the neck, lowest at the
-    # bottom the way a player looking down sees them.
-    for index, open_string in enumerate(reversed(VIOLIN_STRINGS)):
-
-        y = top + index * string_gap
-
-        parts.append(
-            f'<line x1="{left}" y1="{y}" '
-            f'x2="{left + furthest * semitone_width}" y2="{y}" '
-            f'stroke="{LINE_COLOUR}" stroke-width="1.5"/>'
-        )
-
-        parts.append(
-            f'<text x="{left - 12}" y="{y + 4}" '
-            f'text-anchor="end" font-size="12" '
-            f'font-family="sans-serif" fill="{LABEL_COLOUR}">'
-            f'{_escape(open_string)}</text>'
-        )
-
-    return parts, width, height
-
-
-def _violin_scale_parts(key, position="First position"):
-    """
-    Just the finger marks violin_chart draws on top of the
-    neck - no ruler or strings underneath. What the mixer's
-    Scale layer shows, stacked on
-    _violin_structure_parts.
-    """
-
-    start = POSITION_STARTS.get(position)
-
-    if start is None:
-        raise KeyError(
-            f"'{position}' is not a position this app "
-            f"can draw."
-        )
-
-    home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
-    in_key = semitones_in(key)
-
-    left = VIOLIN_LAYOUT["left"]
-    top = VIOLIN_LAYOUT["top"]
-    semitone_width = VIOLIN_LAYOUT["semitone_width"]
-    string_gap = VIOLIN_LAYOUT["string_gap"]
-
-    parts = []
-
-    for index, open_string in enumerate(reversed(VIOLIN_STRINGS)):
-
-        y = top + index * string_gap
-
-        def mark(step, finger):
-            """
-            One finger's place on this string, if in key.
-            """
-
-            semitone = _note_at(open_string, step)
-
-            if semitone not in in_key:
-                return
-
-            x = left + step * semitone_width
-
-            colour = (
-                HOME_COLOUR if semitone == home
-                else IN_KEY_COLOUR
-            )
-
-            parts.append(
-                f'<circle cx="{x}" cy="{y}" r="12" '
-                f'fill="{colour}" stroke="#ffffff" '
-                f'stroke-width="1.5"/>'
-            )
-
-            parts.append(
-                f'<text x="{x}" y="{y + 4}" '
-                f'text-anchor="middle" font-size="12" '
-                f'font-family="sans-serif" fill="#ffffff">'
-                f'{finger}</text>'
-            )
-
-            parts.append(
-                f'<text x="{x + 15}" y="{y - 9}" '
-                f'text-anchor="start" font-size="9" '
-                f'font-family="sans-serif" '
-                f'fill="{LABEL_COLOUR}">'
-                f'{_escape(name_for(semitone, key))}</text>'
-            )
-
-        # The open string, in every position.
-        mark(0, 0)
-
-        for step, finger in fingering_for(open_string, key, start):
-            mark(step, finger)
-
-    return parts
-
-
-# The mixer overlay's mark, drawn heavier than the scale
-# diagram's so a chord tone that is also a scale note is
-# still visibly the thing being played right now, not just
-# a note that happens to belong to the key.
-CHORD_TONE_COLOUR = "#ad1457"
-
-# The played-shape overlay's own colours, distinct from
-# every other layer on purpose: Scale, Chord notes and
-# Chord shape are independent layers that can all be on at
-# once (all the places a chord's notes fall, plus the one
-# beginner voicing, useful together for finding
-# accompaniment or an arpeggio beyond the fixed shape) - if
-# any two layers shared a colour, a mark from one would sit
-# invisibly on top of a matching mark from the other,
-# exactly where the distinction matters most. Purple is the
-# one hue nothing else on this picture already uses: green
-# and orange belong to Scale, magenta to Chord notes, and
-# piano's own left hand gets a further distinction from its
-# right, since a two-handed shape has that to say too.
-SHAPE_COLOUR = "#6a1b9a"
-LEFT_HAND_COLOUR = "#1565c0"
-RIGHT_HAND_COLOUR = SHAPE_COLOUR
-
-
-def piano_chord_overlay(key, chord_semitone_set):
-    """
-    Chord tones only, on a transparent piano, positioned
-    exactly as piano_diagram places its marks - same
-    PIANO_LAYOUT, so the two stack in register when the
-    mixer shows both.
-
-    Nothing outside the chord is drawn: no keys, no scale
-    marks. A caller wanting the key underneath draws
-    piano_diagram separately and layers this on top.
-    """
-
-    octaves = PIANO_LAYOUT["octaves"]
-    white_width = PIANO_LAYOUT["white_width"]
-    white_height = PIANO_LAYOUT["white_height"]
-    black_width = PIANO_LAYOUT["black_width"]
-    black_height = PIANO_LAYOUT["black_height"]
-
-    white_semitones = [
-        semitone + octave * 12
-        for octave in range(octaves)
-        for semitone in [0, 2, 4, 5, 7, 9, 11]
-    ]
-
-    black_after = {
-        semitone + octave * 12: raised + octave * 12
-        for octave in range(octaves)
-        for semitone, raised in
-        {0: 1, 2: 3, 5: 6, 7: 8, 9: 10}.items()
-    }
-
-    parts = []
-
-    def spot(x, y, semitone, radius):
-        return (
-            f'<circle cx="{x}" cy="{y}" r="{radius}" '
-            f'fill="{CHORD_TONE_COLOUR}"/>'
-            f'<text x="{x}" y="{y + 4}" text-anchor="middle" '
-            f'font-size="11" font-family="sans-serif" '
-            f'fill="#ffffff">'
-            f'{_escape(name_for(semitone, key))}</text>'
-        )
-
-    for index, semitone in enumerate(white_semitones):
-
-        if semitone % 12 not in chord_semitone_set:
-            continue
-
-        x = index * white_width
-
-        parts.append(
-            spot(x + white_width / 2, white_height - 28, semitone, 14)
-        )
-
-    for index, semitone in enumerate(white_semitones):
-
-        raised = black_after.get(semitone)
-
-        if raised is None or raised % 12 not in chord_semitone_set:
-            continue
-
-        x = (index + 1) * white_width - black_width / 2
-
-        parts.append(
-            spot(x + black_width / 2, black_height - 22, raised, 12)
-        )
-
-    width = len(white_semitones) * white_width
-
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {width} {white_height}" '
-        f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="The chord tones highlighted '
-        f'on a keyboard">'
-        + "".join(parts) +
-        "</svg>"
-    )
-
-
-def fretboard_chord_overlay(key, chord_semitone_set, instrument="Guitar"):
-    """
-    Chord tones only, on a transparent fretboard, at the
-    same coordinates fretboard_diagram uses - same
-    FRETBOARD_LAYOUT, same FRETS_SHOWN, so it stacks in
-    register.
-    """
-
-    tuning = STRING_TUNINGS.get(instrument)
-
-    if tuning is None:
-        raise KeyError(
-            f"'{instrument}' is not an instrument this "
-            f"app can draw."
-        )
-
-    left = FRETBOARD_LAYOUT["left"]
-    top = FRETBOARD_LAYOUT["top"]
-    fret_width = FRETBOARD_LAYOUT["fret_width"]
-    string_gap = FRETBOARD_LAYOUT["string_gap"]
-
-    height = top + (len(tuning) - 1) * string_gap + 30
-    width = left + FRETS_SHOWN * fret_width + 20
-
-    parts = []
-
-    for index, open_string in enumerate(reversed(tuning)):
-
-        y = top + index * string_gap
-
-        for fret in range(FRETS_SHOWN + 1):
-
-            semitone = _note_at(open_string, fret)
-
-            if semitone not in chord_semitone_set:
-                continue
-
-            x = (
-                left if fret == 0
-                else left + fret * fret_width - fret_width / 2
-            )
-
-            parts.append(
-                f'<circle cx="{x}" cy="{y}" r="11" '
-                f'fill="{CHORD_TONE_COLOUR}" '
-                f'stroke="#ffffff" stroke-width="1.5"/>'
-                f'<text x="{x}" y="{y + 4}" '
-                f'text-anchor="middle" font-size="10" '
-                f'font-family="sans-serif" fill="#ffffff">'
-                f'{_escape(name_for(semitone, key))}</text>'
-            )
-
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {width} {height}" '
-        f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="The chord tones highlighted '
-        f'on a {_escape(instrument)} neck">'
-        + "".join(parts) +
-        "</svg>"
-    )
-
-
-def violin_chord_overlay(key, chord_semitone_set, position="First position"):
-    """
-    Chord tones only, on a transparent violin chart, at the
-    same coordinates violin_chart uses - same VIOLIN_LAYOUT
-    and the same fingering_for hand shape, so it stacks in
-    register and only marks fingers the hand actually plays
-    in this position.
-    """
-
-    start = POSITION_STARTS.get(position)
-
-    if start is None:
-        raise KeyError(
-            f"'{position}' is not a position this app "
-            f"can draw."
-        )
-
-    left = VIOLIN_LAYOUT["left"]
-    top = VIOLIN_LAYOUT["top"]
-    semitone_width = VIOLIN_LAYOUT["semitone_width"]
-    string_gap = VIOLIN_LAYOUT["string_gap"]
-
-    furthest = start + POSITION_REACH
-    height = top + (len(VIOLIN_STRINGS) - 1) * string_gap + 44
-    width = left + furthest * semitone_width + 30
-
-    parts = []
-
-    for index, open_string in enumerate(reversed(VIOLIN_STRINGS)):
-
-        y = top + index * string_gap
-
-        def mark(step, finger):
-
-            semitone = _note_at(open_string, step)
-
-            if semitone not in chord_semitone_set:
-                return
-
-            x = left + step * semitone_width
-
-            parts.append(
-                f'<circle cx="{x}" cy="{y}" r="12" '
-                f'fill="{CHORD_TONE_COLOUR}" '
-                f'stroke="#ffffff" stroke-width="1.5"/>'
-                f'<text x="{x}" y="{y + 4}" '
-                f'text-anchor="middle" font-size="12" '
-                f'font-family="sans-serif" fill="#ffffff">'
-                f'{finger}</text>'
-                f'<text x="{x + 15}" y="{y - 9}" '
-                f'text-anchor="start" font-size="9" '
-                f'font-family="sans-serif" fill="{LABEL_COLOUR}">'
-                f'{_escape(name_for(semitone, key))}</text>'
-            )
-
-        mark(0, 0)
-
-        for step, finger in fingering_for(open_string, key, start):
-            mark(step, finger)
-
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {width} {height}" '
-        f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="The chord tones highlighted '
-        f'on a violin chart in {_escape(position.lower())}">'
-        + "".join(parts) +
-        "</svg>"
-    )
-
-
-def _violin_position_for(instrument):
-    """
-    Which position an "instrument" string like "Violin,
-    third position" names, shared by every function that
-    dispatches on the INSTRUMENTS list so the parsing
-    lives in one place.
-    """
-
-    return (
-        "Third position" if "third" in instrument
-        else "First position"
-    )
-
-
-def structure_for(instrument):
-    """
-    The always-there background picture of one instrument -
-    no key involved. The mixer's base layer, drawn once and
-    never toggled off.
-    """
-
-    if instrument == "Piano":
-        return piano_structure()
-
-    if instrument.startswith("Violin"):
-        return violin_structure(_violin_position_for(instrument))
-
-    return fretboard_structure(instrument)
-
-
-def scale_overlay_for(key, instrument):
-    """
-    The key's-notes-only picture of one instrument,
-    transparent background, positioned to stack exactly on
-    structure_for(instrument). The mixer's Scale layer.
-    """
-
-    if instrument == "Piano":
-        return piano_scale_overlay(key)
-
-    if instrument.startswith("Violin"):
-        return violin_scale_overlay(key, _violin_position_for(instrument))
-
-    return fretboard_scale_overlay(key, instrument)
-
-
-# A beginner's shape, not the theory - one concrete place
-# to put the hand, rather than every place the chord's
-# notes occur. Only the four qualities most beginner charts
-# actually use; a quality with no settled standard shape
-# reports that honestly rather than guessing one.
-#
-# True open shapes are hand-written where a beginner
-# songbook would show one - these have their own idiosyncratic
-# fingerings, not reducible to a movable pattern. Everything
-# else uses the standard movable barre shape (E-shape or
-# A-shape, whichever needs the lower fret): at fret 0 this
-# reduces exactly to the real open E/Em/E7/Em7 and A/Am/A7/
-# Am7 chords, and elsewhere it gives the same barre shape a
-# guitar teacher would show - a barre chord is not a
-# fallback here, it is the standard shape, and drawing it
-# honestly shows the difficulty that is really there.
-#
-# Each entry is (fret, finger) per string, low E to high e.
-# fret is None for a muted string; finger is None for an
-# open string.
-GUITAR_TRUE_OPENS = {
-    ("C", ""): [
-        (None, None), (3, 3), (2, 2), (0, None), (1, 1), (0, None)
-    ],
-    ("D", ""): [
-        (None, None), (None, None), (0, None), (2, 1), (3, 3), (2, 2)
-    ],
-    ("G", ""): [
-        (3, 3), (2, 2), (0, None), (0, None), (0, None), (3, 4)
-    ],
-    ("D", "m"): [
-        (None, None), (None, None), (0, None), (2, 2), (3, 3), (1, 1)
-    ],
-    ("C", "7"): [
-        (None, None), (3, 3), (2, 2), (3, 4), (1, 1), (0, None)
-    ],
-    ("D", "7"): [
-        (None, None), (None, None), (0, None), (2, 2), (1, 1), (2, 3)
-    ],
-    ("G", "7"): [
-        (3, 3), (2, 2), (0, None), (0, None), (0, None), (1, 1)
-    ],
-}
-
-# Fret offset from the barre, low E to high e - None for a
-# muted string. At offset 0 (the barre itself, or open when
-# the whole shape sits at fret 0) no separate finger is
-# drawn for that string; the barre bar or the string itself
-# already says it.
-GUITAR_E_SHAPE = {
-    "": [0, 2, 2, 1, 0, 0],
-    "m": [0, 2, 2, 0, 0, 0],
-    "7": [0, 2, 0, 1, 0, 0],
-    "m7": [0, 2, 0, 0, 0, 0],
-}
-GUITAR_A_SHAPE = {
-    "": [None, 0, 2, 2, 2, 0],
-    "m": [None, 0, 2, 2, 1, 0],
-    "7": [None, 0, 2, 0, 2, 0],
-    "m7": [None, 0, 2, 0, 1, 0],
-}
-
-
-def guitar_shape_frets(root, quality):
-    """
-    The standard beginner shape for one chord: (fret, finger)
-    per string, low E to high e, and the fret a barre bar
-    should be drawn at (None where there is no barre - a
-    true open shape, or a movable shape sitting at fret 0).
-
-    Returns None if this quality has no standard shape to
-    show - invariant 6's choice: a gap here is more honest
-    than a guessed fingering.
-    """
-
-    if quality not in GUITAR_E_SHAPE:
-        return None
-
-    opened = GUITAR_TRUE_OPENS.get((root, quality))
-
-    if opened is not None:
-        return opened, None
-
-    root_semitone = NOTE_SEMITONES[root] % 12
-    e_fret = (root_semitone - NOTE_SEMITONES["E"]) % 12
-    a_fret = (root_semitone - NOTE_SEMITONES["A"]) % 12
-
-    if a_fret < e_fret:
-        template, barre = GUITAR_A_SHAPE[quality], a_fret
-    else:
-        template, barre = GUITAR_E_SHAPE[quality], e_fret
-
-    frets = []
-
-    for offset in template:
-
-        if offset is None:
-            frets.append((None, None))
-            continue
-
-        fret = offset + barre
-
-        if fret == 0:
-            frets.append((0, None))
-        elif fret == barre and barre > 0:
-            frets.append((fret, 1))
-        else:
-            frets.append((fret, None))
-
-    return frets, (barre if barre > 0 else None)
-
-
-def piano_shape_for(root, quality):
-    """
-    A beginner's two-hand voicing for one chord: left hand
-    plays the root and its fifth (fingers 5 and 1), right
-    hand plays the triad in root position (fingers 1, 3, 5).
-    Fixed octaves throughout, so every chord's shape sits in
-    the same place on the keyboard - a beginner is learning
-    one hand shape at a time, not chasing it up and down.
-
-    Returns None for a quality with no triad to build a
-    right-hand shape from - there is currently no such
-    quality among the ten this app supports, but the check
-    stays so a future quality fails safely rather than
-    silently.
-
-    Semitones only, not octaves: the caller places both
-    hands at whatever fixed octave the drawing uses, the
-    same way chord_overlay_for's own callers already do.
-    """
-
-    from chords import CHORD_QUALITIES
-
-    triad = CHORD_QUALITIES.get(quality)
-
-    if triad is None or len(triad) < 3:
-        return None
-
-    root_semitone = NOTE_SEMITONES[root] % 12
-
-    left_hand = [
-        (root_semitone, 5),
-        ((root_semitone + triad[2]) % 12, 1),
-    ]
-
-    right_hand = [
-        (root_semitone, 1),
-        ((root_semitone + triad[1]) % 12, 3),
-        ((root_semitone + triad[2]) % 12, 5),
-    ]
-
-    return left_hand, right_hand
-
-
-def chord_overlay_for(key, instrument, chord_name):
-    """
-    The chord-tones-only picture of one chord on one
-    instrument, positioned to stack exactly on
-    diagram_for(key, instrument) - and on structure_for and
-    scale_overlay_for, all three sharing one coordinate
-    system per (key, instrument).
-
-    Empty (no marks, correctly formed SVG) if the chord's
-    tones don't overlap the instrument's playable range in
-    a way that matters here - there is no such case for a
-    12-tone chord vocabulary against these instruments, but
-    an unreadable chord name still raises, the same as
-    diagram_for would refuse an unreadable key.
-    """
-
-    from chords import chord_semitones
-
-    tones = set(chord_semitones(chord_name))
-
-    if instrument == "Piano":
-        return piano_chord_overlay(key, tones)
-
-    if instrument.startswith("Violin"):
-        return violin_chord_overlay(
-            key, tones, _violin_position_for(instrument)
-        )
-
-    return fretboard_chord_overlay(key, tones, instrument)
-
-
-def piano_chord_shape_overlay(key, chord_name):
-    """
-    A beginner's two-hand voicing for one chord, transparent
-    background, positioned to stack on piano_structure the
-    same way piano_scale_overlay and piano_chord_overlay do.
-    Left hand one octave, right hand the next - the same
-    fixed layout every chord uses, so the shape someone
-    learns for one chord is the shape they find again for
-    the next.
-
-    Returns None if piano_shape_for has no voicing for this
-    chord's quality - the caller falls back to the
-    all-positions chord overlay, the same way a quality
-    guitar_shape_frets cannot draw falls back on guitar.
-    """
-
-    from chords import split_chord
-
-    root, quality = split_chord(chord_name)
-
-    shape = piano_shape_for(root, quality)
-
-    if shape is None:
-        return None
-
-    left_hand, right_hand = shape
-
-    _, width, height = _piano_structure_parts()
-    white_height = PIANO_LAYOUT["white_height"]
-
-    white_semitones = [
-        semitone + octave * 12
-        for octave in range(PIANO_LAYOUT["octaves"])
-        for semitone in [0, 2, 4, 5, 7, 9, 11]
-    ]
-
-    black_after = {
-        semitone + octave * 12: raised + octave * 12
-        for octave in range(PIANO_LAYOUT["octaves"])
-        for semitone, raised in
-        {0: 1, 2: 3, 5: 6, 7: 8, 9: 10}.items()
-    }
-
-    white_width = PIANO_LAYOUT["white_width"]
-    black_width = PIANO_LAYOUT["black_width"]
-    black_height = PIANO_LAYOUT["black_height"]
-
-    parts = []
-
-    def spot(semitone, finger, colour):
-
-        white_index = None
-
-        for index, white_semitone in enumerate(white_semitones):
-
-            if white_semitone == semitone:
-                white_index = index
-                break
-
-        if white_index is not None:
-
-            x = white_index * white_width + white_width / 2
-            y = white_height - 28
-            radius = 14
-
-        else:
-
-            white_index = None
-
-            for index, white_semitone in enumerate(white_semitones):
-                if black_after.get(white_semitone) == semitone:
-                    white_index = index
-                    break
-
-            if white_index is None:
-                return
-
-            x = (white_index + 1) * white_width
-            y = black_height - 22
-            radius = 12
-
-        parts.append(
-            f'<circle cx="{x}" cy="{y}" r="{radius}" '
-            f'fill="{colour}"/>'
-            f'<text x="{x}" y="{y + 4}" text-anchor="middle" '
-            f'font-size="11" font-family="sans-serif" '
-            f'fill="#ffffff">{finger}</text>'
-        )
-
-    for semitone, finger in left_hand:
-        spot(semitone, finger, LEFT_HAND_COLOUR)
-
-    for semitone, finger in right_hand:
-        spot(semitone + 12, finger, RIGHT_HAND_COLOUR)
-
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {width} {height}" '
-        f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="A beginner two-hand shape '
-        f'for {_escape(chord_name)}">'
-        + "".join(parts) +
-        "</svg>"
-    )
-
-
-def guitar_chord_shape_overlay(key, chord_name, instrument="Guitar"):
-    """
-    A beginner's standard shape for one chord, transparent
-    background, positioned to stack on fretboard_structure
-    the same way fretboard_scale_overlay and
-    fretboard_chord_overlay do.
-
-    Returns None if guitar_shape_frets has no standard shape
-    for this chord's quality - the caller falls back to the
-    all-positions chord overlay.
-    """
-
-    from chords import split_chord
-
-    root, quality = split_chord(chord_name)
-
-    shaped = guitar_shape_frets(root, quality)
-
-    if shaped is None:
-        return None
-
-    frets, barre = shaped
-
-    tuning = STRING_TUNINGS.get(instrument)
-
-    if tuning is None:
-        raise KeyError(
-            f"'{instrument}' is not an instrument this "
-            f"app can draw."
-        )
-
-    _, width, height = _fretboard_structure_parts(instrument)
-
-    left = FRETBOARD_LAYOUT["left"]
-    top = FRETBOARD_LAYOUT["top"]
-    fret_width = FRETBOARD_LAYOUT["fret_width"]
-    string_gap = FRETBOARD_LAYOUT["string_gap"]
-
-    parts = []
-
-    for tuning_index in range(len(tuning)):
-
-        # frets is ordered low string to high, matching
-        # tuning itself; the structure layer draws the low
-        # string at the bottom, so the same reversal applies
-        # here to land on the same row.
-        string_index = len(tuning) - 1 - tuning_index
-        fret, finger = frets[string_index]
-
-        y = top + tuning_index * string_gap
-
-        if fret is None:
-            parts.append(
-                f'<text x="{left - 26}" y="{y + 4}" '
-                f'text-anchor="middle" font-size="12" '
-                f'font-weight="700" font-family="sans-serif" '
-                f'fill="{SHAPE_COLOUR}">X</text>'
-            )
-            continue
-
-        if fret == 0:
-            parts.append(
-                f'<text x="{left - 26}" y="{y + 4}" '
-                f'text-anchor="middle" font-size="12" '
-                f'font-weight="700" font-family="sans-serif" '
-                f'fill="{SHAPE_COLOUR}">O</text>'
-            )
-            continue
-
-        x = left + fret * fret_width - fret_width / 2
-
-        label = finger if finger is not None else "\u2022"
-
-        parts.append(
-            f'<circle cx="{x}" cy="{y}" r="11" '
-            f'fill="{SHAPE_COLOUR}" '
-            f'stroke="#ffffff" stroke-width="1.5"/>'
-            f'<text x="{x}" y="{y + 4}" '
-            f'text-anchor="middle" font-size="11" '
-            f'font-family="sans-serif" fill="#ffffff">'
-            f'{label}</text>'
-        )
-
-    return (
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {width} {height}" '
-        f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="A beginner shape for '
-        f'{_escape(chord_name)} on a {_escape(instrument)} '
-        f'neck">'
-        + "".join(parts) +
-        "</svg>"
-    )
-
-
-def shape_overlay_for(key, instrument, chord_name):
-    """
-    The beginner-shape picture of one chord on one
-    instrument - one concrete place to put the hand, not
-    every place the chord's notes occur. None where no
-    standard shape exists for this chord (a rare quality
-    on guitar) or for this instrument (violin has no shape
-    mode - chord playing there is a different technique,
-    double stops, not this kind of hand shape): the caller
-    falls back to chord_overlay_for.
-    """
-
-    if instrument == "Piano":
-        return piano_chord_shape_overlay(key, chord_name)
-
-    if instrument.startswith("Violin"):
-        return None
-
-    return guitar_chord_shape_overlay(key, chord_name, instrument)
-
-
-INSTRUMENTS = [
-    "Piano",
-    "Guitar",
-    "Violin, first position",
-    "Violin, third position"
-]
-
-
-def diagram_for(key, instrument):
-    """
-    The picture of a key on one instrument.
-    """
-
-    if instrument == "Piano":
-        return piano_diagram(key)
-
-    if instrument.startswith("Violin"):
-        return violin_chart(key, _violin_position_for(instrument))
-
-    return fretboard_diagram(key, instrument)
-
-
-def show_instruments(key, chosen):
-    """
-    Diagrams for however many instruments are wanted.
-
-    Several at once, because they answer different halves
-    of one question: where a note sits under the hand, and
-    where it sits on the page. A violinist reading both
-    position charts together sees the shift; a singer with
-    the piano beside them sees the same seven notes twice.
-
-    The key comes from the key box every time this runs,
-    so changing the key redraws every picture rather than
-    leaving one of them showing the key that used to be
-    chosen.
-    """
-
-    if not key or key not in MAJOR_SCALES:
-        return (
-            "<p>Choose a key to see where its notes sit.</p>"
-        )
-
-    if isinstance(chosen, str):
-        chosen = [chosen]
-
-    wanted = [
-        instrument for instrument in INSTRUMENTS
-        if instrument in (chosen or [])
-    ]
-
-    if not wanted:
-        return (
-            "<p>Choose an instrument to see where the "
-            "notes of the key sit on it.</p>"
-        )
-
-    scale = MAJOR_SCALES[key]
-
-    parts = [
-        f"<p><strong>{_escape(describe_key(key))}</strong>: "
-        f"{_escape(' '.join(scale))}. "
-        f"Home is marked apart.</p>"
-    ]
-
-    for instrument in wanted:
-
-        if instrument.startswith("Violin"):
-            explained = (
-                "Numbers are fingers, nought the open "
-                "string; the ruler counts semitones from "
-                "it. Fingers drawn close sit a half step "
-                "apart."
-            )
-
-        else:
-            explained = (
-                "The greyed positions are the notes "
-                "outside the key."
-            )
-
-        parts.append(
-            f"<h4 style='margin:18px 0 4px'>"
-            f"{_escape(instrument)}</h4>"
-            f"<p style='margin:0 0 6px;font-size:0.9em;"
-            f"color:{LABEL_COLOUR}'>{explained}</p>"
-            + diagram_for(key, instrument)
-        )
-
-    return "".join(parts)
-
-
-def show_instrument(key, instrument):
-    """
-    One instrument's diagram, with a line saying what it
-    is. Kept for a single choice; show_instruments is the
-    one the interface uses.
-    """
-
-    return show_instruments(key, [instrument])
+    assert picture.count(">F</text>") == 3
+    assert picture.count(">Bb</text>") == 3

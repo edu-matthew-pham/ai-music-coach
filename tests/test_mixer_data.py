@@ -227,10 +227,20 @@ def test_mixer_data_has_the_shape_the_component_expects():
         == chart_chord_names
     )
 
-    # Violin has no shape mode at all - every chord is
-    # missing from it, not just the ones with no standard
-    # shape, so the panel always falls back to chords there.
-    assert value["diagrams"]["shapes"]["Violin, first position"] == {}
+    # Violin now has a real shape mode too - a beginner
+    # double stop, first position only - so its shapes
+    # dict should match chords the same way Piano's does,
+    # not sit empty the way it used to before that existed.
+    assert (
+        set(value["diagrams"]["shapes"]["Violin, first position"].keys())
+        == chart_chord_names
+    )
+
+    # Third position has no shape of its own, so it falls
+    # back to chord_overlay_for for every chord - the panel
+    # sees a missing entry there, same as any other
+    # quality-with-no-standard-shape gap.
+    assert value["diagrams"]["shapes"]["Violin, third position"] == {}
 
     # Structure and scale must be different pictures, not
     # the same one under two names - the bug that shipped

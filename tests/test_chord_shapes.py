@@ -15,6 +15,7 @@ from instrument_diagrams import (
     piano_shape_for,
     shape_overlay_for,
     structure_for,
+    violin_shape_strings,
 )
 
 
@@ -168,15 +169,16 @@ def test_a_shape_overlay_stacks_on_the_same_structure():
         assert structure_box == shape_box
 
 
-def test_violin_has_no_shape_mode():
+def test_violin_third_position_has_no_shape_mode():
     """
-    Chords on a violin are double stops, not a hand shape
-    the way piano and guitar have one - shape mode simply
-    does not apply, and says so by returning nothing rather
-    than drawing something misleading.
+    Chords on a violin are double stops - a real shape mode
+    now exists, but only in first position, where an open
+    string keeps the shape genuinely beginner-low. Third
+    position has no shape of its own and falls back to
+    chord_overlay_for.
     """
 
-    assert shape_overlay_for("C", "Violin, first position", "C") is None
+    assert shape_overlay_for("C", "Violin, first position", "C") is not None
     assert shape_overlay_for("C", "Violin, third position", "C") is None
 
 
@@ -263,3 +265,101 @@ def test_every_layer_that_can_show_together_has_its_own_colour():
     ]
 
     assert len(colours) == len(set(colours))
+
+
+# Real, well-known beginner violin double stops - the
+# classic "two adjacent open strings, a fifth apart" family,
+# and one where the root needs a stopped finger.
+KNOWN_VIOLIN_SHAPES = {
+    ("D", ""): {"D", "A"},   # open D, open A
+    ("G", ""): {"G", "D"},   # open G, open D
+    ("A", ""): {"A", "E"},   # open A, open E
+}
+
+
+@pytest.mark.parametrize("root,quality", KNOWN_VIOLIN_SHAPES.keys())
+def test_a_violin_shape_matches_a_known_beginner_double_stop(root, quality):
+    """
+    D, G, and A major each have a real, classic beginner
+    double stop: two adjacent strings, both open, a fifth
+    apart - root and fifth, no finger needed at all. If the
+    algorithm didn't find these, favouring open strings
+    would be a claim it doesn't actually keep.
+    """
+
+    from instrument_diagrams import VIOLIN_STRINGS
+
+    low_i, low_fret, high_i, high_fret = violin_shape_strings(root, quality)
+
+    assert low_fret == 0
+    assert high_fret == 0
+
+    sounding = {
+        VIOLIN_STRINGS[low_i][:-1], VIOLIN_STRINGS[high_i][:-1]
+    }
+
+    assert sounding == KNOWN_VIOLIN_SHAPES[(root, quality)]
+
+
+def test_a_violin_shape_always_includes_the_root():
+    """
+    A double stop without its root does not read as that
+    chord - the root has to be one of the two notes, on
+    whichever string reaches it.
+    """
+
+    from instrument_diagrams import VIOLIN_STRINGS, NOTE_SEMITONES, _note_at
+
+    for root in ["C", "D", "Eb", "F#", "A", "B"]:
+
+        low_i, low_fret, high_i, high_fret = violin_shape_strings(root, "")
+
+        root_semitone = NOTE_SEMITONES[root] % 12
+
+        sounding = {
+            _note_at(VIOLIN_STRINGS[low_i], low_fret),
+            _note_at(VIOLIN_STRINGS[high_i], high_fret),
+        }
+
+        assert root_semitone in sounding
+
+
+def test_violin_shapes_cover_every_root_and_quality():
+    """
+    Unlike guitar, where a shape only exists for the
+    handful of qualities a songbook actually teaches, every
+    root and quality this app supports has a reachable
+    double stop within VIOLIN_SHAPE_MAX_FRET on some
+    adjacent string pair - a full-coverage result, the same
+    kind piano's triad voicing already has and guitar's
+    fixed shapes don't.
+    """
+
+    from chords import CHORD_QUALITIES
+
+    roots = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+
+    for root in roots:
+        for quality in CHORD_QUALITIES:
+            assert violin_shape_strings(root, quality) is not None
+
+
+def test_a_violin_shape_stacks_on_the_same_structure():
+
+    structure = structure_for("Violin, first position")
+    shape = shape_overlay_for("C", "Violin, first position", "D")
+
+    structure_box = re.search(r'viewBox="([^"]+)"', structure).group(1)
+    shape_box = re.search(r'viewBox="([^"]+)"', shape).group(1)
+
+    assert structure_box == shape_box
+
+
+def test_a_violin_shape_uses_the_shared_shape_colour():
+
+    from instrument_diagrams import CHORD_TONE_COLOUR, SHAPE_COLOUR
+
+    shape = shape_overlay_for("C", "Violin, first position", "D")
+
+    assert SHAPE_COLOUR in shape
+    assert CHORD_TONE_COLOUR not in shape

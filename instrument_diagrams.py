@@ -89,16 +89,16 @@ FINGERS = 4
 PIANO_LAYOUT = {
     "octaves": 3,
     "white_width": 44,
-    "white_height": 170,
+    "white_height": 196,
     "black_width": 26,
-    "black_height": 105,
+    "black_height": 121,
 }
 
 FRETBOARD_LAYOUT = {
     "left": 46,
     "top": 26,
     "fret_width": 52,
-    "string_gap": 30,
+    "string_gap": 28,
 }
 
 VIOLIN_LAYOUT = {
@@ -1594,23 +1594,219 @@ def guitar_chord_shape_overlay(key, chord_name, instrument="Guitar"):
     )
 
 
+# How far up a string a beginner double stop reaches - low
+# first position, not stretched toward where the hand would
+# shift. Matches the "stay low, favour an open string"
+# convention a real double stop follows.
+VIOLIN_SHAPE_MAX_FRET = 4
+
+
+def _fret_for(open_string, target_semitone, max_fret):
+    """
+    The lowest fret on one string that sounds a given
+    semitone, within reach - or None if it doesn't occur
+    that low.
+    """
+
+    for fret in range(max_fret + 1):
+        if _note_at(open_string, fret) == target_semitone:
+            return fret
+
+    return None
+
+
+def violin_shape_strings(root, quality):
+    """
+    A beginner double stop for one chord: two adjacent
+    strings, together sounding the root and either the
+    third or the fifth. A double stop is the violin's own
+    way of playing a chord - not a bass note alone, which
+    is an ensemble bassist's job rather than a soloist's,
+    and not a full three-note chord, which is a real
+    technique but a harder reach than a beginner double
+    stop needs.
+
+    Root is always included, on whichever of the two
+    strings reaches it - a chord without its root does not
+    read as that chord. Preference order among the pairs
+    that work: more open strings first (an open string
+    rings clearer and costs no reach at all), a third over
+    a fifth (a third says whether the chord is major or
+    minor; a fifth alone does not), then the lower total
+    reach.
+
+    Returns (low_string_index, low_fret, high_string_index,
+    high_fret) - indices into VIOLIN_STRINGS - or None if no
+    adjacent pair reaches a chord tone within
+    VIOLIN_SHAPE_MAX_FRET of the open string.
+    """
+
+    from chords import CHORD_QUALITIES
+
+    triad = CHORD_QUALITIES.get(quality)
+
+    if triad is None or len(triad) < 3:
+        return None
+
+    root_semitone = NOTE_SEMITONES[root] % 12
+    third = (root_semitone + triad[1]) % 12
+    fifth = (root_semitone + triad[2]) % 12
+
+    best = None
+    best_score = None
+
+    for pair in range(len(VIOLIN_STRINGS) - 1):
+
+        low_string = VIOLIN_STRINGS[pair]
+        high_string = VIOLIN_STRINGS[pair + 1]
+
+        candidates = []
+
+        # The root on the lower string, the third or fifth
+        # above it on the higher string.
+        low_root_fret = _fret_for(
+            low_string, root_semitone, VIOLIN_SHAPE_MAX_FRET
+        )
+
+        if low_root_fret is not None:
+            for degree, target in (("third", third), ("fifth", fifth)):
+
+                high_fret = _fret_for(
+                    high_string, target, VIOLIN_SHAPE_MAX_FRET
+                )
+
+                if high_fret is not None:
+                    candidates.append((low_root_fret, high_fret, degree))
+
+        # The root on the higher string, the third or fifth
+        # below it on the lower string.
+        high_root_fret = _fret_for(
+            high_string, root_semitone, VIOLIN_SHAPE_MAX_FRET
+        )
+
+        if high_root_fret is not None:
+            for degree, target in (("third", third), ("fifth", fifth)):
+
+                low_fret = _fret_for(
+                    low_string, target, VIOLIN_SHAPE_MAX_FRET
+                )
+
+                if low_fret is not None:
+                    candidates.append((low_fret, high_root_fret, degree))
+
+        for low_fret, high_fret, degree in candidates:
+
+            openness = (low_fret == 0) + (high_fret == 0)
+
+            score = (
+                -openness,
+                0 if degree == "third" else 1,
+                low_fret + high_fret,
+                pair,
+            )
+
+            if best_score is None or score < best_score:
+                best_score = score
+                best = (pair, low_fret, pair + 1, high_fret)
+
+    return best
+
+
+def violin_chord_shape_overlay(key, chord_name, position="First position"):
+    """
+    A beginner double stop for one chord, transparent
+    background, positioned to stack on violin_structure the
+    same way violin_scale_overlay and violin_chord_overlay
+    do.
+
+    Only drawn in first position - a double stop here is a
+    beginner's low, open-string-favouring shape, not
+    something this picture also teaches further up the
+    neck, so third position has no shape of its own and the
+    caller falls back to chord_overlay_for there.
+
+    Returns None if no adjacent string pair reaches a chord
+    tone within reach - the same honest gap
+    guitar_shape_frets leaves for a quality with no standard
+    shape.
+    """
+
+    if position != "First position":
+        return None
+
+    from chords import split_chord
+
+    root, quality = split_chord(chord_name)
+
+    shaped = violin_shape_strings(root, quality)
+
+    if shaped is None:
+        return None
+
+    low_index, low_fret, high_index, high_fret = shaped
+
+    _, width, height = _violin_structure_parts(position)
+
+    left = VIOLIN_LAYOUT["left"]
+    top = VIOLIN_LAYOUT["top"]
+    semitone_width = VIOLIN_LAYOUT["semitone_width"]
+    string_gap = VIOLIN_LAYOUT["string_gap"]
+
+    parts = []
+
+    def mark(string_index, fret):
+
+        # VIOLIN_STRINGS is low to high; the structure draws
+        # the lowest string at the bottom, so the same
+        # reversal applies here to land on the same row.
+        row = len(VIOLIN_STRINGS) - 1 - string_index
+        y = top + row * string_gap
+        x = left + fret * semitone_width
+
+        semitone = _note_at(VIOLIN_STRINGS[string_index], fret)
+        label = name_for(semitone, key)
+
+        parts.append(
+            f'<circle cx="{x}" cy="{y}" r="12" '
+            f'fill="{SHAPE_COLOUR}" stroke="#ffffff" '
+            f'stroke-width="1.5"/>'
+            f'<text x="{x}" y="{y + 4}" text-anchor="middle" '
+            f'font-size="10" font-family="sans-serif" '
+            f'fill="#ffffff">{_escape(label)}</text>'
+        )
+
+    mark(low_index, low_fret)
+    mark(high_index, high_fret)
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="A beginner double stop for '
+        f'{_escape(chord_name)} on violin">'
+        + "".join(parts) +
+        "</svg>"
+    )
+
+
 def shape_overlay_for(key, instrument, chord_name):
     """
     The beginner-shape picture of one chord on one
     instrument - one concrete place to put the hand, not
     every place the chord's notes occur. None where no
-    standard shape exists for this chord (a rare quality
-    on guitar) or for this instrument (violin has no shape
-    mode - chord playing there is a different technique,
-    double stops, not this kind of hand shape): the caller
-    falls back to chord_overlay_for.
+    standard shape exists: a rare quality on guitar, third
+    position on violin (a double stop is a first-position
+    shape here), or a chord no adjacent violin string pair
+    can reach. The caller falls back to chord_overlay_for.
     """
 
     if instrument == "Piano":
         return piano_chord_shape_overlay(key, chord_name)
 
     if instrument.startswith("Violin"):
-        return None
+        return violin_chord_shape_overlay(
+            key, chord_name, _violin_position_for(instrument)
+        )
 
     return guitar_chord_shape_overlay(key, chord_name, instrument)
 
