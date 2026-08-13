@@ -21,12 +21,21 @@
 // someone chose should not silently revert because an
 // unrelated click happened to trigger a remount.
 
+// Phrases is its own toggle, split out from Notes: jumping
+// to a phrase is navigation, useful with or without the
+// pitch-box view showing, so it should not be tied to that
+// view's own toggle. Defaults are chosen so a freshly built
+// mixer already looks like a working practice view - chart,
+// phrases, words, faders, the live chord diagram - with the
+// pitch-box display (Notes) as the one opt-in extra, since
+// that one is the most likely to be unfamiliar at a glance.
 export const panels: Record<string, boolean> = $state({
 	strip: true,
 	faders: true,
+	phrases: true,
 	notes: false,
-	lyrics: false,
-	instruments: false
+	lyrics: true,
+	instruments: true
 });
 
 // Which layers show inside the note view. Separate from
@@ -55,13 +64,6 @@ export const showNextPreview = $state({ value: false });
 // toggle rather than being its own separate control.
 export const previewSideBySide = $state({ value: false });
 
-// Two ways to show the same words - pills that light up one
-// at a time, or a flowing sentence where the sung words
-// change colour as they pass. Showing both at once was the
-// same information twice; this is one or the other, not a
-// combination.
-export const lyricsSentenceStyle = $state({ value: false });
-
 // Whether the Notes panel's per-note word labels show
 // alongside the Lyrics panel. Kept as its own toggle rather
 // than forced off when Lyrics is on: redundancy between the
@@ -70,17 +72,14 @@ export const lyricsSentenceStyle = $state({ value: false });
 // screen rather than decided here.
 export const notesShowLabels = $state({ value: true });
 
-// The Lyrics panel at its normal size, or enlarged. A long
-// phrase or a whole-song view already reads fine small;
-// this is for whoever wants the words bigger regardless.
-export const lyricsLarge = $state({ value: false });
-
 // Instrument-toggle and layer-toggle (structure not
 // included: it isn't a toggle, it's the ground everything
-// else stands on).
+// else stands on). Piano and Guitar default on, since a
+// default-on Instruments panel showing nothing but "choose
+// an instrument" would look broken rather than helpful.
 export const diagramInstruments: Record<string, boolean> = $state({
-	Piano: false,
-	Guitar: false,
+	Piano: true,
+	Guitar: true,
 	"Violin, first position": false,
 	"Violin, third position": false
 });

@@ -9,9 +9,10 @@
 		hasTimeline: boolean;
 		hasNotes: boolean;
 		hasDiagrams: boolean;
+		narrow?: boolean;
 	}
 
-	let { hasTimeline, hasNotes, hasDiagrams }: Props = $props();
+	let { hasTimeline, hasNotes, hasDiagrams, narrow = false }: Props = $props();
 </script>
 
 <div class="panel-toggles">
@@ -23,8 +24,12 @@
 	{/if}
 	{#if hasNotes}
 		<label class="panel-toggle">
+			<input type="checkbox" bind:checked={panels.phrases} />
+			Phrases
+		</label>
+		<label class="panel-toggle">
 			<input type="checkbox" bind:checked={panels.notes} />
-			Notes
+			Visual notes
 		</label>
 		<label class="panel-toggle">
 			<input type="checkbox" bind:checked={panels.lyrics} />
@@ -45,10 +50,11 @@
 			Beside mixer
 		</label>
 		{#if instrumentsBesideMixer.value}
-			<label class="panel-toggle">
+			<label class="panel-toggle" class:disabled={narrow}>
 				<input
 					type="checkbox"
 					checked={sideBySideLayout.value === "shrink"}
+					disabled={narrow}
 					onchange={(event) =>
 						(sideBySideLayout.value = event.currentTarget.checked
 							? "shrink"
@@ -72,6 +78,10 @@
 		align-items: center;
 		gap: 4px;
 		cursor: pointer;
+	}
+	.panel-toggle.disabled {
+		opacity: 0.5;
+		cursor: default;
 	}
 	.panel-toggle input[type="checkbox"] {
 		appearance: auto;

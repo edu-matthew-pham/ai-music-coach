@@ -1,11 +1,6 @@
 <script lang="ts">
-	import { lyricsSentenceStyle, lyricsLarge } from "./mixerPanels.svelte";
 	import type { MixerNote, MixerPhrase } from "./types";
 
-	// One representation of the words, not two shown at once -
-	// pills that light up individually, or a flowing sentence
-	// whose words change colour as they pass. Showing both was
-	// the same information twice on screen.
 	interface Props {
 		notes: MixerNote[];
 		phrases: MixerPhrase[];
@@ -53,19 +48,6 @@
 	const currentWords = $derived(wordsIn(currentPhrase));
 	const nextWords = $derived(wordsIn(nextPhrase));
 
-	// Whichever word the playhead is inside of, or has most
-	// recently passed - a gap between words (a held note, a
-	// short rest) keeps the last one lit rather than going
-	// dark until the next one starts.
-	const activeWord = $derived.by(() => {
-		let active: MixerNote | null = null;
-		for (const note of currentWords) {
-			if (note.start <= playhead) active = note;
-			else break;
-		}
-		return active;
-	});
-
 	// A word ending in a hyphen is mid-syllable, not a word
 	// boundary - "Bil-" then "ly" should read as "Bil-ly"
 	// with nothing between them, while every real word gets
@@ -80,40 +62,15 @@
 </script>
 
 {#if currentPhrase}
-	<div class="lyrics-panel" class:large={lyricsLarge.value}>
-		<label class="style-toggle">
-			<input type="checkbox" bind:checked={lyricsSentenceStyle.value} />
-			Sentence style
-		</label>
-		<label class="style-toggle">
-			<input type="checkbox" bind:checked={lyricsLarge.value} />
-			Larger
-		</label>
-
-		{#if lyricsSentenceStyle.value}
-			<p class="sentence current">{#each currentWords as note}<span
-					class="sentence-word"
-					class:sung={note.start <= playhead}
-				>{note.word}{separatorAfter(note.word)}</span>{/each}</p>
-			{#if nextWords.length}
-				<p class="sentence next">
-					{#each nextWords as note}<span>{note.word}{separatorAfter(note.word)}</span>{/each}
-				</p>
-			{/if}
-		{:else}
-			<div class="word-row">
-				{#each currentWords as note}
-					<span class="word" class:active={note === activeWord}>
-						{note.word}
-					</span>
-				{/each}
-				{#if nextWords.length}
-					<span class="row-gap"></span>
-					{#each nextWords as note}
-						<span class="word next">{note.word}</span>
-					{/each}
-				{/if}
-			</div>
+	<div class="lyrics-panel">
+		<p class="sentence current">{#each currentWords as note}<span
+				class="sentence-word"
+				class:sung={note.start <= playhead}
+			>{note.word}{separatorAfter(note.word)}</span>{/each}</p>
+		{#if nextWords.length}
+			<p class="sentence next">
+				{#each nextWords as note}<span>{note.word}{separatorAfter(note.word)}</span>{/each}
+			</p>
 		{/if}
 	</div>
 {:else}
@@ -123,50 +80,6 @@
 <style>
 	.lyrics-panel {
 		padding: 12px 4px;
-	}
-	.style-toggle {
-		font-size: 11px;
-		color: var(--body-text-color-subdued);
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		cursor: pointer;
-		margin-bottom: 10px;
-		width: fit-content;
-	}
-	.style-toggle input[type="checkbox"] {
-		appearance: auto;
-		accent-color: #607d8b;
-		width: 12px;
-		height: 12px;
-	}
-
-	.word-row {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-		gap: 6px;
-	}
-	.word {
-		font-size: 15px;
-		font-weight: 600;
-		padding: 4px 12px;
-		border-radius: 14px;
-		border: 1px solid var(--border-color-primary);
-		background: var(--background-fill-primary);
-		color: var(--body-text-color);
-	}
-	.word.active {
-		background: #2e7d32;
-		border-color: #2e7d32;
-		color: white;
-	}
-	.word.next {
-		opacity: 0.45;
-		font-size: 13px;
-	}
-	.row-gap {
-		width: 16px;
 	}
 
 	.sentence {

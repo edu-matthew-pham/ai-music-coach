@@ -14,9 +14,10 @@
 		timeline: MixerBar[];
 		phrases: MixerPhrase[];
 		playhead: number;
+		narrow?: boolean;
 	}
 
-	let { notes, timeline, phrases, playhead }: Props = $props();
+	let { notes, timeline, phrases, playhead, narrow = false }: Props = $props();
 
 	const ROW_HEIGHT = 14;
 
@@ -123,8 +124,18 @@
 		};
 	}
 
+	// Side by side genuinely cannot fit below the width
+	// breakpoint - this is the container's own space running
+	// out, not a preference to override, so narrow forces the
+	// stacked layout regardless of what the toggle says. The
+	// toggle itself stays untouched; it just has nothing to
+	// do until there is room for it again.
+	const sideBySide = $derived(
+		showNextPreview.value && previewSideBySide.value && !narrow
+	);
+
 	const currentPage = $derived.by(() => {
-		const width = showNextPreview.value && previewSideBySide.value
+		const width = sideBySide
 			? (viewportWidth - 8) / 2
 			: viewportWidth;
 		return computePage(currentPhrase, width);
@@ -132,7 +143,7 @@
 
 	const nextPage = $derived.by(() => {
 		if (!showNextPreview.value) return null;
-		const width = previewSideBySide.value
+		const width = sideBySide
 			? (viewportWidth - 8) / 2
 			: viewportWidth;
 		return computePage(nextPhrase, width);
@@ -236,8 +247,12 @@
 		Preview next phrase
 	</label>
 	{#if showNextPreview.value}
-		<label class="layer-toggle">
-			<input type="checkbox" bind:checked={previewSideBySide.value} />
+		<label class="layer-toggle" class:disabled={narrow}>
+			<input
+				type="checkbox"
+				bind:checked={previewSideBySide.value}
+				disabled={narrow}
+			/>
 			Side by side
 		</label>
 	{/if}
@@ -248,7 +263,7 @@
 </div>
 
 {#if currentPage}
-	<div class="pages" class:row={showNextPreview.value && previewSideBySide.value} bind:this={container}>
+	<div class="pages" class:row={sideBySide} bind:this={container}>
 		<div class="notes-container">
 			{@render pageSvg(currentPage, true, false)}
 		</div>
@@ -285,6 +300,10 @@
 	}
 	.preview-toggle {
 		margin-left: auto;
+	}
+	.layer-toggle.disabled {
+		opacity: 0.5;
+		cursor: default;
 	}
 	.pages {
 		display: flex;

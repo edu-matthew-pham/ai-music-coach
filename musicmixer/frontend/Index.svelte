@@ -38,6 +38,19 @@
 		gradio.props.value?.diagrams ?? { structure: {}, scale: {}, chords: {} }
 	);
 
+	// The component's own width, not the screen's - the
+	// mixer can be narrow on a wide desktop (a small window,
+	// "Beside mixer" splitting the space) just as easily as
+	// on a phone, and it should respond to the room it is
+	// actually given either way. One breakpoint, tuned by
+	// looking at the real layout rather than argued about
+	// in advance.
+	const NARROW_BREAKPOINT = 600;
+	let containerWidth = $state(0);
+	const narrow = $derived(
+		containerWidth > 0 && containerWidth < NARROW_BREAKPOINT
+	);
+
 	// A loop is seconds into a particular song. Carried over
 	// into a different one it means nothing - possibly a
 	// stretch past the new song's own end - so it is cleared
@@ -163,7 +176,7 @@
 	allow_overflow={true}
 	padding={true}
 >
-	<div class="mixer">
+	<div class="mixer" bind:clientWidth={containerWidth}>
 		<Transport
 			{layers}
 			{playhead}
@@ -177,15 +190,19 @@
 			hasTimeline={timeline.length > 0}
 			hasNotes={notes.length > 0}
 			hasDiagrams={Object.keys(diagrams.structure ?? {}).length > 0}
+			{narrow}
 		/>
 
 		{#if panels.strip}
 			<ChordStrip {timeline} {playhead} {follow} onSelectBar={selectBar} />
 		{/if}
 
+		{#if panels.phrases}
+			<PhraseList {phrases} onSelectPhrase={selectPhrase} {narrow} />
+		{/if}
+
 		{#if panels.notes}
-			<PhraseList {phrases} onSelectPhrase={selectPhrase} />
-			<NotesPanel {notes} {timeline} {phrases} {playhead} />
+			<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} />
 		{/if}
 
 		{#if panels.lyrics}
@@ -196,7 +213,7 @@
 			<div
 				class="mixer-and-instruments"
 				class:beside={instrumentsBesideMixer.value && panels.faders && panels.instruments}
-				class:shrink={sideBySideLayout.value === "shrink"}
+				class:shrink={sideBySideLayout.value === "shrink" && !narrow}
 			>
 				{#if panels.faders}
 					<div class="mixer-and-instruments-item">
