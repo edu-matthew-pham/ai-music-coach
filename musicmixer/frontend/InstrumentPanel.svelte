@@ -224,10 +224,10 @@
 		   and setting this to 196 rendered everything at its
 		   full native coordinate size, which is genuinely
 		   huge. This number is a UI judgement call for the
-		   panel, free to retune by eye once it's visible in
-		   a real build; it only needs to stay the same
-		   across every instrument, not match anything in
-		   Python. */
+		   panel - 100 is what looked right - free to retune
+		   further by eye if it ever needs it; it only needs
+		   to stay the same across every instrument, not
+		   match anything in Python. */
 		display: block;
 		width: auto;
 		height: 100px;

@@ -110,6 +110,33 @@ ANCHOR_CSS = """
 #song, #arrange, #practice, #playback {
     scroll-margin-top: 64px;
 }
+
+/*
+ * Full screen is a CSS trick, not the browser's real
+ * Fullscreen API: requestFullscreen() needs a container that
+ * allows it, which an iframe embed (a Space, for instance)
+ * may not grant, and there is no way to ask for that
+ * permission from inside the page itself. Covering the whole
+ * viewport with position: fixed works the same way from the
+ * player's side and needs nothing granted from outside.
+ *
+ * Targets the mixer widget's own bordered box, not the whole
+ * Playback section - the heading and the blurb above the
+ * buttons are read once, not something worth taking screen
+ * space away from the mixer every time this is pressed.
+ */
+#mixer-widget.fullscreen-mode {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+    background: var(--body-background-fill);
+    overflow-y: auto;
+    padding: 24px;
+    margin: 0;
+}
 """
 
 
@@ -440,12 +467,22 @@ with gr.Blocks(
                 "stretch."
             )
 
-            open_mixer_button = gr.Button(
-                "Generate Playback",
-                size="sm"
-            )
+            with gr.Row():
 
-            mixer_output = MusicMixer(show_label=False)
+                open_mixer_button = gr.Button(
+                    "Generate Playback",
+                    size="sm"
+                )
+
+                fullscreen_button = gr.Button(
+                    "\u26f6 Full screen",
+                    elem_id="playback-fullscreen-toggle",
+                    size="sm"
+                )
+
+            mixer_output = MusicMixer(
+                show_label=False, elem_id="mixer-widget"
+            )
 
         # -------------------------------------------------
         # PRACTICE: sing it and see how it went
@@ -848,6 +885,41 @@ with gr.Blocks(
             lyric_input
         ],
         outputs=mixer_output
+    )
+
+    # Purely visual, so no Python round trip: the class does
+    # everything, and the fixed-position CSS rule above does
+    # the rest. Targets the mixer widget's own box, not the
+    # whole Playback column, so the heading and blurb are not
+    # dragged into the fullscreen view along with it. Escape
+    # exits from anywhere, not just a second click on the
+    # button, which is what a full-screen toggle is expected
+    # to do - the listener is attached once and guarded
+    # against being attached again, since this wiring runs
+    # again on the page's own event bindings but the window
+    # itself persists across that.
+    fullscreen_button.click(
+        fn=None,
+        js="""
+        () => {
+            const widget = document.getElementById('mixer-widget');
+            const active = widget.classList.toggle('fullscreen-mode');
+            document.body.style.overflow = active ? 'hidden' : '';
+
+            if (!window.__playbackFullscreenEscape) {
+                window.__playbackFullscreenEscape = (event) => {
+                    if (event.key === 'Escape') {
+                        document.getElementById('mixer-widget')
+                            .classList.remove('fullscreen-mode');
+                        document.body.style.overflow = '';
+                    }
+                };
+                window.addEventListener(
+                    'keydown', window.__playbackFullscreenEscape
+                );
+            }
+        }
+        """
     )
 
     def cycle_phrase(step):
