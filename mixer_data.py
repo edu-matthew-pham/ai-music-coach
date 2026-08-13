@@ -25,7 +25,8 @@ from scipy.io import wavfile
 from music import LAYER_NAMES, separate_layers
 from harmony import MAJOR_SCALES
 from instrument_diagrams import (
-    INSTRUMENTS, chord_overlay_for, scale_overlay_for, structure_for
+    INSTRUMENTS, chord_overlay_for, scale_overlay_for, shape_overlay_for,
+    structure_for
 )
 
 
@@ -156,7 +157,8 @@ def _timeline(pitch_text, duration_text, key, bpm, chart_text,
 def _diagrams(key, timeline):
     """
     The instrument pictures the mixer's diagram panel
-    stacks, three layers per instrument:
+    stacks, three layers per instrument, plus one alternate
+    to the chord layer:
 
     - structure: the instrument itself (keys, frets,
       strings), key-independent, always sent - it is not a
@@ -164,9 +166,17 @@ def _diagrams(key, timeline):
       instrument under them is illegible.
     - scale: the key's notes, transparent, for the Scale
       toggle.
-    - chord: one transparent overlay per distinct chord
-      this song's chart actually uses, for the Chord
-      toggle.
+    - chords: one transparent overlay per distinct chord
+      this song's chart actually uses, for the "Chord
+      notes" toggle - every place the chord's tones occur.
+    - shapes: one transparent overlay per distinct chord,
+      for the "Chord shape" toggle - one concrete beginner
+      voicing instead of every occurrence. Missing for a
+      chord this instrument has no standard shape for
+      (violin has none at all; guitar only covers major,
+      minor, dominant, and minor-seventh) - the panel falls
+      back to the chords entry for that one card rather
+      than showing nothing.
 
     Every instrument is included regardless of which the
     player has toggled on - the toggle is a display choice
@@ -202,6 +212,7 @@ def _diagrams(key, timeline):
     chord_names = sorted({bar["name"] for bar in timeline if bar["name"]})
 
     chords = {instrument: {} for instrument in INSTRUMENTS}
+    shapes = {instrument: {} for instrument in INSTRUMENTS}
 
     for chord_name in chord_names:
         for instrument in INSTRUMENTS:
@@ -211,10 +222,20 @@ def _diagrams(key, timeline):
                     key, instrument, chord_name
                 )
 
+                shape = shape_overlay_for(key, instrument, chord_name)
+
+                if shape is not None:
+                    shapes[instrument][chord_name] = shape
+
             except ChartError:
                 continue
 
-    return {"structure": structure, "scale": scale, "chords": chords}
+    return {
+        "structure": structure,
+        "scale": scale,
+        "chords": chords,
+        "shapes": shapes,
+    }
 
 
 def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,

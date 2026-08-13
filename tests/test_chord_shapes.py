@@ -1,0 +1,193 @@
+"""
+The shape mode shows one concrete place to put the hand,
+not every place a chord's notes occur - guitar_shape_frets
+and piano_shape_for are the data; shape_overlay_for is the
+picture built from it, stacking on the same structure the
+scale and chord-notes layers already share.
+"""
+
+import re
+
+import pytest
+
+from instrument_diagrams import (
+    guitar_shape_frets,
+    piano_shape_for,
+    shape_overlay_for,
+    structure_for,
+)
+
+
+# Real, standard guitar chord shapes, fret per string low E
+# to high e (None for muted). These are the shapes any
+# guitar teacher or songbook would show - not a guess this
+# app is making up.
+KNOWN_SHAPES = {
+    ("C", ""): [None, 3, 2, 0, 1, 0],
+    ("D", ""): [None, None, 0, 2, 3, 2],
+    ("G", ""): [3, 2, 0, 0, 0, 3],
+    ("E", ""): [0, 2, 2, 1, 0, 0],
+    ("A", ""): [None, 0, 2, 2, 2, 0],
+    ("E", "m"): [0, 2, 2, 0, 0, 0],
+    ("A", "m"): [None, 0, 2, 2, 1, 0],
+    ("D", "m"): [None, None, 0, 2, 3, 1],
+    ("E", "7"): [0, 2, 0, 1, 0, 0],
+    ("A", "7"): [None, 0, 2, 0, 2, 0],
+    ("C", "7"): [None, 3, 2, 3, 1, 0],
+    ("D", "7"): [None, None, 0, 2, 1, 2],
+    ("G", "7"): [3, 2, 0, 0, 0, 1],
+    # Barre chords: the standard shape, not a fallback -
+    # these are correctly harder, and the diagram should
+    # say so honestly.
+    ("F", ""): [1, 3, 3, 2, 1, 1],
+    ("B", "m"): [None, 2, 4, 4, 3, 2],
+    ("Bb", ""): [None, 1, 3, 3, 3, 1],
+    ("F#", ""): [2, 4, 4, 3, 2, 2],
+}
+
+
+@pytest.mark.parametrize("root,quality", KNOWN_SHAPES.keys())
+def test_a_shape_matches_the_standard_chord_diagram(root, quality):
+
+    result = guitar_shape_frets(root, quality)
+
+    assert result is not None
+
+    frets, _ = result
+
+    assert [fret for fret, _finger in frets] == KNOWN_SHAPES[(root, quality)]
+
+
+def test_barre_chords_are_drawn_at_the_correct_fret():
+    """
+    F is the classic first barre chord, at fret 1 with the
+    E-shape. Drawing it honestly - rather than skipping to
+    an easier voicing - is the point: the difficulty is
+    real, and a beginner should see it.
+    """
+
+    frets, barre = guitar_shape_frets("F", "")
+
+    assert barre == 1
+    assert frets[0] == (1, 1)  # the barre itself, finger 1
+
+
+def test_true_opens_are_not_generated_from_the_barre_formula():
+    """
+    C, D, and G have their own idiosyncratic open fingerings
+    that the movable-shape maths would not reproduce (the
+    formula would offer a barre shape further up the neck
+    instead) - these are hand-written because a beginner
+    songbook shows the open shape, not the barre one.
+    """
+
+    frets, barre = guitar_shape_frets("C", "")
+
+    assert barre is None
+    assert [fret for fret, _finger in frets] == KNOWN_SHAPES[("C", "")]
+
+
+def test_a_quality_with_no_standard_shape_is_reported_honestly():
+    """
+    maj7 is outside the four qualities this covers. A
+    guessed fingering would be worse than saying nothing -
+    the same choice invariant 6 makes anywhere else a guess
+    would cost more than a gap.
+    """
+
+    assert guitar_shape_frets("C", "maj7") is None
+    assert guitar_shape_frets("C", "dim") is None
+    assert guitar_shape_frets("C", "sus4") is None
+
+
+def test_the_piano_shape_is_root_and_fifth_against_the_triad():
+    """
+    Left hand: root and fifth. Right hand: the triad in
+    root position. C major - left hand C and G, right hand
+    C-E-G.
+    """
+
+    left_hand, right_hand = piano_shape_for("C", "")
+
+    assert left_hand == [(0, 5), (7, 1)]
+    assert right_hand == [(0, 1), (4, 3), (7, 5)]
+
+
+def test_the_piano_shape_drops_extensions_for_the_right_hand():
+    """
+    G7's right hand is still the plain G major triad - the
+    seventh is left out of the beginner shape the same way
+    a detected chart's chord names stay plain: a simpler
+    shape a beginner can actually play is worth more than
+    an exact one they cannot.
+    """
+
+    _, right_hand = piano_shape_for("G", "7")
+
+    semitones = {semitone for semitone, _finger in right_hand}
+
+    assert semitones == {7, 11, 2}  # G, B, D - not the F
+
+
+def test_a_shape_overlay_stacks_on_the_same_structure():
+    """
+    The whole point of a shape overlay is landing exactly
+    on the instrument picture underneath it.
+    """
+
+    for instrument in ("Piano", "Guitar"):
+
+        structure = structure_for(instrument)
+        shape = shape_overlay_for("C", instrument, "C")
+
+        structure_box = re.search(r'viewBox="([^"]+)"', structure).group(1)
+        shape_box = re.search(r'viewBox="([^"]+)"', shape).group(1)
+
+        assert structure_box == shape_box
+
+
+def test_violin_has_no_shape_mode():
+    """
+    Chords on a violin are double stops, not a hand shape
+    the way piano and guitar have one - shape mode simply
+    does not apply, and says so by returning nothing rather
+    than drawing something misleading.
+    """
+
+    assert shape_overlay_for("C", "Violin, first position", "C") is None
+    assert shape_overlay_for("C", "Violin, third position", "C") is None
+
+
+def test_an_unsupported_quality_falls_back_to_nothing_not_an_error():
+    """
+    The caller (the mixer's diagram panel) is expected to
+    fall back to the all-positions chord overlay when this
+    returns None - it should never raise for a chord this
+    app otherwise knows how to play.
+    """
+
+    assert shape_overlay_for("C", "Guitar", "Cmaj7") is None
+    assert shape_overlay_for("C", "Guitar", "Cdim") is None
+    assert shape_overlay_for("C", "Guitar", "Csus4") is None
+
+
+def test_piano_covers_every_quality_a_triad_voicing_can_represent():
+    """
+    Unlike guitar, where a shape is only "standard" for the
+    handful of qualities a songbook actually teaches, a
+    root-position triad in fingers 1-3-5 is a genuinely
+    uniform, playable voicing for any quality with a real
+    triad underneath it - dim and aug included. Piano's
+    wider coverage than guitar's is a real difference
+    between the instruments, not an inconsistency.
+    """
+
+    for quality in ("dim", "aug", "sus2", "sus4", "6", "m6", "maj7"):
+        assert shape_overlay_for("C", "Piano", "C" + quality) is not None
+
+
+def test_a_muted_string_is_marked_x_not_silently_skipped():
+
+    shape = shape_overlay_for("C", "Guitar", "C")
+
+    assert ">X</text>" in shape

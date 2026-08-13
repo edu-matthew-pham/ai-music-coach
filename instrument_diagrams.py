@@ -929,6 +929,14 @@ def _violin_scale_parts(key, position="First position"):
 # a note that happens to belong to the key.
 CHORD_TONE_COLOUR = "#ad1457"
 
+# The played-shape overlay's own colours, distinct from
+# CHORD_TONE_COLOUR (which marks "this note belongs to the
+# chord, somewhere") - a played shape is showing which hand
+# does what, so the two hands read as two different things
+# rather than one undifferentiated set of dots.
+LEFT_HAND_COLOUR = "#1565c0"
+RIGHT_HAND_COLOUR = "#ad1457"
+
 
 def piano_chord_overlay(key, chord_semitone_set):
     """
@@ -1190,6 +1198,161 @@ def scale_overlay_for(key, instrument):
     return fretboard_scale_overlay(key, instrument)
 
 
+# A beginner's shape, not the theory - one concrete place
+# to put the hand, rather than every place the chord's
+# notes occur. Only the four qualities most beginner charts
+# actually use; a quality with no settled standard shape
+# reports that honestly rather than guessing one.
+#
+# True open shapes are hand-written where a beginner
+# songbook would show one - these have their own idiosyncratic
+# fingerings, not reducible to a movable pattern. Everything
+# else uses the standard movable barre shape (E-shape or
+# A-shape, whichever needs the lower fret): at fret 0 this
+# reduces exactly to the real open E/Em/E7/Em7 and A/Am/A7/
+# Am7 chords, and elsewhere it gives the same barre shape a
+# guitar teacher would show - a barre chord is not a
+# fallback here, it is the standard shape, and drawing it
+# honestly shows the difficulty that is really there.
+#
+# Each entry is (fret, finger) per string, low E to high e.
+# fret is None for a muted string; finger is None for an
+# open string.
+GUITAR_TRUE_OPENS = {
+    ("C", ""): [
+        (None, None), (3, 3), (2, 2), (0, None), (1, 1), (0, None)
+    ],
+    ("D", ""): [
+        (None, None), (None, None), (0, None), (2, 1), (3, 3), (2, 2)
+    ],
+    ("G", ""): [
+        (3, 3), (2, 2), (0, None), (0, None), (0, None), (3, 4)
+    ],
+    ("D", "m"): [
+        (None, None), (None, None), (0, None), (2, 2), (3, 3), (1, 1)
+    ],
+    ("C", "7"): [
+        (None, None), (3, 3), (2, 2), (3, 4), (1, 1), (0, None)
+    ],
+    ("D", "7"): [
+        (None, None), (None, None), (0, None), (2, 2), (1, 1), (2, 3)
+    ],
+    ("G", "7"): [
+        (3, 3), (2, 2), (0, None), (0, None), (0, None), (1, 1)
+    ],
+}
+
+# Fret offset from the barre, low E to high e - None for a
+# muted string. At offset 0 (the barre itself, or open when
+# the whole shape sits at fret 0) no separate finger is
+# drawn for that string; the barre bar or the string itself
+# already says it.
+GUITAR_E_SHAPE = {
+    "": [0, 2, 2, 1, 0, 0],
+    "m": [0, 2, 2, 0, 0, 0],
+    "7": [0, 2, 0, 1, 0, 0],
+    "m7": [0, 2, 0, 0, 0, 0],
+}
+GUITAR_A_SHAPE = {
+    "": [None, 0, 2, 2, 2, 0],
+    "m": [None, 0, 2, 2, 1, 0],
+    "7": [None, 0, 2, 0, 2, 0],
+    "m7": [None, 0, 2, 0, 1, 0],
+}
+
+
+def guitar_shape_frets(root, quality):
+    """
+    The standard beginner shape for one chord: (fret, finger)
+    per string, low E to high e, and the fret a barre bar
+    should be drawn at (None where there is no barre - a
+    true open shape, or a movable shape sitting at fret 0).
+
+    Returns None if this quality has no standard shape to
+    show - invariant 6's choice: a gap here is more honest
+    than a guessed fingering.
+    """
+
+    if quality not in GUITAR_E_SHAPE:
+        return None
+
+    opened = GUITAR_TRUE_OPENS.get((root, quality))
+
+    if opened is not None:
+        return opened, None
+
+    root_semitone = NOTE_SEMITONES[root] % 12
+    e_fret = (root_semitone - NOTE_SEMITONES["E"]) % 12
+    a_fret = (root_semitone - NOTE_SEMITONES["A"]) % 12
+
+    if a_fret < e_fret:
+        template, barre = GUITAR_A_SHAPE[quality], a_fret
+    else:
+        template, barre = GUITAR_E_SHAPE[quality], e_fret
+
+    frets = []
+
+    for offset in template:
+
+        if offset is None:
+            frets.append((None, None))
+            continue
+
+        fret = offset + barre
+
+        if fret == 0:
+            frets.append((0, None))
+        elif fret == barre and barre > 0:
+            frets.append((fret, 1))
+        else:
+            frets.append((fret, None))
+
+    return frets, (barre if barre > 0 else None)
+
+
+def piano_shape_for(root, quality):
+    """
+    A beginner's two-hand voicing for one chord: left hand
+    plays the root and its fifth (fingers 5 and 1), right
+    hand plays the triad in root position (fingers 1, 3, 5).
+    Fixed octaves throughout, so every chord's shape sits in
+    the same place on the keyboard - a beginner is learning
+    one hand shape at a time, not chasing it up and down.
+
+    Returns None for a quality with no triad to build a
+    right-hand shape from - there is currently no such
+    quality among the ten this app supports, but the check
+    stays so a future quality fails safely rather than
+    silently.
+
+    Semitones only, not octaves: the caller places both
+    hands at whatever fixed octave the drawing uses, the
+    same way chord_overlay_for's own callers already do.
+    """
+
+    from chords import CHORD_QUALITIES
+
+    triad = CHORD_QUALITIES.get(quality)
+
+    if triad is None or len(triad) < 3:
+        return None
+
+    root_semitone = NOTE_SEMITONES[root] % 12
+
+    left_hand = [
+        (root_semitone, 5),
+        ((root_semitone + triad[2]) % 12, 1),
+    ]
+
+    right_hand = [
+        (root_semitone, 1),
+        ((root_semitone + triad[1]) % 12, 3),
+        ((root_semitone + triad[2]) % 12, 5),
+    ]
+
+    return left_hand, right_hand
+
+
 def chord_overlay_for(key, instrument, chord_name):
     """
     The chord-tones-only picture of one chord on one
@@ -1219,6 +1382,227 @@ def chord_overlay_for(key, instrument, chord_name):
         )
 
     return fretboard_chord_overlay(key, tones, instrument)
+
+
+def piano_chord_shape_overlay(key, chord_name):
+    """
+    A beginner's two-hand voicing for one chord, transparent
+    background, positioned to stack on piano_structure the
+    same way piano_scale_overlay and piano_chord_overlay do.
+    Left hand one octave, right hand the next - the same
+    fixed layout every chord uses, so the shape someone
+    learns for one chord is the shape they find again for
+    the next.
+
+    Returns None if piano_shape_for has no voicing for this
+    chord's quality - the caller falls back to the
+    all-positions chord overlay, the same way a quality
+    guitar_shape_frets cannot draw falls back on guitar.
+    """
+
+    from chords import split_chord
+
+    root, quality = split_chord(chord_name)
+
+    shape = piano_shape_for(root, quality)
+
+    if shape is None:
+        return None
+
+    left_hand, right_hand = shape
+
+    _, width, height = _piano_structure_parts()
+    white_height = PIANO_LAYOUT["white_height"]
+
+    white_semitones = [
+        semitone
+        for octave in range(PIANO_LAYOUT["octaves"])
+        for semitone in [0, 2, 4, 5, 7, 9, 11]
+    ]
+
+    black_after = {
+        semitone: raised
+        for semitone, raised in
+        {0: 1, 2: 3, 5: 6, 7: 8, 9: 10}.items()
+    }
+
+    white_width = PIANO_LAYOUT["white_width"]
+    black_width = PIANO_LAYOUT["black_width"]
+    black_height = PIANO_LAYOUT["black_height"]
+
+    parts = []
+
+    def spot(semitone, finger, colour):
+
+        white_index = None
+
+        for index, white_semitone in enumerate(white_semitones):
+
+            if white_semitone == semitone:
+                white_index = index
+                break
+
+        if white_index is not None:
+
+            x = white_index * white_width + white_width / 2
+            y = white_height - 28
+            radius = 14
+
+        else:
+
+            white_index = None
+
+            for index, white_semitone in enumerate(white_semitones):
+                if black_after.get(white_semitone) == semitone:
+                    white_index = index
+                    break
+
+            if white_index is None:
+                return
+
+            x = (white_index + 1) * white_width
+            y = black_height - 22
+            radius = 12
+
+        parts.append(
+            f'<circle cx="{x}" cy="{y}" r="{radius}" '
+            f'fill="{colour}"/>'
+            f'<text x="{x}" y="{y + 4}" text-anchor="middle" '
+            f'font-size="11" font-family="sans-serif" '
+            f'fill="#ffffff">{finger}</text>'
+        )
+
+    for semitone, finger in left_hand:
+        spot(semitone, finger, LEFT_HAND_COLOUR)
+
+    for semitone, finger in right_hand:
+        spot(semitone + 12, finger, RIGHT_HAND_COLOUR)
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="A beginner two-hand shape '
+        f'for {_escape(chord_name)}">'
+        + "".join(parts) +
+        "</svg>"
+    )
+
+
+def guitar_chord_shape_overlay(key, chord_name, instrument="Guitar"):
+    """
+    A beginner's standard shape for one chord, transparent
+    background, positioned to stack on fretboard_structure
+    the same way fretboard_scale_overlay and
+    fretboard_chord_overlay do.
+
+    Returns None if guitar_shape_frets has no standard shape
+    for this chord's quality - the caller falls back to the
+    all-positions chord overlay.
+    """
+
+    from chords import split_chord
+
+    root, quality = split_chord(chord_name)
+
+    shaped = guitar_shape_frets(root, quality)
+
+    if shaped is None:
+        return None
+
+    frets, barre = shaped
+
+    tuning = STRING_TUNINGS.get(instrument)
+
+    if tuning is None:
+        raise KeyError(
+            f"'{instrument}' is not an instrument this "
+            f"app can draw."
+        )
+
+    _, width, height = _fretboard_structure_parts(instrument)
+
+    left = FRETBOARD_LAYOUT["left"]
+    top = FRETBOARD_LAYOUT["top"]
+    fret_width = FRETBOARD_LAYOUT["fret_width"]
+    string_gap = FRETBOARD_LAYOUT["string_gap"]
+
+    parts = []
+
+    for tuning_index in range(len(tuning)):
+
+        # frets is ordered low string to high, matching
+        # tuning itself; the structure layer draws the low
+        # string at the bottom, so the same reversal applies
+        # here to land on the same row.
+        string_index = len(tuning) - 1 - tuning_index
+        fret, finger = frets[string_index]
+
+        y = top + tuning_index * string_gap
+
+        if fret is None:
+            parts.append(
+                f'<text x="{left - 26}" y="{y + 4}" '
+                f'text-anchor="middle" font-size="12" '
+                f'font-weight="700" font-family="sans-serif" '
+                f'fill="{CHORD_TONE_COLOUR}">X</text>'
+            )
+            continue
+
+        if fret == 0:
+            parts.append(
+                f'<text x="{left - 26}" y="{y + 4}" '
+                f'text-anchor="middle" font-size="12" '
+                f'font-weight="700" font-family="sans-serif" '
+                f'fill="{CHORD_TONE_COLOUR}">O</text>'
+            )
+            continue
+
+        x = left + fret * fret_width - fret_width / 2
+
+        label = finger if finger is not None else "\u2022"
+
+        parts.append(
+            f'<circle cx="{x}" cy="{y}" r="11" '
+            f'fill="{CHORD_TONE_COLOUR}" '
+            f'stroke="#ffffff" stroke-width="1.5"/>'
+            f'<text x="{x}" y="{y + 4}" '
+            f'text-anchor="middle" font-size="11" '
+            f'font-family="sans-serif" fill="#ffffff">'
+            f'{label}</text>'
+        )
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="A beginner shape for '
+        f'{_escape(chord_name)} on a {_escape(instrument)} '
+        f'neck">'
+        + "".join(parts) +
+        "</svg>"
+    )
+
+
+def shape_overlay_for(key, instrument, chord_name):
+    """
+    The beginner-shape picture of one chord on one
+    instrument - one concrete place to put the hand, not
+    every place the chord's notes occur. None where no
+    standard shape exists for this chord (a rare quality
+    on guitar) or for this instrument (violin has no shape
+    mode - chord playing there is a different technique,
+    double stops, not this kind of hand shape): the caller
+    falls back to chord_overlay_for.
+    """
+
+    if instrument == "Piano":
+        return piano_chord_shape_overlay(key, chord_name)
+
+    if instrument.startswith("Violin"):
+        return None
+
+    return guitar_chord_shape_overlay(key, chord_name, instrument)
 
 
 INSTRUMENTS = [

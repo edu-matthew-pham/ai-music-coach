@@ -215,6 +215,23 @@ def test_mixer_data_has_the_shape_the_component_expects():
         == chart_chord_names
     )
 
+    # shapes is the beginner-voicing alternative to chords -
+    # present for every instrument key, but only actually
+    # populated where a standard shape exists. Piano covers
+    # every quality this app supports, so its shapes should
+    # match chords exactly for this song's chart.
+    assert set(value["diagrams"]["shapes"].keys()) == set(INSTRUMENTS)
+
+    assert (
+        set(value["diagrams"]["shapes"]["Piano"].keys())
+        == chart_chord_names
+    )
+
+    # Violin has no shape mode at all - every chord is
+    # missing from it, not just the ones with no standard
+    # shape, so the panel always falls back to chords there.
+    assert value["diagrams"]["shapes"]["Violin, first position"] == {}
+
     # Structure and scale must be different pictures, not
     # the same one under two names - the bug that shipped
     # the combined diagram as "scale" and left nothing for

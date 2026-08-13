@@ -35,7 +35,8 @@
 	const notes = $derived(gradio.props.value?.notes ?? []);
 	const phrases = $derived(gradio.props.value?.phrases ?? []);
 	const diagrams = $derived(
-		gradio.props.value?.diagrams ?? { structure: {}, scale: {}, chords: {} }
+		gradio.props.value?.diagrams ??
+			{ structure: {}, scale: {}, chords: {}, shapes: {} }
 	);
 
 	// The component's own width, not the screen's - the

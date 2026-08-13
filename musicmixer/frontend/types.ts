@@ -28,17 +28,22 @@ export interface MixerPhrase {
 	label: string;
 }
 
-// Three layers per instrument, meant to be stacked: the
+// Four layers per instrument, meant to be stacked: the
 // always-there structure (keys/frets/strings, not a
 // toggle - a picture of marks with nothing under them is
-// illegible), the key's scale, and one chord-tones overlay
-// per distinct chord the chart uses. Python guarantees all
-// three share one coordinate system per instrument, so no
-// size or offset is sent here.
+// illegible), the key's scale, one chord-tones overlay per
+// distinct chord the chart uses (every place it occurs),
+// and one beginner shape per distinct chord (one concrete
+// place to put the hand - missing for a chord this
+// instrument has no standard shape for, in which case the
+// panel falls back to the matching chords entry). Python
+// guarantees all four share one coordinate system per
+// instrument, so no size or offset is sent here.
 export interface MixerDiagrams {
 	structure: Record<string, string>;
 	scale: Record<string, string>;
 	chords: Record<string, Record<string, string>>;
+	shapes: Record<string, Record<string, string>>;
 }
 
 export interface MixerValue {

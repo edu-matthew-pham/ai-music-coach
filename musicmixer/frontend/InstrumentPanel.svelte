@@ -5,11 +5,13 @@
 	// Three layers per instrument, stacked: structure (the
 	// instrument itself - keys, frets, strings) always at
 	// the bottom and never toggled off, the key's scale
-	// above it, the current bar's chord tones above that.
-	// Python guarantees all three share one coordinate
-	// system for a given instrument, so no positioning
-	// happens here - this component only decides which
-	// layers are visible and which chord to look up.
+	// above it, and the current bar's chord above that in
+	// one of two pictures - every place the chord occurs, or
+	// one beginner shape for it. Python guarantees all of
+	// these share one coordinate system for a given
+	// instrument, so no positioning happens here - this
+	// component only decides which layers are visible and
+	// which chord to look up.
 	//
 	// The current chord is found the same way ChordStrip
 	// finds the current bar: the first timeline entry the
@@ -45,9 +47,33 @@
 		<input type="checkbox" bind:checked={diagramLayers.scale} />
 		Scale
 	</label>
+	<span class="layer-gap"></span>
 	<label class="instrument-toggle">
-		<input type="checkbox" bind:checked={diagramLayers.chord} />
-		Chord
+		<input
+			type="radio"
+			name="chordMode"
+			checked={diagramLayers.chordMode === "off"}
+			onchange={() => (diagramLayers.chordMode = "off")}
+		/>
+		Off
+	</label>
+	<label class="instrument-toggle">
+		<input
+			type="radio"
+			name="chordMode"
+			checked={diagramLayers.chordMode === "notes"}
+			onchange={() => (diagramLayers.chordMode = "notes")}
+		/>
+		Chord notes
+	</label>
+	<label class="instrument-toggle">
+		<input
+			type="radio"
+			name="chordMode"
+			checked={diagramLayers.chordMode === "shape"}
+			onchange={() => (diagramLayers.chordMode = "shape")}
+		/>
+		Chord shape
 	</label>
 </div>
 
@@ -58,9 +84,16 @@
 		{#each chosenInstruments as name}
 			{@const structureSvg = diagrams.structure?.[name]}
 			{@const scaleSvg = diagrams.scale?.[name]}
-			{@const chordSvg = currentBar
+			{@const notesSvg = currentBar
 				? diagrams.chords?.[name]?.[currentBar.name]
 				: undefined}
+			{@const shapeSvg = currentBar
+				? diagrams.shapes?.[name]?.[currentBar.name]
+				: undefined}
+			{@const usingShapeFallback =
+				diagramLayers.chordMode === "shape" && !!currentBar && !shapeSvg && !!notesSvg}
+			{@const chordSvg =
+				diagramLayers.chordMode === "shape" ? (shapeSvg ?? notesSvg) : notesSvg}
 			<div class="instrument-card">
 				<h4>{name}</h4>
 				{#if structureSvg}
@@ -69,15 +102,20 @@
 						{#if diagramLayers.scale && scaleSvg}
 							<div class="layer stacked scale-layer">{@html scaleSvg}</div>
 						{/if}
-						{#if diagramLayers.chord && chordSvg}
+						{#if diagramLayers.chordMode !== "off" && chordSvg}
 							<div class="layer stacked chord-layer">{@html chordSvg}</div>
 						{/if}
-						{#if diagramLayers.chord && !chordSvg}
+						{#if diagramLayers.chordMode !== "off" && !chordSvg}
 							<p class="instrument-empty">
 								{currentBar ? "No chord picture for this bar." : "Nothing playing yet."}
 							</p>
 						{/if}
 					</div>
+					{#if usingShapeFallback}
+						<p class="instrument-note">
+							No standard shape for {currentBar?.name} on {name} - showing every position instead.
+						</p>
+					{/if}
 				{:else}
 					<p class="instrument-empty">No picture for this instrument yet.</p>
 				{/if}
@@ -102,7 +140,8 @@
 		gap: 3px;
 		cursor: pointer;
 	}
-	.instrument-toggle input[type="checkbox"] {
+	.instrument-toggle input[type="checkbox"],
+	.instrument-toggle input[type="radio"] {
 		appearance: auto;
 		accent-color: #607d8b;
 		width: 12px;
@@ -138,5 +177,11 @@
 	.instrument-empty {
 		font-size: 12px;
 		color: var(--body-text-color-subdued);
+	}
+	.instrument-note {
+		font-size: 11px;
+		color: var(--body-text-color-subdued);
+		font-style: italic;
+		margin: 4px 0 0;
 	}
 </style>
