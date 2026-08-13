@@ -129,20 +129,27 @@ time or a line of text coloured as it is sung.
 violin chart in first or third position. The instrument
 itself is always shown; **Scale**, **Chord notes** and
 **Chord shape** are three independent layers on top of it,
-any combination at once. Chord notes marks every place the
-current chord occurs; Chord shape marks one beginner voicing
-instead - a standard open or barre shape on guitar, a
-root-and-fifth left hand against a triad right hand on
-piano, each in its own colour so the two chord layers stay
-readable together. Showing both is useful in its own right:
-the shape gives a fixed place to start, and the notes show
-everywhere else the same chord tones fall, for an arpeggio
-or a right-hand accompaniment that moves beyond the shape
-itself. A barre chord is drawn as a barre, not simplified
-away: the difficulty is real, and seeing it is part of
-learning it. Violin has no shape mode, and a handful of
-guitar chords have no standard open or barre shape either -
-either says so rather than showing nothing.
+any combination at once, with Chord shape on to start with.
+Chord notes marks every place the current chord occurs;
+Chord shape marks one beginner voicing instead - a standard
+open or barre shape on guitar, a root-and-fifth left hand
+against a triad right hand on piano, each in its own colour
+so the two chord layers stay readable together. Showing
+both is useful in its own right: the shape gives a fixed
+place to start, and the notes show everywhere else the same
+chord tones fall, for an arpeggio or a right-hand
+accompaniment that moves beyond the shape itself. A barre
+chord is drawn as a barre, not simplified away: the
+difficulty is real, and seeing it is part of learning it.
+Violin has no shape mode, and a handful of guitar chords
+have no standard open or barre shape either - either says
+so rather than showing nothing.
+
+**Preview next chord** dims in a second picture underneath
+the current one, showing whichever layers are already
+switched on for whatever chord comes next - a look ahead at
+the next change before it arrives, the same idea as the
+Notes panel's own next-phrase preview.
 
 ## Keys and harmony
 

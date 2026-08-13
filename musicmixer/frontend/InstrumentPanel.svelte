@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { diagramInstruments, diagramLayers } from "./mixerPanels.svelte";
+	import { diagramInstruments, diagramLayers, previewNextChord } from "./mixerPanels.svelte";
 	import type { MixerBar, MixerDiagrams } from "./types";
 
 	// Four layers per instrument, stacked: structure (the
@@ -26,8 +26,24 @@
 
 	let { diagrams, timeline, playhead }: Props = $props();
 
+	const currentIndex = $derived(
+		timeline.findIndex((bar) => playhead >= bar.start && playhead < bar.end)
+	);
+
 	const currentBar = $derived(
-		timeline.find((bar) => playhead >= bar.start && playhead < bar.end)
+		currentIndex >= 0 ? timeline[currentIndex] : undefined
+	);
+
+	// Each timeline entry is already one whole chord's span,
+	// not one physical bar - read_chart merges consecutive
+	// bars holding the same chord into a single entry before
+	// this ever reaches the mixer. So the very next entry is
+	// the next chord change, with no scanning needed to find
+	// it.
+	const nextBar = $derived(
+		currentIndex >= 0 && currentIndex + 1 < timeline.length
+			? timeline[currentIndex + 1]
+			: undefined
 	);
 
 	const chosenInstruments = $derived(
@@ -55,6 +71,11 @@
 		<input type="checkbox" bind:checked={diagramLayers.chordShape} />
 		Chord shape
 	</label>
+	<span class="layer-gap"></span>
+	<label class="instrument-toggle">
+		<input type="checkbox" bind:checked={previewNextChord.value} />
+		Preview next chord
+	</label>
 </div>
 
 {#if !chosenInstruments.length}
@@ -69,6 +90,12 @@
 				: undefined}
 			{@const shapeSvg = currentBar
 				? diagrams.shapes?.[name]?.[currentBar.name]
+				: undefined}
+			{@const nextNotesSvg = nextBar
+				? diagrams.chords?.[name]?.[nextBar.name]
+				: undefined}
+			{@const nextShapeSvg = nextBar
+				? diagrams.shapes?.[name]?.[nextBar.name]
 				: undefined}
 			<div class="instrument-card">
 				<h4>{name}</h4>
@@ -96,6 +123,26 @@
 								? `no standard shape for ${currentBar.name} on ${name}.`
 								: "nothing playing yet."}
 						</p>
+					{/if}
+
+					{#if previewNextChord.value}
+						{#if nextBar}
+							<p class="next-chord-label">Next: {nextBar.name}</p>
+							<div class="diagram-stack next-chord-preview">
+								<div class="layer structure-layer">{@html structureSvg}</div>
+								{#if diagramLayers.scale && scaleSvg}
+									<div class="layer stacked scale-layer">{@html scaleSvg}</div>
+								{/if}
+								{#if diagramLayers.chordNotes && nextNotesSvg}
+									<div class="layer stacked chord-notes-layer">{@html nextNotesSvg}</div>
+								{/if}
+								{#if diagramLayers.chordShape && nextShapeSvg}
+									<div class="layer stacked chord-shape-layer">{@html nextShapeSvg}</div>
+								{/if}
+							</div>
+						{:else}
+							<p class="instrument-note">Next: nothing after this.</p>
+						{/if}
 					{/if}
 				{:else}
 					<p class="instrument-empty">No picture for this instrument yet.</p>
@@ -163,5 +210,13 @@
 		color: var(--body-text-color-subdued);
 		font-style: italic;
 		margin: 4px 0 0;
+	}
+	.next-chord-label {
+		font-size: 11px;
+		color: var(--body-text-color-subdued);
+		margin: 8px 0 2px;
+	}
+	.next-chord-preview {
+		opacity: 0.55;
 	}
 </style>

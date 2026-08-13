@@ -93,15 +93,22 @@ export const diagramInstruments: Record<string, boolean> = $state({
 // with an arpeggio or a right-hand accompaniment that goes
 // beyond the shape itself. Each sits on top of the
 // always-there structure layer, which has no toggle of its
-// own. Chord notes defaults on because every instrument can
-// show it; Chord shape isn't available everywhere (violin
-// has none at all, and only four qualities have a standard
-// guitar shape), so it starts as an opt-in extra.
+// own. Chord shape defaults on, the other two off: the
+// beginner voicing is the thing most people want first, and
+// the theory-heavier views (every position, the whole
+// scale) are opt-in extras once that's familiar.
 export const diagramLayers = $state({
 	scale: false,
-	chordNotes: true,
-	chordShape: false
+	chordNotes: false,
+	chordShape: true
 });
+
+// Whether the instrument panel shows a dimmed preview of
+// the upcoming chord below the current one - the same idea
+// as the Notes panel's next-phrase preview, for seeing a
+// change coming before it arrives rather than reacting to
+// it after the fact.
+export const previewNextChord = $state({ value: false });
 
 // Whether the Instruments panel sits beside the Mixer
 // panel (a row) rather than stacked below it (the default,
