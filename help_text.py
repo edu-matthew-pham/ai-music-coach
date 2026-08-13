@@ -127,18 +127,22 @@ time or a line of text coloured as it is sung.
 
 **Instruments** draws the key on a piano, a guitar, or a
 violin chart in first or third position. The instrument
-itself is always shown; **Scale** marks every note in the
-key on top of it. The current chord has two pictures to
-choose between: **Chord notes** marks every place it
-occurs, and **Chord shape** shows one beginner voicing
+itself is always shown; **Scale**, **Chord notes** and
+**Chord shape** are three independent layers on top of it,
+any combination at once. Chord notes marks every place the
+current chord occurs; Chord shape marks one beginner voicing
 instead - a standard open or barre shape on guitar, a
 root-and-fifth left hand against a triad right hand on
-piano. A barre chord is drawn as a barre, not simplified
+piano, each in its own colour so the two chord layers stay
+readable together. Showing both is useful in its own right:
+the shape gives a fixed place to start, and the notes show
+everywhere else the same chord tones fall, for an arpeggio
+or a right-hand accompaniment that moves beyond the shape
+itself. A barre chord is drawn as a barre, not simplified
 away: the difficulty is real, and seeing it is part of
 learning it. Violin has no shape mode, and a handful of
 guitar chords have no standard open or barre shape either -
-either falls back to Chord notes for that one chord rather
-than showing nothing.
+either says so rather than showing nothing.
 
 ## Keys and harmony
 

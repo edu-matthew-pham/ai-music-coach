@@ -930,12 +930,21 @@ def _violin_scale_parts(key, position="First position"):
 CHORD_TONE_COLOUR = "#ad1457"
 
 # The played-shape overlay's own colours, distinct from
-# CHORD_TONE_COLOUR (which marks "this note belongs to the
-# chord, somewhere") - a played shape is showing which hand
-# does what, so the two hands read as two different things
-# rather than one undifferentiated set of dots.
+# every other layer on purpose: Scale, Chord notes and
+# Chord shape are independent layers that can all be on at
+# once (all the places a chord's notes fall, plus the one
+# beginner voicing, useful together for finding
+# accompaniment or an arpeggio beyond the fixed shape) - if
+# any two layers shared a colour, a mark from one would sit
+# invisibly on top of a matching mark from the other,
+# exactly where the distinction matters most. Purple is the
+# one hue nothing else on this picture already uses: green
+# and orange belong to Scale, magenta to Chord notes, and
+# piano's own left hand gets a further distinction from its
+# right, since a two-handed shape has that to say too.
+SHAPE_COLOUR = "#6a1b9a"
 LEFT_HAND_COLOUR = "#1565c0"
-RIGHT_HAND_COLOUR = "#ad1457"
+RIGHT_HAND_COLOUR = SHAPE_COLOUR
 
 
 def piano_chord_overlay(key, chord_semitone_set):
@@ -1415,13 +1424,14 @@ def piano_chord_shape_overlay(key, chord_name):
     white_height = PIANO_LAYOUT["white_height"]
 
     white_semitones = [
-        semitone
+        semitone + octave * 12
         for octave in range(PIANO_LAYOUT["octaves"])
         for semitone in [0, 2, 4, 5, 7, 9, 11]
     ]
 
     black_after = {
-        semitone: raised
+        semitone + octave * 12: raised + octave * 12
+        for octave in range(PIANO_LAYOUT["octaves"])
         for semitone, raised in
         {0: 1, 2: 3, 5: 6, 7: 8, 9: 10}.items()
     }
@@ -1545,7 +1555,7 @@ def guitar_chord_shape_overlay(key, chord_name, instrument="Guitar"):
                 f'<text x="{left - 26}" y="{y + 4}" '
                 f'text-anchor="middle" font-size="12" '
                 f'font-weight="700" font-family="sans-serif" '
-                f'fill="{CHORD_TONE_COLOUR}">X</text>'
+                f'fill="{SHAPE_COLOUR}">X</text>'
             )
             continue
 
@@ -1554,7 +1564,7 @@ def guitar_chord_shape_overlay(key, chord_name, instrument="Guitar"):
                 f'<text x="{left - 26}" y="{y + 4}" '
                 f'text-anchor="middle" font-size="12" '
                 f'font-weight="700" font-family="sans-serif" '
-                f'fill="{CHORD_TONE_COLOUR}">O</text>'
+                f'fill="{SHAPE_COLOUR}">O</text>'
             )
             continue
 
@@ -1564,7 +1574,7 @@ def guitar_chord_shape_overlay(key, chord_name, instrument="Guitar"):
 
         parts.append(
             f'<circle cx="{x}" cy="{y}" r="11" '
-            f'fill="{CHORD_TONE_COLOUR}" '
+            f'fill="{SHAPE_COLOUR}" '
             f'stroke="#ffffff" stroke-width="1.5"/>'
             f'<text x="{x}" y="{y + 4}" '
             f'text-anchor="middle" font-size="11" '

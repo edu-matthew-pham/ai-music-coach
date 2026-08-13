@@ -84,24 +84,23 @@ export const diagramInstruments: Record<string, boolean> = $state({
 	"Violin, third position": false
 });
 
-// The two transparent layers a chosen instrument stacks:
-// the key's scale (static for the song) and the current
-// bar's chord, which has two different pictures depending
-// on chordMode. "notes" is the theory view - every place
-// the chord's tones occur. "shape" is the beginner view -
-// one concrete place to put the hand. Both sit on top of
-// the always-there structure layer, which has no toggle of
-// its own. "notes" is the default because it's what every
-// instrument can show; "shape" isn't available everywhere
-// (violin has none at all, and only four qualities have a
-// standard guitar shape), so a card without one falls back
-// to notes rather than showing nothing.
-export const diagramLayers = $state<{
-	scale: boolean;
-	chordMode: "off" | "notes" | "shape";
-}>({
+// The three transparent layers a chosen instrument can
+// stack, all independently on or off: the key's scale
+// (static for the song), every place the current chord's
+// notes occur, and one beginner voicing for it. All three
+// at once is a real, useful combination - seeing every
+// chord-tone position alongside the one fixed shape helps
+// with an arpeggio or a right-hand accompaniment that goes
+// beyond the shape itself. Each sits on top of the
+// always-there structure layer, which has no toggle of its
+// own. Chord notes defaults on because every instrument can
+// show it; Chord shape isn't available everywhere (violin
+// has none at all, and only four qualities have a standard
+// guitar shape), so it starts as an opt-in extra.
+export const diagramLayers = $state({
 	scale: false,
-	chordMode: "notes"
+	chordNotes: true,
+	chordShape: false
 });
 
 // Whether the Instruments panel sits beside the Mixer

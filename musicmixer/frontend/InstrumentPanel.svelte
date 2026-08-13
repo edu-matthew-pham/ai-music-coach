@@ -2,16 +2,16 @@
 	import { diagramInstruments, diagramLayers } from "./mixerPanels.svelte";
 	import type { MixerBar, MixerDiagrams } from "./types";
 
-	// Three layers per instrument, stacked: structure (the
+	// Four layers per instrument, stacked: structure (the
 	// instrument itself - keys, frets, strings) always at
-	// the bottom and never toggled off, the key's scale
-	// above it, and the current bar's chord above that in
-	// one of two pictures - every place the chord occurs, or
-	// one beginner shape for it. Python guarantees all of
-	// these share one coordinate system for a given
-	// instrument, so no positioning happens here - this
-	// component only decides which layers are visible and
-	// which chord to look up.
+	// the bottom and never toggled off, then the key's
+	// scale, every place the current chord's notes occur,
+	// and one beginner shape for it - the last three all
+	// independently toggleable, and all three can be on at
+	// once. Python guarantees all of these share one
+	// coordinate system for a given instrument, so no
+	// positioning happens here - this component only decides
+	// which layers are visible and which chord to look up.
 	//
 	// The current chord is found the same way ChordStrip
 	// finds the current bar: the first timeline entry the
@@ -47,32 +47,12 @@
 		<input type="checkbox" bind:checked={diagramLayers.scale} />
 		Scale
 	</label>
-	<span class="layer-gap"></span>
 	<label class="instrument-toggle">
-		<input
-			type="radio"
-			name="chordMode"
-			checked={diagramLayers.chordMode === "off"}
-			onchange={() => (diagramLayers.chordMode = "off")}
-		/>
-		Off
-	</label>
-	<label class="instrument-toggle">
-		<input
-			type="radio"
-			name="chordMode"
-			checked={diagramLayers.chordMode === "notes"}
-			onchange={() => (diagramLayers.chordMode = "notes")}
-		/>
+		<input type="checkbox" bind:checked={diagramLayers.chordNotes} />
 		Chord notes
 	</label>
 	<label class="instrument-toggle">
-		<input
-			type="radio"
-			name="chordMode"
-			checked={diagramLayers.chordMode === "shape"}
-			onchange={() => (diagramLayers.chordMode = "shape")}
-		/>
+		<input type="checkbox" bind:checked={diagramLayers.chordShape} />
 		Chord shape
 	</label>
 </div>
@@ -90,10 +70,6 @@
 			{@const shapeSvg = currentBar
 				? diagrams.shapes?.[name]?.[currentBar.name]
 				: undefined}
-			{@const usingShapeFallback =
-				diagramLayers.chordMode === "shape" && !!currentBar && !shapeSvg && !!notesSvg}
-			{@const chordSvg =
-				diagramLayers.chordMode === "shape" ? (shapeSvg ?? notesSvg) : notesSvg}
 			<div class="instrument-card">
 				<h4>{name}</h4>
 				{#if structureSvg}
@@ -102,18 +78,23 @@
 						{#if diagramLayers.scale && scaleSvg}
 							<div class="layer stacked scale-layer">{@html scaleSvg}</div>
 						{/if}
-						{#if diagramLayers.chordMode !== "off" && chordSvg}
-							<div class="layer stacked chord-layer">{@html chordSvg}</div>
+						{#if diagramLayers.chordNotes && notesSvg}
+							<div class="layer stacked chord-notes-layer">{@html notesSvg}</div>
 						{/if}
-						{#if diagramLayers.chordMode !== "off" && !chordSvg}
-							<p class="instrument-empty">
-								{currentBar ? "No chord picture for this bar." : "Nothing playing yet."}
-							</p>
+						{#if diagramLayers.chordShape && shapeSvg}
+							<div class="layer stacked chord-shape-layer">{@html shapeSvg}</div>
 						{/if}
 					</div>
-					{#if usingShapeFallback}
+					{#if diagramLayers.chordNotes && !notesSvg}
 						<p class="instrument-note">
-							No standard shape for {currentBar?.name} on {name} - showing every position instead.
+							Chord notes: {currentBar ? "no picture for this bar." : "nothing playing yet."}
+						</p>
+					{/if}
+					{#if diagramLayers.chordShape && !shapeSvg}
+						<p class="instrument-note">
+							Chord shape: {currentBar
+								? `no standard shape for ${currentBar.name} on ${name}.`
+								: "nothing playing yet."}
 						</p>
 					{/if}
 				{:else}
@@ -140,8 +121,7 @@
 		gap: 3px;
 		cursor: pointer;
 	}
-	.instrument-toggle input[type="checkbox"],
-	.instrument-toggle input[type="radio"] {
+	.instrument-toggle input[type="checkbox"] {
 		appearance: auto;
 		accent-color: #607d8b;
 		width: 12px;

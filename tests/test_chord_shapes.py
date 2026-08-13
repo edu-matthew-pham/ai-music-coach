@@ -129,6 +129,28 @@ def test_the_piano_shape_drops_extensions_for_the_right_hand():
     assert semitones == {7, 11, 2}  # G, B, D - not the F
 
 
+def test_every_piano_shape_mark_actually_renders():
+    """
+    piano_shape_for's data was correct the whole time this
+    bug existed - the drawing function silently dropped
+    every right-hand mark, because its own lookup table for
+    "where is this semitone on the keyboard" only covered
+    one octave while the right hand is drawn an octave above
+    the left. A data test alone could not have caught this;
+    only counting what the picture actually contains does.
+    """
+
+    from instrument_diagrams import (
+        LEFT_HAND_COLOUR, SHAPE_COLOUR, shape_overlay_for
+    )
+
+    shape = shape_overlay_for("C", "Piano", "C")
+
+    assert shape.count("<circle") == 5
+    assert shape.count(LEFT_HAND_COLOUR) == 2
+    assert shape.count(SHAPE_COLOUR) == 3
+
+
 def test_a_shape_overlay_stacks_on_the_same_structure():
     """
     The whole point of a shape overlay is landing exactly
@@ -191,3 +213,53 @@ def test_a_muted_string_is_marked_x_not_silently_skipped():
     shape = shape_overlay_for("C", "Guitar", "C")
 
     assert ">X</text>" in shape
+
+
+def test_the_shape_layer_never_shares_a_colour_with_chord_notes():
+    """
+    Scale, Chord notes and Chord shape are independent
+    layers that can all be shown together - useful for
+    seeing every place a chord's notes fall on the neck or
+    keyboard alongside the one beginner voicing, for working
+    out an arpeggio or right-hand accompaniment beyond the
+    fixed shape. If the two chord layers shared a colour, a
+    shape mark would sit invisibly on top of a matching
+    chord-notes mark exactly where the two are meant to be
+    told apart.
+    """
+
+    from instrument_diagrams import CHORD_TONE_COLOUR, SHAPE_COLOUR
+
+    assert SHAPE_COLOUR != CHORD_TONE_COLOUR
+
+    guitar_shape = shape_overlay_for("C", "Guitar", "C")
+    assert CHORD_TONE_COLOUR not in guitar_shape
+
+    piano_shape = shape_overlay_for("C", "Piano", "C")
+    assert CHORD_TONE_COLOUR not in piano_shape
+
+
+def test_every_layer_that_can_show_together_has_its_own_colour():
+    """
+    The same collision that made a shape mark invisible on
+    top of a chord-notes mark once already happened a second
+    time with Scale, which is on the same instrument picture
+    and can be shown alongside Chord shape too. Checking the
+    whole set together, rather than one pair at a time, is
+    the check that would have caught both.
+    """
+
+    from instrument_diagrams import (
+        CHORD_TONE_COLOUR,
+        HOME_COLOUR,
+        IN_KEY_COLOUR,
+        LEFT_HAND_COLOUR,
+        SHAPE_COLOUR,
+    )
+
+    colours = [
+        IN_KEY_COLOUR, HOME_COLOUR, CHORD_TONE_COLOUR,
+        SHAPE_COLOUR, LEFT_HAND_COLOUR,
+    ]
+
+    assert len(colours) == len(set(colours))
