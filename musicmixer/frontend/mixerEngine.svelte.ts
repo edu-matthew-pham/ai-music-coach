@@ -89,13 +89,53 @@ class MixerEngine {
 	repeat = $state(true);
 
 	position(): number {
+		if (!this.context) return this.offset;
+		return this.positionAt(this.context.currentTime);
+	}
+
+	// The same mapping as position(), for any moment on the
+	// context's clock - what lets a mic frame captured at
+	// time T ask where in the song T was, including through
+	// a loop's wrap-around. Exists so the pitch tracker
+	// shares the engine's one idea of where the playhead
+	// is rather than keeping a second clock of its own.
+	positionAt(contextTime: number): number {
 		if (!this.context || !this.playing) return this.offset;
-		let at = this.offset + (this.context.currentTime - this.startedAt);
+		let at = this.offset + (contextTime - this.startedAt);
 		if (this.loopFrom !== null && this.loopTo !== null && at > this.loopTo) {
 			const span = this.loopTo - this.loopFrom;
 			at = this.loopFrom + ((at - this.loopFrom) % span);
 		}
 		return at;
+	}
+
+	// The one AudioContext, created on first need - shared
+	// with the mic tracker so playback and capture live on
+	// one clock in one graph (which is also what makes
+	// automatic bleed measurement possible later, if the
+	// fixed latency offset ever proves not enough).
+	ensureContext(): AudioContext {
+		if (!this.context) {
+			this.context = new (window.AudioContext ||
+				(window as any).webkitAudioContext)();
+
+			const master = this.context.createGain();
+			master.gain.value = 0.7;
+
+			// Several layers summed can clip; a limiter turns
+			// that into a smooth reduction instead of a crackle.
+			const limiter = this.context.createDynamicsCompressor();
+			limiter.threshold.value = -6;
+			limiter.knee.value = 0;
+			limiter.ratio.value = 20;
+			limiter.attack.value = 0.003;
+			limiter.release.value = 0.15;
+
+			master.connect(limiter);
+			limiter.connect(this.context.destination);
+			this.master = master;
+		}
+		return this.context;
 	}
 
 	private bytesFrom(base64: string): ArrayBuffer {
@@ -144,26 +184,7 @@ class MixerEngine {
 	}
 
 	private async ensureAudio(layers: MixerLayerData[]): Promise<void> {
-		if (!this.context) {
-			this.context = new (window.AudioContext ||
-				(window as any).webkitAudioContext)();
-
-			const master = this.context.createGain();
-			master.gain.value = 0.7;
-
-			// Several layers summed can clip; a limiter turns
-			// that into a smooth reduction instead of a crackle.
-			const limiter = this.context.createDynamicsCompressor();
-			limiter.threshold.value = -6;
-			limiter.knee.value = 0;
-			limiter.ratio.value = 20;
-			limiter.attack.value = 0.003;
-			limiter.release.value = 0.15;
-
-			master.connect(limiter);
-			limiter.connect(this.context.destination);
-			this.master = master;
-		}
+		const context = this.ensureContext();
 
 		const fingerprint = this.computeFingerprint(layers);
 
@@ -176,11 +197,11 @@ class MixerEngine {
 		this.gains = {};
 
 		for (const layer of layers) {
-			const gain = this.context.createGain();
+			const gain = context.createGain();
 			gain.gain.value = this.levels[layer.name] ?? layer.level;
 			gain.connect(this.master!);
 			this.gains[layer.name] = gain;
-			this.buffers[layer.name] = await this.context.decodeAudioData(
+			this.buffers[layer.name] = await context.decodeAudioData(
 				this.bytesFrom(layer.wav)
 			);
 		}

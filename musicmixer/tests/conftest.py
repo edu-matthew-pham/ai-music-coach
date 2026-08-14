@@ -18,6 +18,36 @@ import pytest
 
 DEMO = Path(__file__).resolve().parents[1] / "demo" / "app.py"
 
+
+@pytest.fixture(scope="session")
+def browser_type_launch_args(browser_type_launch_args, tmp_path_factory):
+    """
+    Chromium's fake media device, fed a sine WAV whose pitch
+    is known exactly - the ground truth the mic tests judge
+    against. Session-wide because launch args are: the fake
+    device is harmless to every other test (getUserMedia is
+    simply never called by them), and one browser serves the
+    whole run. --use-fake-ui-for-media-stream auto-grants
+    the permission prompt, since a headless run has nobody
+    to click Allow.
+    """
+
+    from test_mic_pitch_e2e import write_sine_wav
+
+    wav = tmp_path_factory.mktemp("mic") / "sine220.wav"
+    write_sine_wav(wav)
+
+    return {
+        **browser_type_launch_args,
+        "args": [
+            *browser_type_launch_args.get("args", []),
+            "--use-fake-device-for-media-stream",
+            "--use-fake-ui-for-media-stream",
+            f"--use-file-for-fake-audio-capture={wav}",
+            "--autoplay-policy=no-user-gesture-required",
+        ],
+    }
+
 PORT_LINE = re.compile(r"http://127\.0\.0\.1:(\d+)")
 
 

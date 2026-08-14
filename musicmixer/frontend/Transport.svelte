@@ -1,6 +1,16 @@
 <script lang="ts">
 	import { engine } from "./mixerEngine.svelte";
+	import { mic } from "./micPitch.svelte";
 	import type { MixerLayerData } from "./mixerEngine.svelte";
+
+	function toggleMic(event: Event): void {
+		const wanted = (event.target as HTMLInputElement).checked;
+		if (wanted) {
+			mic.enable();
+		} else {
+			mic.disable();
+		}
+	}
 
 	interface Props {
 		layers: MixerLayerData[];
@@ -35,6 +45,19 @@
 			Repeat
 		</label>
 	{/if}
+	<label class="repeat">
+		<input
+			type="checkbox"
+			checked={mic.state === "on" || mic.state === "starting"}
+			onchange={toggleMic}
+		/>
+		Mic
+	</label>
+	{#if mic.state === "denied"}
+		<span class="mic-note">Mic blocked - allow it in the browser to see your pitch</span>
+	{:else if mic.state === "error"}
+		<span class="mic-note">Mic could not start</span>
+	{/if}
 	<span class="time">{playhead.toFixed(1)}s</span>
 	{#if hasTimeline}
 		<label class="repeat">
@@ -56,6 +79,10 @@
 		font-size: 13px;
 		font-weight: 600;
 		cursor: pointer;
+	}
+	.mic-note {
+		font-size: 11px;
+		color: var(--body-text-color-subdued);
 	}
 	.time {
 		font-size: 12px;

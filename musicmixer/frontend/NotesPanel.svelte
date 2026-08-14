@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { engine } from "./mixerEngine.svelte";
-	import { noteLayers, showNextPreview, previewSideBySide, notesShowLabels } from "./mixerPanels.svelte";
+	import { mic } from "./micPitch.svelte";
+	import { noteLayers, showNextPreview, previewSideBySide, notesShowLabels, showLiveTrace } from "./mixerPanels.svelte";
 	import type { MixerNote, MixerBar, MixerPhrase } from "./types";
 
 	// A static page per phrase, hard-cut to the next rather
@@ -156,6 +157,53 @@
 	function x(page: Page, time: number): number {
 		return (time - page.phrase.start) * page.pxPerSecond;
 	}
+
+	// Hz to the same vertical scale the boxes use, as a
+	// continuous value - a quarter-tone sharp draws a
+	// quarter of a row high, which is the whole point of a
+	// raw line over quantised boxes.
+	function midiFloat(freq: number): number {
+		return 69 + 12 * Math.log2(freq / 440);
+	}
+
+	function traceY(page: Page, freq: number): number {
+		const midi = midiFloat(freq);
+		const clamped = Math.min(
+			page.pitchRange.highest + 0.5,
+			Math.max(page.pitchRange.lowest - 0.5, midi)
+		);
+		return (page.pitchRange.highest - clamped) * ROW_HEIGHT + ROW_HEIGHT / 2;
+	}
+
+	// The sung line, cut to this page's phrase, broken into
+	// separate strokes wherever the voice stopped (unvoiced
+	// frames are simply absent from the trace) or the frames
+	// jump in time (a loop wrapping around). One SVG path
+	// per continuous stretch of singing; gaps stay gaps.
+	const GAP_SECONDS = 0.15;
+
+	function tracePaths(page: Page): string[] {
+		if (!showLiveTrace.value) return [];
+		const paths: string[] = [];
+		let current = "";
+		let lastTime = -Infinity;
+		for (const frame of mic.trace) {
+			if (frame.time < page.phrase.start || frame.time >= page.phrase.end) {
+				continue;
+			}
+			const px = x(page, frame.time);
+			const py = traceY(page, frame.freq);
+			if (frame.time - lastTime > GAP_SECONDS) {
+				if (current) paths.push(current);
+				current = `M ${px.toFixed(1)} ${py.toFixed(1)}`;
+			} else {
+				current += ` L ${px.toFixed(1)} ${py.toFixed(1)}`;
+			}
+			lastTime = frame.time;
+		}
+		if (current) paths.push(current);
+		return paths;
+	}
 </script>
 
 {#snippet pageSvg(page: Page, showPlayhead: boolean, dimmed: boolean)}
@@ -223,6 +271,25 @@
 			</g>
 		{/each}
 
+		{#if showPlayhead && showLiveTrace.value}
+			{#each tracePaths(page) as segment}
+				<path class="pitch-trace" d={segment} />
+			{/each}
+			{#if !engine.playing && mic.state === "on" && mic.livePitch !== null}
+				<!-- Free-running: nothing is playing, so there is
+				     no song time to draw a line against - just a
+				     dot at the playhead showing the pitch being
+				     sung right now, for warming up. -->
+				<circle
+					class="pitch-live-dot"
+					data-live-midi={midiFloat(mic.livePitch).toFixed(2)}
+					cx={x(page, Math.min(Math.max(playhead, page.phrase.start), page.phrase.end))}
+					cy={traceY(page, mic.livePitch)}
+					r="4"
+				/>
+			{/if}
+		{/if}
+
 		{#if showPlayhead}
 			<line
 				class="playhead"
@@ -260,6 +327,12 @@
 		<input type="checkbox" bind:checked={notesShowLabels.value} />
 		Word labels
 	</label>
+	{#if mic.state === "on" || mic.trace.length}
+		<label class="layer-toggle">
+			<input type="checkbox" bind:checked={showLiveTrace.value} />
+			Live pitch
+		</label>
+	{/if}
 </div>
 
 {#if currentPage}
@@ -356,6 +429,20 @@
 	.playhead {
 		stroke: #2e7d32;
 		stroke-width: 2;
+	}
+	.pitch-trace {
+		stroke: #d32f2f;
+		stroke-width: 2;
+		fill: none;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+		opacity: 0.85;
+		pointer-events: none;
+	}
+	.pitch-live-dot {
+		fill: #d32f2f;
+		opacity: 0.85;
+		pointer-events: none;
 	}
 	.note-empty {
 		font-size: 13px;

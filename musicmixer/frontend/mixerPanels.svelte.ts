@@ -72,6 +72,14 @@ export const previewSideBySide = $state({ value: false });
 // screen rather than decided here.
 export const notesShowLabels = $state({ value: true });
 
+// Whether the note view draws the live sung-pitch line once
+// a mic exists. On by default - turning the mic on and then
+// seeing nothing would read as broken - but its own toggle,
+// since watching the line while sight-reading the boxes is
+// exactly the kind of thing one person wants and the next
+// finds distracting.
+export const showLiveTrace = $state({ value: true });
+
 // Which instrument names exist is Python's to say, not this
 // file's: instrument_diagrams.py's INSTRUMENTS list is the
 // one home for that, sent every time as the keys of
