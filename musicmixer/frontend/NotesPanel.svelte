@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { engine } from "./mixerEngine.svelte";
 	import { mic } from "./micPitch.svelte";
-	import { noteLayers, showNextPreview, previewSideBySide, notesShowLabels, showLiveTrace } from "./mixerPanels.svelte";
+	import { noteLayers, showNextPreview, previewSideBySide, notesShowLabels, showLiveTrace, notesOctaveShift } from "./mixerPanels.svelte";
 	import type { MixerNote, MixerBar, MixerPhrase } from "./types";
 
 	// A static page per phrase, hard-cut to the next rather
@@ -93,12 +93,18 @@
 			(bar) => bar.start < phrase.end && bar.end > phrase.start
 		);
 
-		const pageNotes = notes.filter(
-			(note) =>
-				noteLayers[note.layer] &&
-				note.start >= phrase.start &&
-				note.start < phrase.end
-		);
+		const pageNotes = notes
+			.filter(
+				(note) =>
+					noteLayers[note.layer] &&
+					note.start >= phrase.start &&
+					note.start < phrase.end
+			)
+			.map((note) =>
+				notesOctaveShift.value === 0
+					? note
+					: { ...note, midi: note.midi + notesOctaveShift.value * 12 }
+			);
 
 		let lowest = 60;
 		let highest = 72;
@@ -379,6 +385,19 @@
 			Live pitch
 		</label>
 	{/if}
+	<div class="octave-shift" role="group" aria-label="Notes octave">
+		<span class="octave-shift-label">Notes:</span>
+		{#each [[-1, "Down"], [0, "As written"], [1, "Up"]] as [value, label] (value)}
+			<button
+				type="button"
+				class="octave-shift-button"
+				class:active={notesOctaveShift.value === value}
+				onclick={() => (notesOctaveShift.value = value as -1 | 0 | 1)}
+			>
+				{label}
+			</button>
+		{/each}
+	</div>
 </div>
 
 {#if currentPage}
@@ -423,6 +442,29 @@
 	.layer-toggle.disabled {
 		opacity: 0.5;
 		cursor: default;
+	}
+	.octave-shift {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.octave-shift-label {
+		font-size: 11px;
+		color: var(--body-text-color-subdued);
+	}
+	.octave-shift-button {
+		font-size: 11px;
+		color: var(--body-text-color-subdued);
+		background: transparent;
+		border: 1px solid var(--border-color-primary);
+		border-radius: 4px;
+		padding: 2px 8px;
+		cursor: pointer;
+	}
+	.octave-shift-button.active {
+		background: #607d8b;
+		border-color: #607d8b;
+		color: white;
 	}
 	.pages {
 		display: flex;

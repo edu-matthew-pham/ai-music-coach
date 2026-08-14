@@ -80,6 +80,19 @@ export const notesShowLabels = $state({ value: true });
 // finds distracting.
 export const showLiveTrace = $state({ value: true });
 
+// Shifts where the melody notes DRAW in the Notes panel, in
+// octaves (-1, 0, or 1) - display only, never touches the
+// underlying pitch data, playback, or anything Generate
+// Playback built. A baritone singing a genuine octave below
+// written pitch has a correct, on-pitch line that still
+// sits 12 rows away from the target notes with nothing
+// wrong; this closes that gap by moving the target to where
+// the voice naturally sits, not by moving the voice.
+// Deliberately does NOT shift the live trace or dot - those
+// already show the true pitch, and shifting both would
+// leave the same 12-row gap, just relocated.
+export const notesOctaveShift = $state<{ value: -1 | 0 | 1 }>({ value: 0 });
+
 // Which instrument names exist is Python's to say, not this
 // file's: instrument_diagrams.py's INSTRUMENTS list is the
 // one home for that, sent every time as the keys of
