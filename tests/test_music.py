@@ -647,8 +647,9 @@ def test_the_full_wellerman_is_a_consistent_piece():
     Verse and chorus on a downbeat-aligned grid: three
     beats of opening rest put the pickup on beat four, and
     the chart - one chord to a bar, read at function level
-    from a published sheet - lasts exactly as long as the
-    music.
+    from a published sheet, extended to three verses by a
+    real arrangement checked against an independent tab -
+    lasts exactly as long as the music.
     """
 
     from fractions import Fraction
@@ -661,11 +662,12 @@ def test_the_full_wellerman_is_a_consistent_piece():
 
     piece = Piece.read(pitches, durations, lyrics)
 
-    assert len(piece.phrases()) == 8
+    # 8 lines each of 3 verse-and-chorus cycles.
+    assert len(piece.phrases()) == 24
 
     beats = sum(Fraction(x) for x in durations.split())
 
-    assert beats == chart_beats(chart) == 68
+    assert beats == chart_beats(chart) == 200
 
     assert key == "F"
 

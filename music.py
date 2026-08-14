@@ -2376,76 +2376,175 @@ def load_twinkle():
 
 def load_wellerman():
     """
-    The Wellerman, verse and chorus: the whole traditional
-    song, since every verse carries the same tune.
+    The Wellerman, three verses and the chorus between
+    each - the whole traditional song as a real arrangement
+    actually sets it, not the one-verse-because-they-repeat
+    shorthand this example used to be.
 
-    The melody was drafted through our own MIDI import of
-    a band arrangement (the d_ML_10791 test fixture),
-    with each onset snapped to the half-beat grid and the
-    result transposed from its C minor up to this D minor.
-    The first line of that draft came out identical to the
-    hand-checked phrase example, which is the evidence the
-    method can be trusted; the rest follows the same grid.
+    Verse one's melody, its duration, and its chart are
+    unchanged from before: the original drafting (a MIDI
+    import of a band arrangement, transposed from C minor
+    up to D minor, checked line one against the hand-
+    checked phrase example) is still the source, still
+    trusted, still untouched.
 
-    The chart is a function-level reading of a published
-    beginner chord sheet for the song, transposed into D
-    minor, one chord to a bar. On the grid, every change
-    lands exactly where that sheet places it against the
-    words. The final authority on both melody and chart is
-    the ear; everything here is editable.
+    Extending to three verses came from a real piano
+    arrangement upload, cross-checked before any of it was
+    used:
+    - Its chord progression, checked chord by chord against
+      an independently sourced tab (Am/Dm/E/F/C/G), came out
+      transposed by exactly seven semitones on every chord
+      from this piece's own Dm/Gm/A/Bb/F - two unrelated
+      sources agreeing on the same progression, which is
+      why the existing chart is trusted to repeat rather
+      than re-derived from the new file's own (noticeably
+      noisier, chord-detected rather than printed) reading.
+    - Verse one's real words, checked syllable by syllable
+      against this file's real transcription, land on
+      exactly the existing melody's note count, line for
+      line (9, 11, 8, 7) - strong evidence the existing
+      rhythm is the tune's actual rhythm, not just a
+      plausible one. Verse three's real words match the
+      identical pattern, so verse three reuses verse one's
+      melody and chart outright, new words under the same
+      tune.
+    - Verse two's real words do not match: five syllables
+      short of verse one's count, all in the verse-specific
+      lines before the chorus. Rather than force different
+      words onto a rhythm they do not fit, verse two's
+      melody for those lines is the file's own real notes -
+      transposed the same whole step as everything else,
+      plus one octave (this file's part sits a register
+      lower throughout; checked against its own range as a
+      whole, not against a phrase in different words, which
+      is not a fair comparison). Its chart drops one of the
+      three repeated opening Dm bars - eight bars instead of
+      nine, matching the shorter line exactly, and invisible
+      harmonically since nothing there was doing more than
+      holding still.
+    - One real gap in the file: "name" is missing from its
+      own lyric encoding entirely (a held note with no word
+      on it) and is restored by hand - "the name of the
+      ship", not "the of the ship".
 
-    Three beats of rest open the piece so that the pickup
-    note falls on beat four and every bar line lands on a
-    true downbeat. Without them the chords would arrive a
-    beat early on every line that starts with a pickup.
+    A repeated final line the arrangement adds after verse
+    three ("we'll take our leave and go", twice) is left
+    out, for the same reason the piece stays in one tempo
+    despite the arrangement's own written tempo changes:
+    keeping this example the same shape it has always been,
+    extended rather than reworked.
     """
 
-    pitches = " ".join([
+    verse = " ".join([
         "R R R A3",
         "D4 D4 D4 D4 F4 A4 A4 A4",
         "A4 Bb4 G4 G4 G4 Bb4 Bb4 D5 D5 A4 A4",
         "A4 D4 D4 D4 F4 A4 A4 A4",
         "A4 A4 G4 F4 F4 E4 D4",
+    ])
+
+    verse_durations = " ".join([
+        "1 1 1 1",
+        "1 1/2 1/2 1 1 1 1 1",
+        "1 1 1/2 1/2 1 1/2 1/2 1/2 1/2 1 3/2",
+        "1/2 1 1 1 1 1 1 1",
+        "1 1 1 1/2 1/2 1 4",
+    ])
+
+    chorus = " ".join([
         "D5 D5 Bb4 C5 A4 A4 A4",
         "A4 Bb4 G4 G4 G4 Bb4 D5 A4 A4",
         "D5 D5 Bb4 Bb4 C5 A4 A4 A4",
         "A4 A4 G4 F4 E4 D4",
     ])
 
-    durations = " ".join([
-        "1 1 1 1",
-        "1 1/2 1/2 1 1 1 1 1",
-        "1 1 1/2 1/2 1 1/2 1/2 1/2 1/2 1 3/2",
-        "1/2 1 1 1 1 1 1 1",
-        "1 1 1 1/2 1/2 1 4",
+    chorus_durations = " ".join([
         "2 3/2 1/2 1/2 1/2 1 3/2",
         "1/2 1 1 1/2 1/2 1 1 1 2",
         "2 1 1/2 1/2 1/2 1/2 3/2 1/2",
         "1 1 1 1 1 4",
     ])
 
+    # Verse two's own real notes - see the docstring for why
+    # this line alone does not reuse verse one's rhythm.
+    verse_two = " ".join([
+        "E3 D3 D3 D3 F3 A3 A3 A3",
+        "A3 Bb3 G3 G3 Bb3 D4 A3 A3",
+        "A3 D3 D3 D3 F3 A3 A3 A3",
+        "A3 Bb3 G3 F3 E3 D3",
+    ])
+
+    verse_two_durations = " ".join([
+        "1/2 1/2 1 1 1 1 1 1",
+        "1 1 1 1 1 1 1 3/2",
+        "1/2 1 1 1 1 1 1 1",
+        "1 1 1 1 1 4",
+    ])
+
+    pitches = " ".join([verse, chorus, verse_two, chorus, verse, chorus])
+
+    durations = " ".join([
+        verse_durations, chorus_durations,
+        verse_two_durations, chorus_durations,
+        verse_durations, chorus_durations,
+    ])
+
     lyrics = "\n".join([
-        "There once was a ship that put to sea",
-        "The name of the ship was the Bil- ly of Tea",
-        "The winds blew up her bow dipped down",
-        "Oh blow my bul- ly boys blow",
+        "There once was a ship put out to sea,",
+        "the name of the ship was the Bill- y o' Tea.",
+        "The winds blew up, her bow dipped down.",
+        "Oh blow, my bull- y boys blow.",
+        "Soon may the Wel- ler- man come",
+        "To bring us sug- ar and tea and rum",
+        "One day when the tongu- ing is done",
+        "We'll take our leave and go",
+        "She had not been two weeks from shore",
+        "when down on her a right whale bore.",
+        "The Cap- tain called all hands and swore:",
+        "\"We'll take that whale and tow!\"",
+        "Soon may the Wel- ler- man come",
+        "To bring us sug- ar and tea and rum",
+        "One day when the tongu- ing is done",
+        "We'll take our leave and go",
+        "'Fore the boat had hit the wa- ter the",
+        "whale's _ tail came up and caught her. All hands to",
+        "the side, har- pooned and fought her, When",
+        "she dived down low _ _ _",
         "Soon may the Wel- ler- man come",
         "To bring us sug- ar and tea and rum",
         "One day when the tongu- ing is done",
         "We'll take our leave and go",
     ])
 
-    chart = (
+    verse_chart = (
         "| Dm . . . |"
         " | Dm . . . | Dm . . . |"
         " | Gm . . . | Dm . . . |"
         " | Dm . . . | Dm . . . |"
         " | A . . . | Dm . . . |"
-        " | Bb . . . | F . . . |"
+    )
+
+    # One fewer Dm bar than verse_chart - see the docstring.
+    verse_two_chart = (
+        "| Dm . . . |"
+        " | Dm . . . |"
+        " | Gm . . . | Dm . . . |"
+        " | Dm . . . | Dm . . . |"
+        " | A . . . | Dm . . . |"
+    )
+
+    chorus_chart = (
+        "| Bb . . . | F . . . |"
         " | Gm . . . | Dm . . . |"
         " | Bb . . . | F . . . |"
         " | A . . . | Dm . . . |"
     )
+
+    chart = " ".join([
+        verse_chart, chorus_chart,
+        verse_two_chart, chorus_chart,
+        verse_chart, chorus_chart,
+    ])
 
     return pitches, durations, lyrics, "F", chart, 240
 
