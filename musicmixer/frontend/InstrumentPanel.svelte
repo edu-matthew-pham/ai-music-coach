@@ -1,5 +1,12 @@
 <script lang="ts">
-	import { diagramInstruments, diagramLayers, ensureInstrumentToggle, previewNextChord } from "./mixerPanels.svelte";
+	import {
+		diagramInstruments,
+		diagramVariant,
+		diagramLayers,
+		ensureInstrumentToggle,
+		ensureInstrumentVariant,
+		previewNextChord
+	} from "./mixerPanels.svelte";
 	import type { MixerBar, MixerDiagrams } from "./types";
 
 	// Four layers per instrument, stacked: structure (the
@@ -26,19 +33,51 @@
 
 	let { diagrams, timeline, playhead }: Props = $props();
 
-	// The list of instruments comes from Python's own data,
-	// not a name typed a second time here - diagrams.structure
-	// always carries every instrument instrument_diagrams.py's
-	// INSTRUMENTS list knows about, whether or not a picture
-	// happens to be toggled on. Each name gets a toggle-state
-	// entry the first time it's seen; ensureInstrumentToggle
-	// is a no-op for a name that already has one, so this is
-	// safe to call on every render.
+	// Python's own data, not a list typed a second time here -
+	// diagrams.structure always carries every size variant
+	// instrument_diagrams.py's INSTRUMENTS list knows about
+	// ("Piano, 2 octaves", "Piano, 3 octaves", ...), whether
+	// or not a picture happens to be toggled on. Split each
+	// into the family the player thinks about ("Piano") and
+	// the size variant ("3 octaves") - the toggle belongs to
+	// the family, the variant is a sub-choice within it.
 	const availableInstruments = $derived(Object.keys(diagrams.structure ?? {}));
 
-	$effect(() => {
+	function familyOf(name: string): string {
+		return name.split(", ")[0];
+	}
+
+	function variantOf(name: string): string {
+		return name.slice(familyOf(name).length + 2);
+	}
+
+	// One entry per family, in first-seen order, listing every
+	// variant Python sent for it - always 2 today (compact and
+	// full), but nothing here assumes that count.
+	const familyVariants = $derived.by(() => {
+		const map = new Map<string, string[]>();
 		for (const name of availableInstruments) {
-			ensureInstrumentToggle(name);
+			const family = familyOf(name);
+			const variant = variantOf(name);
+			const existing = map.get(family);
+			if (existing) {
+				existing.push(variant);
+			} else {
+				map.set(family, [variant]);
+			}
+		}
+		return map;
+	});
+
+	const families = $derived([...familyVariants.keys()]);
+
+	// Each family gets a toggle-state entry and a chosen
+	// variant the first time it's seen; both helpers are
+	// no-ops once set, so safe to call on every render.
+	$effect(() => {
+		for (const [family, variants] of familyVariants) {
+			ensureInstrumentToggle(family);
+			ensureInstrumentVariant(family, variants[0]);
 		}
 	});
 
@@ -63,16 +102,42 @@
 	);
 
 	const chosenInstruments = $derived(
-		availableInstruments.filter((name) => diagramInstruments[name])
+		families.filter((family) => diagramInstruments[family])
 	);
+
+	// The actual key to look up in Python's data for a chosen
+	// family: its name plus whichever variant is currently
+	// selected for it, reconstructed here rather than stored
+	// anywhere, since the two together are the only thing that
+	// was ever ambiguous.
+	function keyFor(family: string): string {
+		return `${family}, ${diagramVariant[family]}`;
+	}
 </script>
 
 <div class="instrument-toggles">
-	{#each availableInstruments as name}
-		<label class="instrument-toggle">
-			<input type="checkbox" bind:checked={diagramInstruments[name]} />
-			{name}
-		</label>
+	{#each families as family}
+		<span class="instrument-with-variant">
+			<label class="instrument-toggle">
+				<input type="checkbox" bind:checked={diagramInstruments[family]} />
+				{family}
+			</label>
+			{#if (familyVariants.get(family)?.length ?? 0) > 1}
+				<span class="variant-toggle">
+					{#each familyVariants.get(family) ?? [] as variant}
+						<label class="variant-option">
+							<input
+								type="radio"
+								name="variant-{family}"
+								checked={diagramVariant[family] === variant}
+								onchange={() => (diagramVariant[family] = variant)}
+							/>
+							{variant}
+						</label>
+					{/each}
+				</span>
+			{/if}
+		</span>
 	{/each}
 	<span class="layer-gap"></span>
 	<label class="instrument-toggle">
@@ -98,23 +163,24 @@
 	<p class="instrument-empty">Choose an instrument to see it.</p>
 {:else}
 	<div class="instrument-grid">
-		{#each chosenInstruments as name}
-			{@const structureSvg = diagrams.structure?.[name]}
-			{@const scaleSvg = diagrams.scale?.[name]}
+		{#each chosenInstruments as family}
+			{@const key = keyFor(family)}
+			{@const structureSvg = diagrams.structure?.[key]}
+			{@const scaleSvg = diagrams.scale?.[key]}
 			{@const notesSvg = currentBar
-				? diagrams.chords?.[name]?.[currentBar.name]
+				? diagrams.chords?.[key]?.[currentBar.name]
 				: undefined}
 			{@const shapeSvg = currentBar
-				? diagrams.shapes?.[name]?.[currentBar.name]
+				? diagrams.shapes?.[key]?.[currentBar.name]
 				: undefined}
 			{@const nextNotesSvg = nextBar
-				? diagrams.chords?.[name]?.[nextBar.name]
+				? diagrams.chords?.[key]?.[nextBar.name]
 				: undefined}
 			{@const nextShapeSvg = nextBar
-				? diagrams.shapes?.[name]?.[nextBar.name]
+				? diagrams.shapes?.[key]?.[nextBar.name]
 				: undefined}
 			<div class="instrument-card">
-				<h4>{name}</h4>
+				<h4>{family} <span class="variant-label">({diagramVariant[family]})</span></h4>
 				{#if structureSvg}
 					<div class="diagram-stack">
 						<div class="layer structure-layer">{@html structureSvg}</div>
@@ -136,7 +202,7 @@
 					{#if diagramLayers.chordShape && !shapeSvg}
 						<p class="instrument-note">
 							Chord shape: {currentBar
-								? `no standard shape for ${currentBar.name} on ${name}.`
+								? `no standard shape for ${currentBar.name} on ${family}.`
 								: "nothing playing yet."}
 						</p>
 					{/if}
@@ -189,6 +255,35 @@
 		accent-color: #607d8b;
 		width: 12px;
 		height: 12px;
+	}
+	.instrument-with-variant {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.variant-toggle {
+		display: flex;
+		gap: 6px;
+		padding: 1px 6px;
+		border-radius: 10px;
+		background: var(--background-fill-secondary);
+	}
+	.variant-option {
+		font-size: 10px;
+		color: var(--body-text-color-subdued);
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		cursor: pointer;
+	}
+	.variant-option input[type="radio"] {
+		width: 10px;
+		height: 10px;
+		margin: 0;
+	}
+	.variant-label {
+		font-weight: 400;
+		opacity: 0.7;
 	}
 	.layer-gap {
 		width: 1px;
