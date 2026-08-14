@@ -39,6 +39,112 @@ export interface PitchFrame {
 	freq: number;
 }
 
+// Suppresses two specific, evidence-confirmed glitch shapes
+// from PitchYin's per-window output, without delaying
+// genuine pitch changes. Built after two failed attempts,
+// both worth remembering:
+//
+// 1. A ratio-check that tested "is there also periodicity at
+//    half this frequency" fired on almost any clean tone -
+//    any periodic signal is trivially periodic at double its
+//    period too, so the test couldn't tell a real octave
+//    error from ordinary correct detection. Wrongly halved a
+//    clean, unambiguous 220Hz sine in testing.
+// 2. A documented technique (a bilateral filter blending a
+//    trailing window of readings, per a real singing-pitch-
+//    tracker patent) was tried next and tested against real
+//    recordings before shipping - and it also failed, two
+//    ways: a confirmed 3-frame glitch run outlasted a 5-frame
+//    median window and got wrongly accepted as real, and
+//    genuine non-octave transitions were smeared/delayed by
+//    2-3 frames because the whole averaging window had to
+//    repopulate before the output moved.
+//
+// This design instead compares every new candidate only
+// against the currently HELD value (not a blended window),
+// so an ordinary transition - even a large one - passes
+// through with zero added delay. Only two specific shapes
+// are held back for confirmation, each matched to a real,
+// measured failure:
+//
+// - Octave jump: within 1.5 semitones of exactly +/-12 from
+//   the held value. Confirmed instances: a 3-frame run and a
+//   1-frame run, both reading almost exactly half the true
+//   note (e.g. 63Hz amid a steady 120-140Hz note).
+// - Floor grab: lands under ~75Hz (the detector's own search
+//   floor is 60Hz) while the held value is clearly not near
+//   the floor. Confirmed instances: readings near 60-71Hz
+//   appearing right at breaths/consonants between words,
+//   unrelated by any clean ratio to the surrounding note.
+//
+// A flagged candidate is held back until CONFIRM_N
+// consecutive candidates agree with EACH OTHER (not with the
+// old held value) - 4 was chosen because the worst confirmed
+// glitch run was 3 frames; a genuine octave leap or a
+// genuine dip into the 60-75Hz range still registers, just
+// after ~170ms of confirmation instead of instantly.
+//
+// Known, disclosed gap: this targets the two glitch shapes
+// actually found in real recordings, not every conceivable
+// bad reading. A handful of other single-frame outliers
+// (not octave-related, not near the floor) were observed
+// passing through unfiltered in the same verification run -
+// smaller and less visually alarming than the two shapes
+// above, and mostly landing at genuine phrase gaps, but real
+// and worth knowing about rather than claiming this is
+// exhaustive.
+class GatedPitchFilter {
+	private heldMidi: number | null = null;
+	private pendingMidi: number | null = null;
+	private pendingCount = 0;
+
+	constructor(
+		private confirmN: number = 4,
+		private floorCeilingHz: number = 75
+	) {}
+
+	// Returns the frequency to use this frame, or null if the
+	// candidate is being held back pending confirmation (draw
+	// this as a gap, the same way an unvoiced frame is).
+	push(freqHz: number): number | null {
+		const midi = 69 + 12 * Math.log2(freqHz / 440);
+
+		if (this.heldMidi === null) {
+			this.heldMidi = midi;
+			return freqHz;
+		}
+
+		const diff = Math.abs(midi - this.heldMidi);
+		const floorMidi = 69 + 12 * Math.log2(this.floorCeilingHz / 440);
+		const isOctaveJump = Math.abs(diff - 12) < 1.5;
+		const isFloorGrab =
+			freqHz < this.floorCeilingHz && this.heldMidi - floorMidi > 8;
+
+		if (!isOctaveJump && !isFloorGrab) {
+			this.heldMidi = midi;
+			this.pendingMidi = null;
+			this.pendingCount = 0;
+			return freqHz;
+		}
+
+		if (this.pendingMidi !== null && Math.abs(midi - this.pendingMidi) < 1) {
+			this.pendingCount++;
+		} else {
+			this.pendingMidi = midi;
+			this.pendingCount = 1;
+		}
+
+		if (this.pendingCount >= this.confirmN) {
+			this.heldMidi = midi;
+			this.pendingMidi = null;
+			this.pendingCount = 0;
+			return freqHz;
+		}
+
+		return null;
+	}
+}
+
 // pYIN's window. 2048 samples at 48kHz is ~43ms - long
 // enough to reach E2, the app's stated floor.
 const WINDOW = 2048;
@@ -115,6 +221,12 @@ class MicPitch {
 	private workletNode: AudioWorkletNode | null = null;
 	private sinkGain: GainNode | null = null;
 	private essentia: any = null;
+
+	// Suppresses the two evidence-confirmed glitch shapes
+	// from raw per-window detection - see GatedPitchFilter's
+	// own comment for the trail of what was tried before this
+	// and why it was reverted.
+	private glitchFilter = new GatedPitchFilter();
 
 	// Worklet modules register per-context; remember which
 	// context already has ours so a stop/start cycle does
@@ -445,6 +557,18 @@ class MicPitch {
 			// PitchYin's outputs are plain numbers - nothing
 			// else to free.
 			vector.delete();
+		}
+
+		// The gate: freq is 0 for unvoiced/low-confidence
+		// frames already; a voiced-but-suspicious frame (an
+		// octave jump or a floor grab, per GatedPitchFilter)
+		// is turned back into 0 here too, unless it's just
+		// been confirmed as real. Both cases draw identically
+		// as a gap - the person watching never needs to know
+		// which kind of "no reading" this was.
+		if (freq > 0) {
+			const gated = this.glitchFilter.push(freq);
+			freq = gated ?? 0;
 		}
 
 		this.livePitch = freq > 0 ? freq : null;
