@@ -212,31 +212,12 @@
 		return 69 + 12 * Math.log2(freq / 440);
 	}
 
-	// TEMPORARY DEBUG SCAFFOLDING - remove once the octave-
-	// clamping investigation is done. Throttled to ~2/s.
-	let lastClampLog = 0;
-	const CLAMP_LOG_INTERVAL_MS = 500;
-
 	function traceY(page: Page, freq: number): number {
 		const midi = midiFloat(freq);
 		const clamped = Math.min(
 			page.pitchRange.highest + 0.5,
 			Math.max(page.pitchRange.lowest - 0.5, midi)
 		);
-
-		// TEMPORARY DEBUG - see note above.
-		const now = performance.now();
-		if (now - lastClampLog > CLAMP_LOG_INTERVAL_MS) {
-			lastClampLog = now;
-			console.log(
-				`[notes] sung midi=${midi.toFixed(2)} ` +
-				`range=[${page.pitchRange.lowest.toFixed(1)},` +
-				`${page.pitchRange.highest.toFixed(1)}] ` +
-				`clamped=${clamped.toFixed(2)} ` +
-				`wasClamped=${Math.abs(clamped - midi) > 0.01}`
-			);
-		}
-
 		return (page.pitchRange.highest - clamped) * ROW_HEIGHT + ROW_HEIGHT / 2;
 	}
 

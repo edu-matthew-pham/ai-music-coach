@@ -159,15 +159,6 @@ const MAX_FRAMES = 30000;
 // pitch: fill a window, post it with the context time of
 // the window's start, repeat. postMessage clones the buffer
 // synchronously, so reusing it is safe.
-// TEMPORARY DEBUG SCAFFOLDING - remove once the octave-
-// clamping investigation is done. Logs every raw PitchYin
-// result (pitch + confidence), before the confidence gate
-// discards anything, so a rejected or octave-wrong
-// candidate is visible rather than silently dropped.
-// Throttled to ~2/s; at 23 windows/s an unthrottled log
-// would flood the console and make it unreadable.
-let lastDebugLog = 0;
-const DEBUG_LOG_INTERVAL_MS = 500;
 
 const WORKLET_SOURCE = `
 class MicCaptureProcessor extends AudioWorkletProcessor {
@@ -241,19 +232,23 @@ class MicPitch {
 	// circular import, one call site.
 	private wasPlaying = false;
 
-	// TEMPORARY DEBUG SCAFFOLDING - remove once the live-
-	// vs-file investigation is done. Captures the exact raw
-	// samples the worklet delivers (the same signal the
-	// detector analyses, post getUserMedia constraints) so
-	// a live take can be downloaded and run through the same
-	// offline analysis a file recorded outside the browser
-	// already went through - the real test of whether the
-	// browser's own mic pipeline delivers a different signal
-	// than, e.g., Voice Memos does, rather than guessing at
-	// which browser-side setting might be responsible.
-	debugRecording = $state(false);
-	private debugRecordBuffer: Float32Array[] | null = null;
-	private debugRecordSampleRate = 48000;
+	// Records the raw signal alongside each take, for
+	// comparing what the mic actually captured against the
+	// resulting chart - built out of the investigation that
+	// found the octave-flicker bug, kept as a permanent
+	// feature since the comparison is useful on its own
+	// merits, not just for debugging. Shares the trace's own
+	// take boundary (cleared at the same point, in
+	// noteLayers-adjacent logic below) so a downloaded
+	// recording always corresponds to "this take", the same
+	// stretch the chart shows.
+	recordingEnabled = $state(false);
+	// Bumped on every captured chunk so the UI can react to
+	// "is there anything to download" - a plain array's
+	// mutations aren't tracked by Svelte's reactivity.
+	recordingFrameCount = $state(0);
+	private recordingBuffer: Float32Array[] = [];
+	private recordingSampleRate = 48000;
 
 	async enable(): Promise<void> {
 		if (this.state === "on" || this.state === "starting") return;
@@ -353,57 +348,40 @@ class MicPitch {
 		this.trace = [];
 	}
 
-	// TEMPORARY DEBUG - see note above. Starts a fixed-
-	// duration capture of the raw samples arriving from the
-	// worklet; downloads a WAV automatically when it ends.
-	debugStartRecording(seconds: number = 5): void {
-		if (this.debugRecording) return;
-		this.debugRecordBuffer = [];
-		this.debugRecording = true;
-		console.log(`[mic] debug recording started, ${seconds}s`);
-		setTimeout(() => this.debugStopAndDownload(), seconds * 1000);
-	}
-
-	// TEMPORARY DEBUG - see note above.
-	private debugStopAndDownload(): void {
-		this.debugRecording = false;
-		if (!this.debugRecordBuffer) return;
-
-		const chunks = this.debugRecordBuffer;
-		this.debugRecordBuffer = null;
+	// Downloads whatever has been captured for the current
+	// take so far. Callable anytime there's something in the
+	// buffer - no fixed duration, since a take's length isn't
+	// known in advance. Does not clear the buffer: pressing
+	// this again mid-take re-downloads the take as it stands,
+	// and a genuinely new take clears it on its own (see
+	// noteLayers-adjacent reset below).
+	downloadRecording(): void {
+		if (this.recordingBuffer.length === 0) return;
 
 		let total = 0;
-		for (const c of chunks) total += c.length;
+		for (const c of this.recordingBuffer) total += c.length;
 		const combined = new Float32Array(total);
 		let offset = 0;
-		for (const c of chunks) {
+		for (const c of this.recordingBuffer) {
 			combined.set(c, offset);
 			offset += c.length;
 		}
 
-		const blob = this.debugEncodeWav(combined, this.debugRecordSampleRate);
+		const blob = this.encodeWav(combined, this.recordingSampleRate);
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement("a");
 		a.href = url;
-		a.download = `mic-debug-${Date.now()}.wav`;
+		a.download = `mic-recording-${Date.now()}.wav`;
 		document.body.appendChild(a);
 		a.click();
 		document.body.removeChild(a);
 		URL.revokeObjectURL(url);
-
-		console.log(
-			`[mic] debug recording saved, ${combined.length} samples ` +
-			`(${(combined.length / this.debugRecordSampleRate).toFixed(2)}s ` +
-			`at ${this.debugRecordSampleRate}Hz)`
-		);
 	}
 
-	// TEMPORARY DEBUG - see note above. Minimal 16-bit PCM
-	// mono WAV encoder - no library needed, and the format
-	// is plain enough that any tool (ffmpeg, librosa) reads
-	// it directly, the same path already used on the
-	// Voice-Memos file this is being compared against.
-	private debugEncodeWav(samples: Float32Array, sampleRate: number): Blob {
+	// Minimal 16-bit PCM mono WAV encoder - no library
+	// needed, and the format is plain enough that any tool
+	// (ffmpeg, librosa, a DAW) reads it directly.
+	private encodeWav(samples: Float32Array, sampleRate: number): Blob {
 		const buffer = new ArrayBuffer(44 + samples.length * 2);
 		const view = new DataView(buffer);
 
@@ -462,33 +440,17 @@ class MicPitch {
 		samples: Float32Array,
 		context: AudioContext
 	): void {
-		// TEMPORARY DEBUG - see note above. Captured here,
-		// before essentia touches anything, so the saved WAV
-		// is exactly what the detector received - the live
-		// mic pipeline's actual output, for comparison against
-		// a file recorded outside the browser.
-		if (this.debugRecordBuffer) {
-			this.debugRecordBuffer.push(samples.slice());
-			this.debugRecordSampleRate = context.sampleRate;
-		}
-
-		// TEMPORARY DEBUG - direct clipping check, not a
-		// guess: a held-note recording measured peak 0.14
-		// (nowhere near 1.0), so if clipping is real it is
-		// specific to note-switch transients that file never
-		// contained. Logged every occurrence, not throttled,
-		// since genuine clipping should be rare - if this
-		// line ever prints, it is real evidence, not noise.
-		let peak = 0;
-		for (let i = 0; i < samples.length; i++) {
-			const a = Math.abs(samples[i]);
-			if (a > peak) peak = a;
-		}
-		if (peak > 0.95) {
-			console.warn(
-				`[mic-clip] window peak=${peak.toFixed(3)} at t=` +
-				`${time.toFixed(2)}s - signal is clipping`
-			);
+		// Captured before essentia touches anything, so a
+		// downloaded recording is exactly what the detector
+		// received. Gated on the toggle and on engine.playing
+		// so a recording always covers the same stretch as the
+		// trace it's meant to be compared against - the take
+		// boundary reset lives alongside the trace's own reset,
+		// below.
+		if (this.recordingEnabled && engine.playing) {
+			this.recordingBuffer.push(samples.slice());
+			this.recordingSampleRate = context.sampleRate;
+			this.recordingFrameCount++;
 		}
 
 		if (!this.essentia) return;
@@ -535,21 +497,6 @@ class MicPitch {
 			if (result.pitch > 0 && result.pitchConfidence > 0.5) {
 				freq = result.pitch;
 			}
-
-			// TEMPORARY DEBUG - see note above.
-			const now = performance.now();
-			if (now - lastDebugLog > DEBUG_LOG_INTERVAL_MS) {
-				lastDebugLog = now;
-				const midi = result.pitch > 0
-					? (69 + 12 * Math.log2(result.pitch / 440)).toFixed(2)
-					: "-";
-				console.log(
-					`[mic] raw=${result.pitch.toFixed(1)}Hz ` +
-					`conf=${result.pitchConfidence.toFixed(2)} ` +
-					`midi=${midi} ` +
-					`accepted=${result.pitch > 0 && result.pitchConfidence > 0.5}`
-				);
-			}
 		} finally {
 			// The input vector lives on the WASM heap and does
 			// not garbage collect; at ~23 windows a second an
@@ -577,8 +524,12 @@ class MicPitch {
 			if (!this.wasPlaying) {
 				// A new take: the old trace is the previous
 				// attempt, and drawing both would be judging
-				// by clutter.
+				// by clutter. The recording buffer resets here
+				// too, so a download always covers this take,
+				// not a leftover mix of this one and the last.
 				this.trace = [];
+				this.recordingBuffer = [];
+				this.recordingFrameCount = 0;
 				this.wasPlaying = true;
 			}
 			if (freq > 0) {

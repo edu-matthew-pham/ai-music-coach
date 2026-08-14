@@ -58,16 +58,15 @@
 	{:else if mic.state === "error"}
 		<span class="mic-note">Mic could not start</span>
 	{:else if mic.state === "on"}
-		<!-- TEMPORARY DEBUG - see micPitch.svelte.ts. Downloads
-		     a WAV of the exact raw signal the detector sees,
-		     for comparing the live capture path against a file
-		     recorded outside the browser. -->
-		<button
-			onclick={() => mic.debugStartRecording(5)}
-			disabled={mic.debugRecording}
-		>
-			{mic.debugRecording ? "Recording..." : "Record 5s (debug)"}
-		</button>
+		<label class="repeat">
+			<input type="checkbox" bind:checked={mic.recordingEnabled} />
+			Record
+		</label>
+		{#if mic.recordingFrameCount > 0}
+			<button onclick={() => mic.downloadRecording()}>
+				Download recording
+			</button>
+		{/if}
 	{/if}
 	<span class="time">{playhead.toFixed(1)}s</span>
 	{#if hasTimeline}
