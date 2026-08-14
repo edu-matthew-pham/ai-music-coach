@@ -82,11 +82,7 @@
 		pxPerSecond: number;
 	}
 
-	function computePage(
-		phrase: MixerPhrase | null,
-		width: number,
-		includeLive: boolean = false
-	): Page | null {
+	function computePage(phrase: MixerPhrase | null, width: number): Page | null {
 		if (!phrase) return null;
 
 		const bars = timeline.filter(
@@ -108,7 +104,6 @@
 
 		let lowest = 60;
 		let highest = 72;
-		let hasRange = false;
 
 		if (pageNotes.length) {
 			lowest = pageNotes[0].midi;
@@ -117,47 +112,6 @@
 				if (note.midi < lowest) lowest = note.midi;
 				if (note.midi > highest) highest = note.midi;
 			}
-			hasRange = true;
-		}
-
-		// Widen to cover the sung pitch too, not just the
-		// melody. Confirmed via the debug log, not assumed: a
-		// bass voice singing a genuine octave below the melody
-		// pinned to the range's bottom edge on nearly every
-		// frame (wasClamped=true) - it looked like nothing was
-		// tracking, but the detector had the right note and
-		// the display simply had no room to draw it. Both the
-		// accumulated trace (this phrase's history) and, for
-		// whichever page is currently playing, the free-
-		// running live dot feed into the same range so neither
-		// clips independently of the other.
-		const tracePoints = mic.trace.filter(
-			(f) => f.time >= phrase.start && f.time < phrase.end
-		);
-		for (const f of tracePoints) {
-			const m = midiFloat(f.freq);
-			if (!hasRange) {
-				lowest = m;
-				highest = m;
-				hasRange = true;
-			} else {
-				if (m < lowest) lowest = m;
-				if (m > highest) highest = m;
-			}
-		}
-		if (includeLive && mic.livePitch !== null) {
-			const m = midiFloat(mic.livePitch);
-			if (!hasRange) {
-				lowest = m;
-				highest = m;
-				hasRange = true;
-			} else {
-				if (m < lowest) lowest = m;
-				if (m > highest) highest = m;
-			}
-		}
-
-		if (hasRange) {
 			lowest -= 1;
 			highest += 1;
 		}
@@ -191,7 +145,7 @@
 		const width = sideBySide
 			? (viewportWidth - 8) / 2
 			: viewportWidth;
-		return computePage(currentPhrase, width, true);
+		return computePage(currentPhrase, width);
 	});
 
 	const nextPage = $derived.by(() => {
@@ -199,7 +153,7 @@
 		const width = sideBySide
 			? (viewportWidth - 8) / 2
 			: viewportWidth;
-		return computePage(nextPhrase, width, false);
+		return computePage(nextPhrase, width);
 	});
 
 	function y(page: Page, midi: number): number {
