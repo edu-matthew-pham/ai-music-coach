@@ -83,7 +83,7 @@ export const notesShowLabels = $state({ value: true });
 // "what instruments exist" that nothing kept in sync.
 //
 // Python's own names now carry a size variant too - "Piano,
-// 3 octaves", "Guitar, 12 frets", "Violin, first position" -
+// 3 octaves", "Guitar, 13 frets", "Violin, first position" -
 // a display choice, not a different instrument, the same
 // way Violin's two positions always were. diagramInstruments
 // is keyed by the instrument family (the part before the
@@ -111,7 +111,7 @@ const DEFAULT_ON_INSTRUMENTS = new Set(["Piano", "Guitar", "Ukulele"]);
 // falls back to whichever variant it saw first.
 const DEFAULT_VARIANTS: Record<string, string> = {
 	Piano: "3 octaves",
-	Guitar: "12 frets",
+	Guitar: "13 frets",
 	Ukulele: "10 frets",
 	Violin: "first position"
 };

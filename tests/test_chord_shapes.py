@@ -101,6 +101,64 @@ def test_a_quality_with_no_standard_shape_is_reported_honestly():
     assert guitar_shape_frets("C", "sus4") is None
 
 
+def test_the_higher_position_exists_for_every_shape_the_lower_one_does():
+    """
+    guitar_shape_frets_higher tracks guitar_shape_frets's own
+    "no standard shape" gap (invariant 6) rather than adding
+    a second, different one - a quality guitar_shape_frets
+    declines has no higher position to offer either.
+    """
+
+    from instrument_diagrams import guitar_shape_frets_higher
+
+    assert guitar_shape_frets_higher("C", "maj7") is None
+    assert guitar_shape_frets_higher("C", "dim") is None
+    assert guitar_shape_frets_higher("C", "sus4") is None
+
+    assert guitar_shape_frets_higher("C", "") is not None
+
+
+def test_the_higher_position_is_always_a_real_gap_above_the_lower_one():
+    """
+    Checked against all 48 root/quality combinations this app
+    draws: the higher position never sits adjacent to or on
+    top of the lower one, and never needs more than fret 13 -
+    the number the guitar entry in INSTRUMENTS was widened to
+    fit. A collapsed or missing gap would mean the two
+    positions aren't a genuine second hand-shape at all.
+    """
+
+    from instrument_diagrams import guitar_shape_frets_higher
+
+    roots = ["C", "Db", "D", "Eb", "E", "F", "F#",
+             "G", "Ab", "A", "Bb", "B"]
+    qualities = ["", "m", "7", "m7"]
+
+    highest_fret_seen = 0
+
+    for root in roots:
+        for quality in qualities:
+
+            lower_frets, _ = guitar_shape_frets(root, quality)
+            higher_frets, _ = guitar_shape_frets_higher(root, quality)
+
+            lower_top = max(
+                f for f, _ in lower_frets if f is not None
+            )
+            higher_bottom = min(
+                f for f, _ in higher_frets
+                if f is not None and f > 0
+            )
+            higher_top = max(
+                f for f, _ in higher_frets if f is not None
+            )
+
+            assert higher_bottom - lower_top >= 1
+            highest_fret_seen = max(highest_fret_seen, higher_top)
+
+    assert highest_fret_seen == 13
+
+
 def test_the_piano_shape_is_root_and_fifth_against_the_triad():
     """
     Left hand: root and fifth. Right hand: the triad in
@@ -169,17 +227,24 @@ def test_a_shape_overlay_stacks_on_the_same_structure():
         assert structure_box == shape_box
 
 
-def test_violin_third_position_has_no_shape_mode():
+def test_violin_both_positions_still_shows_the_one_shape_it_has():
     """
-    Chords on a violin are double stops - a real shape mode
-    now exists, but only in first position, where an open
-    string keeps the shape genuinely beginner-low. Third
-    position has no shape of its own and falls back to
-    chord_overlay_for.
+    A double stop is only ever a first-position shape - there
+    is no second, higher-position variant to combine it with
+    the way guitar and ukulele's barre shapes combine. So
+    "Violin, both positions" resolves to first position for
+    the shape layer specifically and shows that same shape,
+    rather than hiding it - consistent with guitar and
+    ukulele's own "always show the standard shape when one
+    exists" rule, not a special case.
     """
 
-    assert shape_overlay_for("C", "Violin, first position", "C") is not None
-    assert shape_overlay_for("C", "Violin, third position", "C") is None
+    first = shape_overlay_for("C", "Violin, first position", "C")
+    both = shape_overlay_for("C", "Violin, both positions", "C")
+
+    assert first is not None
+    assert both is not None
+    assert first == both
 
 
 def test_an_unsupported_quality_falls_back_to_nothing_not_an_error():
@@ -553,4 +618,132 @@ def test_ukuleles_own_range_is_smaller_than_guitars():
     assert _frets_shown_for("Ukulele, 6 frets") == 6
     assert _frets_shown_for("Ukulele, 10 frets") == 10
     assert _frets_shown_for("Guitar, 8 frets") == 8
-    assert _frets_shown_for("Guitar, 12 frets") == 12
+    assert _frets_shown_for("Guitar, 13 frets") == 13
+
+
+def test_ukuleles_higher_position_covers_the_shifted_closed_shape():
+    """
+    C, D, E and F (major and minor) shift the B/Bm closed
+    shape up the neck and land within ukulele's real 10-fret
+    range - checked against chord_semitones for the actual
+    tones and root, not just that a fret number exists.
+    """
+
+    from instrument_diagrams import (
+        ukulele_shape_frets_higher, NOTE_SEMITONES
+    )
+    from chords import chord_semitones
+    import re
+
+    def semitone_for(note_name):
+        match = re.match(r"([A-G][#b]?)(\d)", note_name)
+        octave = int(match.group(2))
+        return NOTE_SEMITONES[match.group(1)] + 12 * (octave + 1)
+
+    tuning = ["A4", "E4", "C4", "G4"]
+
+    for root in ["C", "D", "E", "F"]:
+        for quality in ["", "m"]:
+
+            shaped = ukulele_shape_frets_higher(root, quality)
+            frets, _barre = shaped
+
+            sounded = {
+                (semitone_for(open_note) + fret) % 12
+                for open_note, (fret, _finger)
+                in zip(tuning, frets)
+            }
+            expected = {
+                semitone % 12
+                for semitone in chord_semitones(root + quality)
+            }
+
+            assert sounded == expected
+            assert (NOTE_SEMITONES[root] % 12) in sounded
+            assert max(fret for fret, _ in frets) <= 10
+
+
+def test_ukuleles_higher_position_excludes_roots_out_of_range():
+    """
+    G and A need frets 12 and 14 - past a soprano's
+    comfortably playable range - and B/Bm is the anchor shape
+    itself, with no shift to be "higher" than. None of the
+    three offer a higher position.
+    """
+
+    from instrument_diagrams import ukulele_shape_frets_higher
+
+    for root in ["G", "A", "B"]:
+        for quality in ["", "m"]:
+            assert ukulele_shape_frets_higher(root, quality) is None
+
+
+def test_the_compact_view_never_draws_a_second_position():
+    """
+    Widening the guitar fret range and adding a higher
+    position must not change anything about the existing
+    compact single-position drawing - HIGHER_SHAPE_COLOUR
+    should never appear at 8 (guitar) or 6 (ukulele) frets.
+    """
+
+    from instrument_diagrams import (
+        fretted_chord_shape_overlay, HIGHER_SHAPE_COLOUR
+    )
+
+    guitar_compact = fretted_chord_shape_overlay(
+        "Eb", "Eb", instrument="Guitar", frets_shown=8
+    )
+    ukulele_compact = fretted_chord_shape_overlay(
+        "C", "C", instrument="Ukulele", frets_shown=6
+    )
+
+    assert HIGHER_SHAPE_COLOUR not in guitar_compact
+    assert HIGHER_SHAPE_COLOUR not in ukulele_compact
+
+
+def test_the_full_view_draws_both_positions():
+    """
+    Guitar's 13-fret view and ukulele's 10-fret view both
+    show the higher position alongside the lower one - the
+    one case (guitar's Eb family) that needed the fret
+    ceiling raised in the first place.
+    """
+
+    from instrument_diagrams import (
+        fretted_chord_shape_overlay, SHAPE_COLOUR,
+        HIGHER_SHAPE_COLOUR
+    )
+
+    guitar_full = fretted_chord_shape_overlay(
+        "Eb", "Eb", instrument="Guitar", frets_shown=13
+    )
+    ukulele_full = fretted_chord_shape_overlay(
+        "D", "D", instrument="Ukulele", frets_shown=10
+    )
+
+    assert SHAPE_COLOUR in guitar_full
+    assert HIGHER_SHAPE_COLOUR in guitar_full
+    assert SHAPE_COLOUR in ukulele_full
+    assert HIGHER_SHAPE_COLOUR in ukulele_full
+
+
+def test_a_shared_fret_draws_a_split_mark_not_two_dots():
+    """
+    Ukulele C is the case the design docs specifically called
+    out: the higher position's lowest fret (3) coincides with
+    the primary shape's own fret (3) on the A string. This
+    should draw one split-coloured mark there, not two
+    overlapping single-colour dots.
+    """
+
+    from instrument_diagrams import fretted_chord_shape_overlay
+
+    svg = fretted_chord_shape_overlay(
+        "C", "C", instrument="Ukulele", frets_shown=10
+    )
+
+    # A split mark is drawn as two <path> arcs plus a plain
+    # ring <circle>; a same-string, same-fret coincidence
+    # with no split logic would instead draw two full
+    # <circle fill=...> dots stacked on the same spot.
+    assert "<path" in svg

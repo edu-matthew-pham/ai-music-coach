@@ -130,15 +130,19 @@ shows the words, either as pills that light up one at a
 time or a line of text coloured as it is sung.
 
 **Instruments** draws the key on a piano, a guitar, a
-ukulele, or a violin chart in first or third position. Each
-has its own size toggle once it's ticked on - piano between
-two and three octaves, guitar between a compact eight frets
-and the full twelve, ukulele between six and ten (its own
-shapes stay lower on the neck than guitar's, and its short
-scale makes a player less likely to go far up it at all),
-violin between first and third position - a display choice,
-not a different picture: switching it redraws the same
-instrument shorter or longer, never changes what it shows. A
+ukulele, or a violin chart. Each has its own size toggle
+once it's ticked on - piano between two and three octaves,
+guitar between a compact eight frets and the full thirteen,
+ukulele between six and ten (its own shapes stay lower on
+the neck than guitar's, and its short scale makes a player
+less likely to go far up it at all). Violin's toggle is
+between first position alone and both positions together:
+the full view adds first position's marks in one colour and
+third position's in another, with a two-colour mark
+wherever a note is reachable from both - a genuinely
+different picture, not just a longer one. Guitar and
+ukulele's shape mode does the same in their own full view,
+showing the standard shape at both hand positions at once. A
 shape needing more room than the compact view gives it still
 draws at its real position, which can land past the edge of
 a short neck; widening the view is the fix, not something

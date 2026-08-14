@@ -954,6 +954,134 @@ def _violin_scale_parts(key, position="First position"):
     return parts
 
 
+def _violin_scale_parts_both(key):
+    """
+    The Scale layer's marks for both hand positions at once:
+    a note reachable from only one position gets a plain
+    fill in that position's colour, a note reachable from
+    both gets the split fill - and either way the ring stays
+    green or orange, exactly as the single-position layer
+    already means it. Checked against real fingering_for
+    output for all 12 keys: every one produces at least some
+    overlap, so the split mark is never a dead code path.
+    """
+
+    home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
+    in_key = semitones_in(key)
+
+    left = VIOLIN_LAYOUT["left"]
+    top = VIOLIN_LAYOUT["top"]
+    semitone_width = VIOLIN_LAYOUT["semitone_width"]
+    string_gap = VIOLIN_LAYOUT["string_gap"]
+
+    parts = []
+
+    for index, open_string in enumerate(reversed(VIOLIN_STRINGS)):
+
+        y = top + index * string_gap
+
+        first_map = {0: 0}
+        first_map.update(
+            fingering_for(
+                open_string, key, POSITION_STARTS["First position"]
+            )
+        )
+
+        third_map = {0: 0}
+        third_map.update(
+            fingering_for(
+                open_string, key, POSITION_STARTS["Third position"]
+            )
+        )
+
+        for step in sorted(set(first_map) | set(third_map)):
+
+            semitone = _note_at(open_string, step)
+
+            if semitone not in in_key:
+                continue
+
+            in_first = step in first_map
+            in_third = step in third_map
+
+            label = None
+
+            if in_first and not in_third:
+                label = first_map[step]
+            elif in_third and not in_first:
+                label = third_map[step]
+
+            x = left + step * semitone_width
+            ring_colour = HOME_COLOUR if semitone == home else IN_KEY_COLOUR
+
+            parts.append(
+                _dual_position_dot(
+                    x, y, in_first, in_third, ring_colour, label
+                )
+            )
+
+            parts.append(
+                f'<text x="{x + 15}" y="{y - 9}" '
+                f'text-anchor="start" font-size="9" '
+                f'font-family="sans-serif" '
+                f'fill="{LABEL_COLOUR}">'
+                f'{_escape(name_for(semitone, key))}</text>'
+            )
+
+    return parts
+
+
+def violin_scale_overlay_both(key):
+    """
+    The Scale layer for "Violin, both positions" - both hand
+    positions' finger marks on one transparent chart, stacked
+    on violin_structure("Third position"): third position's
+    own reach already spans semitones 0 through 11, exactly
+    what combining first (0-7) and third (4-11) needs, so no
+    new width or ruler logic was required - the structure
+    layer for "both" is literally identical to third
+    position's own.
+    """
+
+    _, width, height = _violin_structure_parts("Third position")
+    parts = _violin_scale_parts_both(key)
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="The notes of '
+        f'{_escape(describe_key(key))} highlighted on a '
+        f'violin chart across both hand positions">'
+        + "".join(parts) +
+        "</svg>"
+    )
+
+
+def violin_chart_both(key):
+    """
+    The standalone combined chart - structure plus both
+    positions' scale marks - the "both positions" equivalent
+    of violin_chart.
+    """
+
+    structure_parts, width, height = _violin_structure_parts(
+        "Third position"
+    )
+    scale_parts = _violin_scale_parts_both(key)
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="A violin chart of '
+        f'{_escape(describe_key(key))} across both hand '
+        f'positions, along the neck">'
+        + "".join(structure_parts) + "".join(scale_parts) +
+        "</svg>"
+    )
+
+
 # The mixer overlay's mark, drawn heavier than the scale
 # diagram's so a chord tone that is also a scale note is
 # still visibly the thing being played right now, not just
@@ -976,6 +1104,16 @@ CHORD_TONE_COLOUR = "#ad1457"
 SHAPE_COLOUR = "#6a1b9a"
 LEFT_HAND_COLOUR = "#1565c0"
 RIGHT_HAND_COLOUR = SHAPE_COLOUR
+
+# The second hand position's own colour, for the dual-
+# position display (guitar and ukulele's higher barre shape,
+# violin's third position). Teal is the one hue left in the
+# app's palette once green, orange, magenta, purple and blue
+# are already spoken for. A note reachable from both
+# positions gets a split mark, half SHAPE_COLOUR and half
+# this one - not a third colour, which would throw away the
+# information of which two positions are overlapping.
+HIGHER_SHAPE_COLOUR = "#00838f"
 
 
 def piano_chord_overlay(key, chord_semitone_set, octaves=None):
@@ -1193,18 +1331,166 @@ def violin_chord_overlay(key, chord_semitone_set, position="First position"):
     )
 
 
+def violin_chord_overlay_both(key, chord_semitone_set):
+    """
+    The Chord-notes layer for "Violin, both positions" - the
+    fill still means position (split where both positions
+    reach a chord tone, exactly like Scale), but the ring
+    stays CHORD_TONE_COLOUR always, since Chord-notes has
+    only the one thing to say - unlike Scale, there is no
+    competing home-vs-in-key meaning here to protect. Keeping
+    it a fixed colour, distinct from Scale's green/orange
+    ring, is what keeps the two layers tellable apart when
+    both are toggled on together.
+    """
+
+    left = VIOLIN_LAYOUT["left"]
+    top = VIOLIN_LAYOUT["top"]
+    semitone_width = VIOLIN_LAYOUT["semitone_width"]
+    string_gap = VIOLIN_LAYOUT["string_gap"]
+
+    _, width, height = _violin_structure_parts("Third position")
+
+    parts = []
+
+    for index, open_string in enumerate(reversed(VIOLIN_STRINGS)):
+
+        y = top + index * string_gap
+
+        first_map = {0: 0}
+        first_map.update(
+            fingering_for(
+                open_string, key, POSITION_STARTS["First position"]
+            )
+        )
+
+        third_map = {0: 0}
+        third_map.update(
+            fingering_for(
+                open_string, key, POSITION_STARTS["Third position"]
+            )
+        )
+
+        for step in sorted(set(first_map) | set(third_map)):
+
+            semitone = _note_at(open_string, step)
+
+            if semitone not in chord_semitone_set:
+                continue
+
+            in_first = step in first_map
+            in_third = step in third_map
+
+            label = None
+
+            if in_first and not in_third:
+                label = first_map[step]
+            elif in_third and not in_first:
+                label = third_map[step]
+
+            x = left + step * semitone_width
+
+            parts.append(
+                _dual_position_dot(
+                    x, y, in_first, in_third, CHORD_TONE_COLOUR, label
+                )
+            )
+
+            parts.append(
+                f'<text x="{x + 15}" y="{y - 9}" '
+                f'text-anchor="start" font-size="9" '
+                f'font-family="sans-serif" fill="{LABEL_COLOUR}">'
+                f'{_escape(name_for(semitone, key))}</text>'
+            )
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="The chord tones highlighted '
+        f'on a violin chart across both hand positions">'
+        + "".join(parts) +
+        "</svg>"
+    )
+
+
 def _violin_position_for(instrument):
     """
     Which position an "instrument" string like "Violin,
     third position" names, shared by every function that
     dispatches on the INSTRUMENTS list so the parsing
     lives in one place.
+
+    "Violin, both positions" correctly falls through to
+    "First position" here - the violin's Chord shape layer
+    (a double stop) is only ever a first-position shape (see
+    violin_chord_shape_overlay), so shape_overlay_for's
+    dispatch needs exactly that value even in "both" mode.
+    Structure, Scale and Chord-notes have their own separate
+    "both" dispatch (_violin_shows_both) that is checked
+    before this function is ever reached for those layers.
     """
 
     return (
         "Third position" if "third" in instrument
         else "First position"
     )
+
+
+def _violin_shows_both(instrument):
+    """
+    Whether "instrument" names the combined-position violin
+    entry - "Violin, both positions" - which shows Structure,
+    Scale and Chord-notes across both hand positions at once
+    rather than just one.
+    """
+
+    return "both" in instrument.lower()
+
+
+def _dual_position_dot(x, y, in_first, in_third, ring_colour,
+                        label=None, radius=12):
+    """
+    One mark on a violin diagram, encoding two independent
+    things at once: which hand position(s) reach this note
+    (the fill - SHAPE_COLOUR for first position only,
+    HIGHER_SHAPE_COLOUR for third only, a split half-and-half
+    fill for both, matching the same split style guitar and
+    ukulele use for their own higher-position marks) and
+    whatever ring_colour is asked to carry separately (Scale
+    passes home-vs-in-key; Chord-notes passes its own fixed
+    chord-tone colour, since it has only one thing to say).
+
+    label is omitted, not guessed, when the note is reachable
+    from both positions and the two positions would give it
+    different finger numbers - the same reasoning guitar and
+    ukulele's own split marks use.
+    """
+
+    if in_first and in_third:
+        shape = (
+            f'<path d="M{x} {y - radius} A{radius} {radius} 0 0 1 '
+            f'{x} {y + radius} Z" fill="{HIGHER_SHAPE_COLOUR}"/>'
+            f'<path d="M{x} {y - radius} A{radius} {radius} 0 0 0 '
+            f'{x} {y + radius} Z" fill="{SHAPE_COLOUR}"/>'
+        )
+    else:
+        fill = SHAPE_COLOUR if in_first else HIGHER_SHAPE_COLOUR
+        shape = f'<circle cx="{x}" cy="{y}" r="{radius}" fill="{fill}"/>'
+
+    ring = (
+        f'<circle cx="{x}" cy="{y}" r="{radius}" fill="none" '
+        f'stroke="{ring_colour}" stroke-width="2.5"/>'
+    )
+
+    text = (
+        f'<text x="{x}" y="{y + 4}" text-anchor="middle" '
+        f'font-size="12" font-family="sans-serif" '
+        f'fill="#ffffff">{label}</text>'
+        if label is not None else ""
+    )
+
+    return shape + ring + text
 
 
 def _base_instrument_name(instrument):
@@ -1277,6 +1563,10 @@ def structure_for(instrument):
         return piano_structure(_octaves_for(instrument))
 
     if base.startswith("Violin"):
+        if _violin_shows_both(instrument):
+            # Structurally identical to third position alone -
+            # see violin_scale_overlay_both's docstring for why.
+            return violin_structure("Third position")
         return violin_structure(_violin_position_for(instrument))
 
     return fretboard_structure(base, _frets_shown_for(instrument))
@@ -1295,6 +1585,8 @@ def scale_overlay_for(key, instrument):
         return piano_scale_overlay(key, _octaves_for(instrument))
 
     if base.startswith("Violin"):
+        if _violin_shows_both(instrument):
+            return violin_scale_overlay_both(key)
         return violin_scale_overlay(key, _violin_position_for(instrument))
 
     return fretboard_scale_overlay(key, base, _frets_shown_for(instrument))
@@ -1412,6 +1704,77 @@ def guitar_shape_frets(root, quality):
     return frets, (barre if barre > 0 else None)
 
 
+def _apply_guitar_template(template, barre):
+    """
+    Turn one movable template (E-shape or A-shape) plus a
+    barre fret into the same (fret, finger) per string shape
+    guitar_shape_frets returns - shared by both the lower
+    and the higher position, so the two can never drift into
+    different fingering conventions.
+    """
+
+    frets = []
+
+    for offset in template:
+
+        if offset is None:
+            frets.append((None, None))
+            continue
+
+        fret = offset + barre
+
+        if fret == 0:
+            frets.append((0, None))
+        elif fret == barre and barre > 0:
+            frets.append((fret, 1))
+        else:
+            frets.append((fret, None))
+
+    return frets
+
+
+def guitar_shape_frets_higher(root, quality):
+    """
+    The second natural hand position for one chord: whichever
+    of the E-shape or A-shape barre guitar_shape_frets did
+    NOT use as the lower position - the shape it has always
+    computed internally and discarded.
+
+    Returns this movable position even where guitar_shape_frets
+    shows a true open shape instead of a barre for the lower
+    position (C, D, G and their sevenths): the open shape is a
+    hand-picked substitute for the low barre, not a different
+    chord, so the movable barre position it stands in for is
+    still a genuine higher-position alternative to show.
+
+    None where guitar_shape_frets would also return None - a
+    quality with no standard shape has no higher position
+    either.
+
+    Checked against every root/quality combination this app
+    draws (48 total): the gap between this and the lower
+    position is always at least 3 frets, and the highest fret
+    this ever needs is 13 (the Eb/Ab family) - this is why the
+    guitar entry in INSTRUMENTS was widened to 13 frets.
+    """
+
+    if quality not in GUITAR_E_SHAPE:
+        return None
+
+    root_semitone = NOTE_SEMITONES[root] % 12
+    e_fret = (root_semitone - NOTE_SEMITONES["E"]) % 12
+    a_fret = (root_semitone - NOTE_SEMITONES["A"]) % 12
+
+    if a_fret < e_fret:
+        template, barre = GUITAR_E_SHAPE[quality], e_fret
+    else:
+        template, barre = GUITAR_A_SHAPE[quality], a_fret
+
+    frets = _apply_guitar_template(template, barre)
+
+    return frets, (barre if barre > 0 else None)
+
+
 # Standard ukulele chord shapes, fret per string in tuning
 # order (matching STRING_TUNINGS["Ukulele"]: A, E, C, G) -
 # not the G/C/E/A order a chart displays them in, which is
@@ -1501,6 +1864,61 @@ def ukulele_shape_frets(root, quality):
     return result, barre_fret
 
 
+# The B and Bm shapes are ukulele's only fully closed shapes
+# in UKULELE_SHAPES - no open strings - which means they can
+# be slid by a constant number of frets to land on any other
+# root, the same idea as a guitar barre, just with no actual
+# barre finger needed since ukulele only has four strings.
+# Verified against chord_semitones for every shift below: the
+# shifted shape produces exactly the right chord tones with
+# the root present, for every root it is offered for.
+_UKULELE_CLOSED_ANCHOR = {"": [2, 2, 3, 4], "m": [2, 2, 2, 4]}
+
+# Only the roots whose shifted shape lands within ukulele's
+# own 10-fret full range, and excluding B/Bm itself (shift 0
+# - that root IS the anchor shape already, nothing "higher"
+# to show). G and A need frets 12 and 14, past where a
+# soprano neck is comfortably playable at all - not a
+# limitation to raise the fret count for, since there is no
+# realistic melody position up there for the chord shape to
+# serve. C and Cm are kept despite the higher shape's lowest
+# fret landing on the primary shape's own fret - overlap is
+# not a defect here, it is exactly what the dual-colour mark
+# exists to show honestly.
+_UKULELE_HIGHER_ROOTS = {"C", "D", "E", "F"}
+
+
+def ukulele_shape_frets_higher(root, quality):
+    """
+    The second hand position for one ukulele chord: the B or
+    Bm closed shape, shifted up the neck to this root. None
+    for any root/quality this app has not verified fits the
+    instrument's real playable range (see
+    _UKULELE_HIGHER_ROOTS) or for a quality with no closed
+    anchor shape to shift.
+    """
+
+    if root not in _UKULELE_HIGHER_ROOTS:
+        return None
+
+    if quality not in _UKULELE_CLOSED_ANCHOR:
+        return None
+
+    shift = (NOTE_SEMITONES[root] - NOTE_SEMITONES["B"]) % 12
+    frets = [fret + shift for fret in _UKULELE_CLOSED_ANCHOR[quality]]
+
+    barre_fret = next(
+        (fret for fret in frets if frets.count(fret) > 1), None
+    )
+
+    result = [
+        (fret, 1) if fret == barre_fret else (fret, None)
+        for fret in frets
+    ]
+
+    return result, barre_fret
+
+
 def piano_shape_for(root, quality):
     """
     A beginner's two-hand voicing for one chord: left hand
@@ -1570,6 +1988,8 @@ def chord_overlay_for(key, instrument, chord_name):
         return piano_chord_overlay(key, tones, _octaves_for(instrument))
 
     if base.startswith("Violin"):
+        if _violin_shows_both(instrument):
+            return violin_chord_overlay_both(key, tones)
         return violin_chord_overlay(
             key, tones, _violin_position_for(instrument)
         )
@@ -1689,6 +2109,66 @@ def piano_chord_shape_overlay(key, chord_name, octaves=None):
     )
 
 
+def _fret_dot(x, y, fret, finger, colour):
+    """
+    One fretted mark, single colour - unchanged shape from
+    before the dual-position work, just pulled out so both
+    the single- and dual-position drawing paths share one
+    definition of what a mark looks like.
+    """
+
+    label = finger if finger is not None else "\u2022"
+
+    return (
+        f'<circle cx="{x}" cy="{y}" r="11" '
+        f'fill="{colour}" '
+        f'stroke="#ffffff" stroke-width="1.5"/>'
+        f'<text x="{x}" y="{y + 4}" '
+        f'text-anchor="middle" font-size="11" '
+        f'font-family="sans-serif" fill="#ffffff">'
+        f'{label}</text>'
+    )
+
+
+def _split_fret_dot(x, y, colour_a, colour_b):
+    """
+    A note reachable from both hand positions: half
+    colour_a, half colour_b, no finger number - the two
+    positions may want different fingers here, and showing
+    one would misrepresent the other. The split itself is
+    what says "both", the same way the marking sample agreed
+    on: a third blended colour would throw away which two
+    positions are overlapping.
+    """
+
+    return (
+        f'<path d="M{x} {y - 11} A11 11 0 0 1 {x} {y + 11} Z" '
+        f'fill="{colour_b}"/>'
+        f'<path d="M{x} {y - 11} A11 11 0 0 0 {x} {y + 11} Z" '
+        f'fill="{colour_a}"/>'
+        f'<circle cx="{x}" cy="{y}" r="11" fill="none" '
+        f'stroke="#ffffff" stroke-width="1.5"/>'
+    )
+
+
+def _shows_both_positions(instrument, frets_shown):
+    """
+    Whether the wide (full) view is active for an instrument
+    that has a genuine second hand position to show -
+    guitar's 13-fret view or ukulele's 10-fret view. The
+    compact view (8 or 6 frets) always shows the lower
+    position only, unchanged from before this work.
+    """
+
+    if instrument == "Guitar":
+        return frets_shown == 13
+
+    if instrument == "Ukulele":
+        return frets_shown == 10
+
+    return False
+
+
 def fretted_chord_shape_overlay(key, chord_name, instrument="Guitar",
                                  frets_shown=FRETS_SHOWN):
     """
@@ -1701,6 +2181,13 @@ def fretted_chord_shape_overlay(key, chord_name, instrument="Guitar",
     since a different tuning means genuinely different
     shapes, not the same fingering moved to a different
     instrument.
+
+    In the wide (full) view, also draws the higher hand
+    position alongside the lower one, in HIGHER_SHAPE_COLOUR,
+    with a split mark wherever a string's fret coincides in
+    both positions. The compact view is unaffected - same
+    single-colour, single-position drawing as before this
+    was added.
 
     Returns None if that instrument's table has no standard
     shape for this chord's quality or root - the caller
@@ -1720,13 +2207,20 @@ def fretted_chord_shape_overlay(key, chord_name, instrument="Guitar",
 
     if instrument == "Ukulele":
         shaped = ukulele_shape_frets(root, quality)
+        higher_shaped = ukulele_shape_frets_higher(root, quality)
     else:
         shaped = guitar_shape_frets(root, quality)
+        higher_shaped = guitar_shape_frets_higher(root, quality)
 
     if shaped is None:
         return None
 
     frets, barre = shaped
+
+    show_both = _shows_both_positions(instrument, frets_shown)
+    higher_frets = higher_shaped[0] if (
+        show_both and higher_shaped is not None
+    ) else None
 
     tuning = STRING_TUNINGS.get(instrument)
 
@@ -1757,6 +2251,11 @@ def fretted_chord_shape_overlay(key, chord_name, instrument="Guitar",
 
         y = top + tuning_index * string_gap
 
+        higher_fret = higher_finger = None
+
+        if higher_frets is not None:
+            higher_fret, higher_finger = higher_frets[string_index]
+
         if fret is None:
             parts.append(
                 f'<text x="{left - 26}" y="{y + 4}" '
@@ -1764,30 +2263,34 @@ def fretted_chord_shape_overlay(key, chord_name, instrument="Guitar",
                 f'font-weight="700" font-family="sans-serif" '
                 f'fill="{SHAPE_COLOUR}">X</text>'
             )
-            continue
-
-        if fret == 0:
+        elif fret == 0:
             parts.append(
                 f'<text x="{left - 26}" y="{y + 4}" '
                 f'text-anchor="middle" font-size="12" '
                 f'font-weight="700" font-family="sans-serif" '
                 f'fill="{SHAPE_COLOUR}">O</text>'
             )
-            continue
+        else:
+            x = left + fret * fret_width - fret_width / 2
 
-        x = left + fret * fret_width - fret_width / 2
+            if higher_fret is not None and higher_fret == fret:
+                parts.append(_split_fret_dot(
+                    x, y, SHAPE_COLOUR, HIGHER_SHAPE_COLOUR
+                ))
+                higher_fret = None
+            else:
+                parts.append(
+                    _fret_dot(x, y, fret, finger, SHAPE_COLOUR)
+                )
 
-        label = finger if finger is not None else "\u2022"
-
-        parts.append(
-            f'<circle cx="{x}" cy="{y}" r="11" '
-            f'fill="{SHAPE_COLOUR}" '
-            f'stroke="#ffffff" stroke-width="1.5"/>'
-            f'<text x="{x}" y="{y + 4}" '
-            f'text-anchor="middle" font-size="11" '
-            f'font-family="sans-serif" fill="#ffffff">'
-            f'{label}</text>'
-        )
+        if higher_fret is not None and higher_fret > 0:
+            hx = left + higher_fret * fret_width - fret_width / 2
+            parts.append(
+                _fret_dot(
+                    hx, y, higher_fret, higher_finger,
+                    HIGHER_SHAPE_COLOUR
+                )
+            )
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -2029,11 +2532,11 @@ INSTRUMENTS = [
     "Piano, 2 octaves",
     "Piano, 3 octaves",
     "Guitar, 8 frets",
-    "Guitar, 12 frets",
+    "Guitar, 13 frets",
     "Ukulele, 6 frets",
     "Ukulele, 10 frets",
     "Violin, first position",
-    "Violin, third position"
+    "Violin, both positions"
 ]
 
 
@@ -2048,6 +2551,8 @@ def diagram_for(key, instrument):
         return piano_diagram(key, _octaves_for(instrument))
 
     if base.startswith("Violin"):
+        if _violin_shows_both(instrument):
+            return violin_chart_both(key)
         return violin_chart(key, _violin_position_for(instrument))
 
     return fretboard_diagram(key, base, _frets_shown_for(instrument))

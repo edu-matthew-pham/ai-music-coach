@@ -236,11 +236,15 @@ def test_mixer_data_has_the_shape_the_component_expects():
         == chart_chord_names
     )
 
-    # Third position has no shape of its own, so it falls
-    # back to chord_overlay_for for every chord - the panel
-    # sees a missing entry there, same as any other
-    # quality-with-no-standard-shape gap.
-    assert value["diagrams"]["shapes"]["Violin, third position"] == {}
+    # "Both positions" has no second shape of its own to add -
+    # a double stop is only ever a first-position shape - so
+    # it resolves to first position for the shape layer and
+    # shows that same shape, matching "Violin, first
+    # position" exactly rather than sitting empty.
+    assert (
+        value["diagrams"]["shapes"]["Violin, both positions"]
+        == value["diagrams"]["shapes"]["Violin, first position"]
+    )
 
     # Structure and scale must be different pictures, not
     # the same one under two names - the bug that shipped

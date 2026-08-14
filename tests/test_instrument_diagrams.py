@@ -184,7 +184,7 @@ def test_the_piano_draws_twelve_keys_to_the_octave():
 
 
 def test_the_view_says_what_it_is_showing():
-    shown = show_instrument("F", "Guitar, 12 frets")
+    shown = show_instrument("F", "Guitar, 13 frets")
 
     assert "F major / D minor" in shown
     assert "Bb" in shown
@@ -401,7 +401,7 @@ def test_both_positions_are_offered_as_instruments():
     from instrument_diagrams import INSTRUMENTS, show_instrument
 
     assert "Violin, first position" in INSTRUMENTS
-    assert "Violin, third position" in INSTRUMENTS
+    assert "Violin, both positions" in INSTRUMENTS
 
     for instrument in INSTRUMENTS:
         assert "<svg" in show_instrument("D", instrument)
@@ -431,3 +431,79 @@ def test_the_piano_spans_three_octaves():
 
     assert picture.count(">F</text>") == 3
     assert picture.count(">Bb</text>") == 3
+
+
+def test_violin_both_positions_structure_matches_third_position_alone():
+    """
+    Third position's own reach (start 4 + POSITION_REACH 7 =
+    11) already spans everything first position (0-7) needs
+    too, so the combined structure is exactly third position's
+    own structure, unchanged - no new width or ruler logic
+    exists, and none was needed. Confirmed against the real
+    function, not asserted from a computed guess.
+    """
+
+    from instrument_diagrams import structure_for, violin_structure
+
+    both = structure_for("Violin, both positions")
+    third_alone_directly = violin_structure("Third position")
+    first_alone = structure_for("Violin, first position")
+
+    assert both == third_alone_directly
+    assert both != first_alone
+
+
+def test_violin_both_positions_scale_shows_every_key_with_overlap():
+    """
+    Real computed check, not assumed: every one of the app's
+    12 major keys produces at least one note reachable from
+    both first and third position, so the split mark is
+    exercised for every key a user could actually pick, not
+    just a hand-picked example.
+    """
+
+    from instrument_diagrams import (
+        violin_scale_overlay_both, HIGHER_SHAPE_COLOUR, SHAPE_COLOUR
+    )
+    from harmony import MAJOR_SCALES
+
+    for key in MAJOR_SCALES:
+        svg = violin_scale_overlay_both(key)
+        assert SHAPE_COLOUR in svg
+        assert HIGHER_SHAPE_COLOUR in svg
+        assert "<path" in svg  # a split mark exists somewhere
+
+
+def test_violin_both_positions_scale_keeps_home_and_in_key_rings():
+    """
+    Position moved to the fill; home-vs-in-key must still be
+    readable from the ring colour, unchanged in meaning from
+    the single-position Scale layer.
+    """
+
+    from instrument_diagrams import (
+        violin_scale_overlay_both, HOME_COLOUR, IN_KEY_COLOUR
+    )
+
+    svg = violin_scale_overlay_both("C")
+
+    assert f'stroke="{HOME_COLOUR}"' in svg
+    assert f'stroke="{IN_KEY_COLOUR}"' in svg
+
+
+def test_violin_both_positions_chord_notes_use_a_fixed_ring():
+    """
+    Chord-notes has only one thing to say (this is a chord
+    tone), so its ring stays CHORD_TONE_COLOUR always, never
+    switching to green/orange - keeping it visually distinct
+    from the Scale layer's ring when both layers are shown
+    together.
+    """
+
+    from instrument_diagrams import (
+        violin_chord_overlay_both, CHORD_TONE_COLOUR
+    )
+
+    svg = violin_chord_overlay_both("C", {0, 4, 7})  # C major triad
+
+    assert f'stroke="{CHORD_TONE_COLOUR}"' in svg
