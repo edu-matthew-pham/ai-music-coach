@@ -124,25 +124,45 @@ def test_the_neck_marks_every_position_not_only_the_key():
     assert IN_KEY_COLOUR in picture
 
 
-def test_every_instrument_draws_the_same_height():
+def test_every_instrument_is_rendered_a_consistent_height_on_screen():
     """
-    Piano, Guitar, and both violin positions are shown side
-    by side in the mixer's instrument panel - a picture much
-    shorter or taller than its neighbours reads as a layout
-    accident, not a deliberate choice, so all four share one
-    height even though their widths genuinely differ.
+    Every instrument is shown side by side in the mixer's
+    instrument panel - a picture much shorter or taller than
+    its neighbours reads as a layout accident, not a
+    deliberate choice. That consistency is enforced in the
+    frontend now (InstrumentPanel.svelte fixes the on-screen
+    height and lets width follow each drawing's own aspect
+    ratio), which is what actually reaches the screen -
+    Piano, Guitar, and both violin positions still happen to
+    share one internal viewBox height too, a leftover of
+    when that was how consistency was enforced, but Ukulele
+    genuinely does not share it (four strings instead of six,
+    at the same string spacing, is a shorter neck), and that
+    is fine precisely because the frontend no longer depends
+    on it.
     """
 
     import re
 
-    heights = set()
+    heights = {}
 
     for instrument in INSTRUMENTS:
         picture = diagram_for("C", instrument)
         box = re.search(r'viewBox="0 0 (\d+) (\d+)"', picture)
-        heights.add(box.group(2))
+        heights[instrument] = box.group(2)
 
-    assert len(heights) == 1
+    fretted_and_keyed = {
+        name: height for name, height in heights.items()
+        if name != "Ukulele"
+    }
+
+    assert len(set(fretted_and_keyed.values())) == 1
+
+    # Ukulele's own three layers still have to agree with
+    # each other, even though they differ from everyone
+    # else's height - covered by the alignment tests
+    # elsewhere in this file, not repeated here.
+    assert heights["Ukulele"] != next(iter(fretted_and_keyed.values()))
 
 
 def test_home_is_marked_apart_from_the_rest_of_the_key():

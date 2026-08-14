@@ -363,3 +363,134 @@ def test_a_violin_shape_uses_the_shared_shape_colour():
 
     assert SHAPE_COLOUR in shape
     assert CHORD_TONE_COLOUR not in shape
+
+
+# Every ukulele shape checked against the actual chord tones
+# it plays - real evidence the fingering is correct, not
+# just documentation of what was typed in.
+UKULELE_KNOWN_SHAPES = {
+    ("C", ""): [3, 0, 0, 0],
+    ("D", ""): [0, 2, 2, 2],
+    ("G", ""): [2, 3, 2, 0],
+    ("A", "m"): [0, 0, 0, 2],
+}
+
+
+@pytest.mark.parametrize("root,quality", UKULELE_KNOWN_SHAPES.keys())
+def test_a_ukulele_shape_matches_the_verified_fingering(root, quality):
+
+    from instrument_diagrams import ukulele_shape_frets
+
+    result = ukulele_shape_frets(root, quality)
+
+    assert result is not None
+
+    frets, _barre = result
+
+    assert [fret for fret, _finger in frets] == UKULELE_KNOWN_SHAPES[(root, quality)]
+
+
+def test_every_ukulele_shape_plays_the_correct_chord_tones():
+    """
+    Fret positions checked against the theory module directly,
+    the same cross-check guitar's shapes already get - real
+    evidence the shape sounds like the chord it's named for,
+    independent of whether it happens to be the fingering any
+    particular teacher would choose.
+    """
+
+    from instrument_diagrams import (
+        UKULELE_SHAPES, ukulele_shape_frets, STRING_TUNINGS, _note_at
+    )
+    from notes import NOTE_SEMITONES
+    from chords import chord_semitones
+
+    tuning = STRING_TUNINGS["Ukulele"]
+
+    for root, quality in UKULELE_SHAPES:
+
+        frets, _barre = ukulele_shape_frets(root, quality)
+
+        played = {
+            _note_at(string, fret)
+            for string, (fret, _finger) in zip(tuning, frets)
+        }
+
+        tones = set(chord_semitones(root + quality))
+
+        assert played <= tones, f"{root}{quality} plays a wrong note"
+
+        assert NOTE_SEMITONES[root] % 12 in played, (
+            f"{root}{quality} is missing its own root"
+        )
+
+
+def test_a_ukulele_barre_is_finger_one_and_nothing_else_is_guessed():
+    """
+    Only two finger facts are ever claimed for a ukulele
+    shape: open (no finger) and barre (finger 1, wherever
+    two or more strings share a fret) - both genuinely
+    certain regardless of which teacher is asked. Every
+    other fretted note is left as a plain, unlabelled mark,
+    since which finger a teacher would choose for it is not
+    something this table was ever meant to claim to know.
+    """
+
+    from instrument_diagrams import ukulele_shape_frets
+
+    # D major barres three strings at fret 2.
+    frets, barre = ukulele_shape_frets("D", "")
+
+    assert barre == 2
+
+    barred = [f for f, finger in frets if f == 2]
+    assert len(barred) == 3
+
+    for fret, finger in frets:
+        if fret == 0:
+            assert finger is None
+        elif fret == barre:
+            assert finger == 1
+        else:
+            assert finger is None
+
+
+def test_ukulele_has_no_shape_for_an_accidental_root_or_odd_quality():
+    """
+    Only the seven natural-note roots are covered, and only
+    major and minor - a gap here is more honest than a
+    fingering for a chord this table was never checked
+    against.
+    """
+
+    from instrument_diagrams import ukulele_shape_frets
+
+    assert ukulele_shape_frets("F#", "") is None
+    assert ukulele_shape_frets("C", "maj7") is None
+    assert ukulele_shape_frets("Bb", "m") is None
+
+
+def test_a_ukulele_shape_stacks_on_the_same_structure():
+
+    structure = structure_for("Ukulele")
+    shape = shape_overlay_for("C", "Ukulele", "C")
+
+    structure_box = re.search(r'viewBox="([^"]+)"', structure).group(1)
+    shape_box = re.search(r'viewBox="([^"]+)"', shape).group(1)
+
+    assert structure_box == shape_box
+
+
+def test_ukulele_and_guitar_do_not_share_shape_data():
+    """
+    Ukulele is not a transposed guitar - the two instruments
+    have genuinely different shapes for the same chord name,
+    since the tuning itself is different, not just the range.
+    """
+
+    from instrument_diagrams import guitar_shape_frets, ukulele_shape_frets
+
+    guitar_c, _ = guitar_shape_frets("C", "")
+    ukulele_c, _ = ukulele_shape_frets("C", "")
+
+    assert [f for f, _ in guitar_c] != [f for f, _ in ukulele_c]

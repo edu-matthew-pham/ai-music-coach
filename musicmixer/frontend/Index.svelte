@@ -129,19 +129,24 @@
 		}
 	}
 
-	function selectPhrase(phrase: MixerPhrase): void {
-		const wasPlaying = engine.playing;
-
-		const rangeChanged = engine.selectRange(phrase.start, phrase.end);
+	function selectPhrase(phrase: MixerPhrase, event: MouseEvent | KeyboardEvent): void {
+		// Phrases work like the chart strip - click selects
+		// and seeks, shift-click extends a range from the
+		// last anchor to cover several phrases for repeating -
+		// but with one deliberate difference: a phrase click
+		// always starts playing. Practising a phrase is the
+		// whole point of the panel, so picking one should not
+		// be a separate step from hearing it - unlike a bar
+		// click, which only resumes playback if it was already
+		// running.
+		const rangeChanged = engine.select(phrase, event.shiftKey);
 		playhead = engine.position();
 
 		if (rangeChanged) {
 			reportValue();
 		}
 
-		if (wasPlaying) {
-			engine.play(layers);
-		}
+		engine.play(layers);
 	}
 
 	function clearSelection(): void {
@@ -265,7 +270,7 @@
 		{/if}
 
 		{#if panels.phrases}
-			<PhraseList {phrases} onSelectPhrase={selectPhrase} {narrow} />
+			<PhraseList {phrases} {playhead} onSelectPhrase={selectPhrase} {narrow} />
 		{/if}
 
 		{#if panels.notes}

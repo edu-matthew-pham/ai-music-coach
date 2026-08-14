@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { diagramInstruments, diagramLayers, previewNextChord } from "./mixerPanels.svelte";
+	import { diagramInstruments, diagramLayers, ensureInstrumentToggle, previewNextChord } from "./mixerPanels.svelte";
 	import type { MixerBar, MixerDiagrams } from "./types";
 
 	// Four layers per instrument, stacked: structure (the
@@ -26,6 +26,22 @@
 
 	let { diagrams, timeline, playhead }: Props = $props();
 
+	// The list of instruments comes from Python's own data,
+	// not a name typed a second time here - diagrams.structure
+	// always carries every instrument instrument_diagrams.py's
+	// INSTRUMENTS list knows about, whether or not a picture
+	// happens to be toggled on. Each name gets a toggle-state
+	// entry the first time it's seen; ensureInstrumentToggle
+	// is a no-op for a name that already has one, so this is
+	// safe to call on every render.
+	const availableInstruments = $derived(Object.keys(diagrams.structure ?? {}));
+
+	$effect(() => {
+		for (const name of availableInstruments) {
+			ensureInstrumentToggle(name);
+		}
+	});
+
 	const currentIndex = $derived(
 		timeline.findIndex((bar) => playhead >= bar.start && playhead < bar.end)
 	);
@@ -47,12 +63,12 @@
 	);
 
 	const chosenInstruments = $derived(
-		Object.keys(diagramInstruments).filter((name) => diagramInstruments[name])
+		availableInstruments.filter((name) => diagramInstruments[name])
 	);
 </script>
 
 <div class="instrument-toggles">
-	{#each Object.keys(diagramInstruments) as name}
+	{#each availableInstruments as name}
 		<label class="instrument-toggle">
 			<input type="checkbox" bind:checked={diagramInstruments[name]} />
 			{name}
@@ -216,7 +232,7 @@
 		   aspect ratio, so every instrument renders at the
 		   same height with no letterbox gap and no
 		   distortion.
-		   120px is a DISPLAY size, deliberately not the same
+		   100px is a DISPLAY size, deliberately not the same
 		   number as the shared viewBox height in
 		   instrument_diagrams.py's PIANO_LAYOUT/
 		   FRETBOARD_LAYOUT/VIOLIN_LAYOUT (196) - those are

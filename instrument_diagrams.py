@@ -51,7 +51,17 @@ LABEL_COLOUR = "#555555"
 # reads, which matters for nothing here: the diagram is
 # about which finger position gives which note name.
 STRING_TUNINGS = {
-    "Guitar": ["E2", "A2", "D3", "G3", "B3", "E4"]
+    "Guitar": ["E2", "A2", "D3", "G3", "B3", "E4"],
+
+    # Standard re-entrant tuning: the G string is not the
+    # lowest pitch (it sits between C and E), so this list is
+    # not pitch-ordered the way the guitar's is - it is
+    # physical string order instead, chosen so the shared
+    # drawing code's reversed() places G at the top and A at
+    # the bottom, the standard way a ukulele chart is drawn.
+    # Nothing downstream needs the list to be pitch-sorted;
+    # the drawing only ever uses list order for placement.
+    "Ukulele": ["A4", "E4", "C4", "G4"],
 }
 
 # The violin's strings, lowest first, and where each hand
@@ -1319,6 +1329,95 @@ def guitar_shape_frets(root, quality):
     return frets, (barre if barre > 0 else None)
 
 
+# Standard ukulele chord shapes, fret per string in tuning
+# order (matching STRING_TUNINGS["Ukulele"]: A, E, C, G) -
+# not the G/C/E/A order a chart displays them in, which is
+# the reverse. Getting this backwards would silently swap
+# which string each fret lands on, since the drawing code
+# below indexes this list the same way it indexes guitar's -
+# by tuning order, not display order - and ukulele's tuning
+# list is deliberately not in display order to begin with
+# (chosen so the shared reversed()-based layout puts G at
+# the top and A at the bottom, the standard way a ukulele
+# chart is drawn).
+#
+# Ukulele is not a transposed guitar - a different tuning
+# means genuinely different shapes, not the same fingering
+# moved around - so this is its own table, not guitar's
+# reused or adapted.
+#
+# Every entry here is checked against chord_semitones before
+# being trusted: every fretted or open note belongs to the
+# chord, and the root is present. That check is real
+# evidence the shape plays the right chord; it is not
+# evidence this is the one standard fingering a given teacher
+# would show, since ukulele - four strings, no single settled
+# CAGED-style system the way guitar has - does not have one
+# universally agreed shape per chord the way some guitar
+# chords do. Only the seven natural-note roots are covered
+# for the same reason: confidence in a shape actually being
+# standard practice, not just correct, matters here, and
+# that confidence runs out at the accidentals.
+UKULELE_SHAPES = {
+    ("C", ""): [3, 0, 0, 0],
+    ("D", ""): [0, 2, 2, 2],
+    ("E", ""): [2, 4, 4, 4],
+    ("F", ""): [0, 1, 0, 2],
+    ("G", ""): [2, 3, 2, 0],
+    ("A", ""): [0, 0, 1, 2],
+    ("B", ""): [2, 2, 3, 4],
+    ("C", "m"): [3, 3, 3, 0],
+    ("D", "m"): [0, 1, 2, 2],
+    ("E", "m"): [2, 3, 4, 0],
+    ("F", "m"): [3, 1, 0, 1],
+    ("G", "m"): [1, 3, 2, 0],
+    ("A", "m"): [0, 0, 0, 2],
+    ("B", "m"): [2, 2, 2, 4],
+}
+
+
+def ukulele_shape_frets(root, quality):
+    """
+    The standard shape for one chord on ukulele: (fret,
+    finger) per string in tuning order (A, E, C, G) - None
+    for a quality or root this table does not cover.
+
+    Finger numbers are only given where they are genuinely
+    certain: open (no finger needed) and barre (two or more
+    strings pressed by the same finger at the same fret,
+    which is finger 1 by near-universal convention wherever
+    it happens). Every other fretted note is a plain,
+    correctly positioned mark with no finger claimed - the
+    fret position is verified against the chord's actual
+    tones; which finger a teacher would choose for it is
+    not, and guessing one would be presenting a guess as
+    settled fact.
+    """
+
+    frets = UKULELE_SHAPES.get((root, quality))
+
+    if frets is None:
+        return None
+
+    fretted = [fret for fret in frets if fret > 0]
+    barre_fret = next(
+        (fret for fret in fretted if fretted.count(fret) > 1), None
+    )
+
+    result = []
+
+    for fret in frets:
+
+        if fret == 0:
+            result.append((0, None))
+        elif fret == barre_fret:
+            result.append((fret, 1))
+        else:
+            result.append((fret, None))
+
+    return result, barre_fret
+
+
 def piano_shape_for(root, quality):
     """
     A beginner's two-hand voicing for one chord: left hand
@@ -1499,23 +1598,31 @@ def piano_chord_shape_overlay(key, chord_name):
     )
 
 
-def guitar_chord_shape_overlay(key, chord_name, instrument="Guitar"):
+def fretted_chord_shape_overlay(key, chord_name, instrument="Guitar"):
     """
     A beginner's standard shape for one chord, transparent
     background, positioned to stack on fretboard_structure
     the same way fretboard_scale_overlay and
-    fretboard_chord_overlay do.
+    fretboard_chord_overlay do. Works for any fretted,
+    strummed instrument this app knows a shape table for -
+    currently guitar and ukulele, each with its own table,
+    since a different tuning means genuinely different
+    shapes, not the same fingering moved to a different
+    instrument.
 
-    Returns None if guitar_shape_frets has no standard shape
-    for this chord's quality - the caller falls back to the
-    all-positions chord overlay.
+    Returns None if that instrument's table has no standard
+    shape for this chord's quality or root - the caller
+    falls back to the all-positions chord overlay.
     """
 
     from chords import split_chord
 
     root, quality = split_chord(chord_name)
 
-    shaped = guitar_shape_frets(root, quality)
+    if instrument == "Ukulele":
+        shaped = ukulele_shape_frets(root, quality)
+    else:
+        shaped = guitar_shape_frets(root, quality)
 
     if shaped is None:
         return None
@@ -1541,10 +1648,11 @@ def guitar_chord_shape_overlay(key, chord_name, instrument="Guitar"):
 
     for tuning_index in range(len(tuning)):
 
-        # frets is ordered low string to high, matching
-        # tuning itself; the structure layer draws the low
-        # string at the bottom, so the same reversal applies
-        # here to land on the same row.
+        # frets is in tuning order, matching STRING_TUNINGS
+        # itself; the structure layer draws tuning's last
+        # string at the top (see _fretboard_structure_parts),
+        # so the same reversal applies here to land on the
+        # same row.
         string_index = len(tuning) - 1 - tuning_index
         fret, finger = frets[string_index]
 
@@ -1794,10 +1902,11 @@ def shape_overlay_for(key, instrument, chord_name):
     The beginner-shape picture of one chord on one
     instrument - one concrete place to put the hand, not
     every place the chord's notes occur. None where no
-    standard shape exists: a rare quality on guitar, third
-    position on violin (a double stop is a first-position
-    shape here), or a chord no adjacent violin string pair
-    can reach. The caller falls back to chord_overlay_for.
+    standard shape exists: a rare quality or accidental root
+    on guitar or ukulele, third position on violin (a double
+    stop is a first-position shape here), or a chord no
+    adjacent violin string pair can reach. The caller falls
+    back to chord_overlay_for.
     """
 
     if instrument == "Piano":
@@ -1808,12 +1917,13 @@ def shape_overlay_for(key, instrument, chord_name):
             key, chord_name, _violin_position_for(instrument)
         )
 
-    return guitar_chord_shape_overlay(key, chord_name, instrument)
+    return fretted_chord_shape_overlay(key, chord_name, instrument)
 
 
 INSTRUMENTS = [
     "Piano",
     "Guitar",
+    "Ukulele",
     "Violin, first position",
     "Violin, third position"
 ]

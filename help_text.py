@@ -115,9 +115,13 @@ button again to rebuild.
 Click a bar on the chord strip to jump there. Shift-click
 a second bar to loop that stretch, and **Repeat** decides
 whether the loop plays once and stops or keeps going
-round. The phrase list above the strip jumps straight to a
-phrase's own start and end, which is not always the same
-as the bar it happens to fall in.
+round. The phrase list above the strip works the same way:
+click a phrase to jump straight to its own exact start and
+end (not always the same as the bar it falls in) and start
+playing it, and shift-click a second phrase to loop that
+whole stretch instead - a bar click and a phrase click can
+extend the same selection between them. The phrase
+currently playing shows in green.
 
 **Notes** and **Lyrics** are their own toggles, and can
 both be on together. Notes draws the written pitches for
@@ -125,17 +129,19 @@ the current phrase, one voice shown by default; Lyrics
 shows the words, either as pills that light up one at a
 time or a line of text coloured as it is sung.
 
-**Instruments** draws the key on a piano, a guitar, or a
-violin chart in first or third position. The instrument
-itself is always shown; **Scale**, **Chord notes** and
-**Chord shape** are three independent layers on top of it,
+**Instruments** draws the key on a piano, a guitar, a
+ukulele, or a violin chart in first or third position. The
+instrument itself is always shown; **Scale**, **Chord notes**
+and **Chord shape** are three independent layers on top of it,
 any combination at once, with Chord shape on to start with.
 Chord notes marks every place the current chord occurs;
 Chord shape marks one beginner voicing instead - a standard
-open or barre shape on guitar, a root-and-fifth left hand
-against a triad right hand on piano, a double stop on two
-adjacent open or low strings on violin - each in its own
-colour so the two chord layers stay readable together.
+open or barre shape on guitar or ukulele (the two have
+genuinely different shapes for the same chord, since the
+tuning itself differs, not just the range), a root-and-fifth
+left hand against a triad right hand on piano, a double stop
+on two adjacent open or low strings on violin - each in its
+own colour so the two chord layers stay readable together.
 Showing both is useful in its own right: the shape gives a
 fixed place to start, and the notes show everywhere else the
 same chord tones fall, for an arpeggio or a right-hand
@@ -144,8 +150,12 @@ chord is drawn as a barre, not simplified away: the
 difficulty is real, and seeing it is part of learning it.
 Violin's shape only exists in first position - a double stop
 is a low, beginner shape, not something to teach further up
-the neck - and a handful of guitar chords have no standard
-open or barre shape either. Either says so rather than
+the neck - and ukulele's shape is only covered for the seven
+natural-note roots, major and minor, since it has no single
+settled convention the way guitar's shapes do and a shape
+here is only shown where that's genuinely confident, not
+just correct. A handful of guitar chords have no standard
+open or barre shape either. Any of these says so rather than
 showing nothing.
 
 **Preview next chord** dims in a second picture underneath

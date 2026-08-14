@@ -72,17 +72,31 @@ export const previewSideBySide = $state({ value: false });
 // screen rather than decided here.
 export const notesShowLabels = $state({ value: true });
 
-// Instrument-toggle and layer-toggle (structure not
-// included: it isn't a toggle, it's the ground everything
-// else stands on). Piano and Guitar default on, since a
-// default-on Instruments panel showing nothing but "choose
-// an instrument" would look broken rather than helpful.
-export const diagramInstruments: Record<string, boolean> = $state({
-	Piano: true,
-	Guitar: true,
-	"Violin, first position": false,
-	"Violin, third position": false
-});
+// Which instrument names exist is Python's to say, not this
+// file's: instrument_diagrams.py's INSTRUMENTS list is the
+// one home for that, sent every time as the keys of
+// diagrams.structure. Hardcoding a matching list of names
+// here was a real bug once already - Ukulele was added on
+// the Python side, generalized through every drawing
+// function, tested end to end, and still never appeared as
+// a toggle, because this file kept its own separate copy of
+// "what instruments exist" that nothing kept in sync.
+//
+// So this only remembers two things Python's data genuinely
+// cannot tell us: which instruments should start ticked (a
+// UX choice, not a fact about the instrument), and whatever
+// the player has actually chosen since. Names arrive lazily,
+// through ensureInstrumentToggle, called once per name the
+// first time InstrumentPanel sees it in real data.
+const DEFAULT_ON_INSTRUMENTS = new Set(["Piano", "Guitar", "Ukulele"]);
+
+export const diagramInstruments: Record<string, boolean> = $state({});
+
+export function ensureInstrumentToggle(name: string): void {
+	if (!(name in diagramInstruments)) {
+		diagramInstruments[name] = DEFAULT_ON_INSTRUMENTS.has(name);
+	}
+}
 
 // The three transparent layers a chosen instrument can
 // stack, all independently on or off: the key's scale

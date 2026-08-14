@@ -32,6 +32,19 @@ export interface MixerBarData {
 	words: string;
 }
 
+// What select() actually needs from whatever gets clicked -
+// a bar or a phrase both qualify, structurally, without
+// either needing to know about the other. One selection
+// method, one anchor, shared by both panels: clicking a bar
+// then shift-clicking a phrase to extend the range (or the
+// other way round) is one continuous gesture across two
+// different granularities, not two unrelated selections
+// fighting over the same loopFrom/loopTo.
+export interface TimeSpan {
+	start: number;
+	end: number;
+}
+
 class MixerEngine {
 	private context: AudioContext | null = null;
 	private master: GainNode | null = null;
@@ -68,7 +81,7 @@ class MixerEngine {
 	// range math assumed the second click was always later,
 	// and a backward selection collapsed to a few
 	// hundredths of a second rather than spanning the bars.
-	private anchor: MixerBarData | null = null;
+	private anchor: TimeSpan | null = null;
 
 	// Whether a selected stretch repeats or plays once and
 	// stops. Defaults on: shift-clicking a second bar is
@@ -270,63 +283,43 @@ class MixerEngine {
 	// A shift-click after a range is already complete always
 	// starts over too, inside or outside, since shift is an
 	// unambiguous "define a new range" gesture either way.
-	select(bar: MixerBarData, shiftKey: boolean): boolean {
+	//
+	// span only needs start/end - a bar and a phrase both
+	// qualify without either type knowing about the other,
+	// which is what lets a bar click and a phrase shift-click
+	// complete one shared range together.
+	select(span: TimeSpan, shiftKey: boolean): boolean {
 		const hadRange = this.loopFrom !== null && this.loopTo !== null;
 		const previousFrom = this.loopFrom;
 		const previousTo = this.loopTo;
 
 		const insideRange =
 			hadRange &&
-			bar.start >= this.loopFrom! - 0.001 &&
-			bar.end <= this.loopTo! + 0.001;
+			span.start >= this.loopFrom! - 0.001 &&
+			span.end <= this.loopTo! + 0.001;
 
 		if (shiftKey && this.anchor !== null && !hadRange) {
 			// Completing a range from the existing anchor - the
-			// min/max works the same whether the bar just
+			// min/max works the same whether the span just
 			// clicked is later or earlier than the first one.
-			const start = Math.min(this.anchor.start, bar.start);
-			const end = Math.max(this.anchor.end, bar.end);
+			const start = Math.min(this.anchor.start, span.start);
+			const end = Math.max(this.anchor.end, span.end);
 			this.loopFrom = start;
 			this.loopTo = Math.max(end, start + 0.05);
 			this.offset = this.loopFrom;
 		} else if (!shiftKey && insideRange) {
 			// A scrub: move the playhead, leave the range and
 			// its anchor exactly as they were.
-			this.offset = bar.start;
+			this.offset = span.start;
 		} else {
 			// Nothing selected yet, a click outside the current
 			// range, or a shift-click after a range was already
 			// complete: start over here.
-			this.anchor = bar;
-			this.loopFrom = bar.start;
+			this.anchor = span;
+			this.loopFrom = span.start;
 			this.loopTo = null;
-			this.offset = bar.start;
+			this.offset = span.start;
 		}
-
-		this.stopSources();
-		this.playing = false;
-
-		return this.loopFrom !== previousFrom || this.loopTo !== previousTo;
-	}
-
-	// A second way to select a stretch, sitting alongside
-	// select() rather than replacing it. Bar selection is
-	// deliberately literal - a bar means exactly that bar's
-	// own span, nothing added. A phrase can start on a
-	// pickup note a fraction of a second before its bar's
-	// downbeat, and selecting "that bar" to reach it would
-	// drag in whatever the previous bar was still finishing -
-	// so a phrase asks for its own exact start and end
-	// directly, rather than being translated into a bar
-	// first and losing precision on the way.
-	selectRange(start: number, end: number): boolean {
-		const previousFrom = this.loopFrom;
-		const previousTo = this.loopTo;
-
-		this.anchor = null;
-		this.loopFrom = start;
-		this.loopTo = Math.max(end, start + 0.05);
-		this.offset = start;
 
 		this.stopSources();
 		this.playing = false;
