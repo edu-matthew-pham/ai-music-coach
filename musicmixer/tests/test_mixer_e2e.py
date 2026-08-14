@@ -184,8 +184,8 @@ class TestToggles:
         melody_fader = page.locator("input[type=range]").first
         expect(melody_fader).to_be_visible()
 
-        page.get_by_label("Mixer").uncheck()
+        page.get_by_label("Mixer", exact=True).uncheck()
         expect(melody_fader).not_to_be_visible()
 
-        page.get_by_label("Mixer").check()
+        page.get_by_label("Mixer", exact=True).check()
         expect(melody_fader).to_be_visible()
