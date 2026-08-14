@@ -82,7 +82,11 @@
 		pxPerSecond: number;
 	}
 
-	function computePage(phrase: MixerPhrase | null, width: number): Page | null {
+	function computePage(
+		phrase: MixerPhrase | null,
+		width: number,
+		includeLive: boolean = false
+	): Page | null {
 		if (!phrase) return null;
 
 		const bars = timeline.filter(
@@ -98,6 +102,7 @@
 
 		let lowest = 60;
 		let highest = 72;
+		let hasRange = false;
 
 		if (pageNotes.length) {
 			lowest = pageNotes[0].midi;
@@ -106,6 +111,47 @@
 				if (note.midi < lowest) lowest = note.midi;
 				if (note.midi > highest) highest = note.midi;
 			}
+			hasRange = true;
+		}
+
+		// Widen to cover the sung pitch too, not just the
+		// melody. Confirmed via the debug log, not assumed: a
+		// bass voice singing a genuine octave below the melody
+		// pinned to the range's bottom edge on nearly every
+		// frame (wasClamped=true) - it looked like nothing was
+		// tracking, but the detector had the right note and
+		// the display simply had no room to draw it. Both the
+		// accumulated trace (this phrase's history) and, for
+		// whichever page is currently playing, the free-
+		// running live dot feed into the same range so neither
+		// clips independently of the other.
+		const tracePoints = mic.trace.filter(
+			(f) => f.time >= phrase.start && f.time < phrase.end
+		);
+		for (const f of tracePoints) {
+			const m = midiFloat(f.freq);
+			if (!hasRange) {
+				lowest = m;
+				highest = m;
+				hasRange = true;
+			} else {
+				if (m < lowest) lowest = m;
+				if (m > highest) highest = m;
+			}
+		}
+		if (includeLive && mic.livePitch !== null) {
+			const m = midiFloat(mic.livePitch);
+			if (!hasRange) {
+				lowest = m;
+				highest = m;
+				hasRange = true;
+			} else {
+				if (m < lowest) lowest = m;
+				if (m > highest) highest = m;
+			}
+		}
+
+		if (hasRange) {
 			lowest -= 1;
 			highest += 1;
 		}
@@ -139,7 +185,7 @@
 		const width = sideBySide
 			? (viewportWidth - 8) / 2
 			: viewportWidth;
-		return computePage(currentPhrase, width);
+		return computePage(currentPhrase, width, true);
 	});
 
 	const nextPage = $derived.by(() => {
@@ -147,7 +193,7 @@
 		const width = sideBySide
 			? (viewportWidth - 8) / 2
 			: viewportWidth;
-		return computePage(nextPhrase, width);
+		return computePage(nextPhrase, width, false);
 	});
 
 	function y(page: Page, midi: number): number {
@@ -166,12 +212,31 @@
 		return 69 + 12 * Math.log2(freq / 440);
 	}
 
+	// TEMPORARY DEBUG SCAFFOLDING - remove once the octave-
+	// clamping investigation is done. Throttled to ~2/s.
+	let lastClampLog = 0;
+	const CLAMP_LOG_INTERVAL_MS = 500;
+
 	function traceY(page: Page, freq: number): number {
 		const midi = midiFloat(freq);
 		const clamped = Math.min(
 			page.pitchRange.highest + 0.5,
 			Math.max(page.pitchRange.lowest - 0.5, midi)
 		);
+
+		// TEMPORARY DEBUG - see note above.
+		const now = performance.now();
+		if (now - lastClampLog > CLAMP_LOG_INTERVAL_MS) {
+			lastClampLog = now;
+			console.log(
+				`[notes] sung midi=${midi.toFixed(2)} ` +
+				`range=[${page.pitchRange.lowest.toFixed(1)},` +
+				`${page.pitchRange.highest.toFixed(1)}] ` +
+				`clamped=${clamped.toFixed(2)} ` +
+				`wasClamped=${Math.abs(clamped - midi) > 0.01}`
+			);
+		}
+
 		return (page.pitchRange.highest - clamped) * ROW_HEIGHT + ROW_HEIGHT / 2;
 	}
 
