@@ -211,7 +211,7 @@ def test_mixer_data_has_the_shape_the_component_expects():
     }
 
     assert (
-        set(value["diagrams"]["chords"]["Piano"].keys())
+        set(value["diagrams"]["chords"]["Piano, 3 octaves"].keys())
         == chart_chord_names
     )
 
@@ -223,7 +223,7 @@ def test_mixer_data_has_the_shape_the_component_expects():
     assert set(value["diagrams"]["shapes"].keys()) == set(INSTRUMENTS)
 
     assert (
-        set(value["diagrams"]["shapes"]["Piano"].keys())
+        set(value["diagrams"]["shapes"]["Piano, 3 octaves"].keys())
         == chart_chord_names
     )
 
@@ -246,8 +246,8 @@ def test_mixer_data_has_the_shape_the_component_expects():
     # the same one under two names - the bug that shipped
     # the combined diagram as "scale" and left nothing for
     # an always-there background.
-    structure_piano = value["diagrams"]["structure"]["Piano"]
-    scale_piano = value["diagrams"]["scale"]["Piano"]
+    structure_piano = value["diagrams"]["structure"]["Piano, 3 octaves"]
+    scale_piano = value["diagrams"]["scale"]["Piano, 3 octaves"]
 
     assert structure_piano != scale_piano
     assert "<rect" in structure_piano

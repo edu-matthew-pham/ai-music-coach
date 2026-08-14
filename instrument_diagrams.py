@@ -245,34 +245,40 @@ def _colour_for(semitone, key, home):
     return OFF_KEY_COLOUR
 
 
-def piano_structure():
+def piano_structure(octaves=None):
     """
     The keyboard on its own, no key involved - the mixer's
     always-there background layer. Same picture whatever
     key is chosen, because a keyboard's keys don't move.
+
+    octaves is a display choice (a compact two-octave
+    keyboard for a quick glance, three for the full
+    pattern), not a fact about the instrument - defaults to
+    PIANO_LAYOUT's own setting when not given.
     """
 
-    parts, width, height = _piano_structure_parts()
+    parts, width, height = _piano_structure_parts(octaves)
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
         f'viewBox="0 0 {width} {height}" '
         f'width="100%" style="max-width:{width}px" '
-        f'role="img" aria-label="A keyboard, three octaves">'
+        f'role="img" aria-label="A keyboard, '
+        f'{octaves or PIANO_LAYOUT["octaves"]} octaves">'
         + "".join(parts) +
         "</svg>"
     )
 
 
-def piano_scale_overlay(key):
+def piano_scale_overlay(key, octaves=None):
     """
     Just the key's in-key marks, transparent background,
     positioned exactly as piano_diagram places them - for
     stacking on piano_structure as the mixer's Scale layer.
     """
 
-    _, width, height = _piano_structure_parts()
-    parts = _piano_scale_parts(key)
+    _, width, height = _piano_structure_parts(octaves)
+    parts = _piano_scale_parts(key, octaves)
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -286,13 +292,13 @@ def piano_scale_overlay(key):
     )
 
 
-def piano_diagram(key):
+def piano_diagram(key, octaves=None):
     """
-    Three octaves of a keyboard with the key's notes
-    marked. One octave shows the pattern; three show it
-    repeating, which is how a keyboard is actually read -
-    a line moves across octaves, and the shape a hand
-    finds is the same shape everywhere.
+    A keyboard with the key's notes marked. One octave
+    shows the pattern; more show it repeating, which is
+    how a keyboard is actually read - a line moves across
+    octaves, and the shape a hand finds is the same shape
+    everywhere.
 
     White and black keys are drawn as they sit, because
     that is how they are found: a player looks for the
@@ -310,8 +316,8 @@ def piano_diagram(key):
     different ways.
     """
 
-    structure_parts, width, height = _piano_structure_parts()
-    scale_parts = _piano_scale_parts(key)
+    structure_parts, width, height = _piano_structure_parts(octaves)
+    scale_parts = _piano_scale_parts(key, octaves)
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -324,16 +330,20 @@ def piano_diagram(key):
     )
 
 
-def _piano_structure_parts():
+def _piano_structure_parts(octaves=None):
     """
     The keyboard itself: white and black keys, nothing
-    marked on them. Key-independent - three octaves look
-    the same whatever key is chosen - so this is the part
-    of the picture that never needs to change or be
-    toggled off.
+    marked on them. Key-independent - however many octaves
+    are shown look the same whatever key is chosen - so
+    this is the part of the picture that never needs to
+    change or be toggled off.
+
+    octaves defaults to PIANO_LAYOUT's own setting; a
+    caller wanting a compact keyboard passes a smaller
+    number.
     """
 
-    octaves = PIANO_LAYOUT["octaves"]
+    octaves = octaves or PIANO_LAYOUT["octaves"]
 
     white_semitones = [
         semitone + octave * 12
@@ -385,7 +395,7 @@ def _piano_structure_parts():
     return parts, width, white_height
 
 
-def _piano_scale_parts(key):
+def _piano_scale_parts(key, octaves=None):
     """
     Just the in-key marks a piano_diagram draws on top of
     its keys - no keyboard underneath. What the mixer's
@@ -396,7 +406,7 @@ def _piano_scale_parts(key):
     home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
     in_key = semitones_in(key)
 
-    octaves = PIANO_LAYOUT["octaves"]
+    octaves = octaves or PIANO_LAYOUT["octaves"]
 
     white_semitones = [
         semitone + octave * 12
@@ -474,7 +484,7 @@ def _piano_scale_parts(key):
     return parts
 
 
-def fretboard_structure(instrument="Guitar"):
+def fretboard_structure(instrument="Guitar", frets_shown=FRETS_SHOWN):
     """
     The neck itself - nut, frets, strings, fret numbers,
     inlay dots - with nothing marked on it. Key-independent:
@@ -483,7 +493,7 @@ def fretboard_structure(instrument="Guitar"):
     for a Guitar or similar string instrument.
     """
 
-    parts, width, height = _fretboard_structure_parts(instrument)
+    parts, width, height = _fretboard_structure_parts(instrument, frets_shown)
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -495,7 +505,7 @@ def fretboard_structure(instrument="Guitar"):
     )
 
 
-def fretboard_scale_overlay(key, instrument="Guitar"):
+def fretboard_scale_overlay(key, instrument="Guitar", frets_shown=FRETS_SHOWN):
     """
     Just the key's marks - every fretted position, coloured
     home/in-key/off-key - transparent background, positioned
@@ -503,8 +513,8 @@ def fretboard_scale_overlay(key, instrument="Guitar"):
     Scale layer, stacked on fretboard_structure.
     """
 
-    _, width, height = _fretboard_structure_parts(instrument)
-    parts = _fretboard_scale_parts(key, instrument)
+    _, width, height = _fretboard_structure_parts(instrument, frets_shown)
+    parts = _fretboard_scale_parts(key, instrument, frets_shown)
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -518,7 +528,7 @@ def fretboard_scale_overlay(key, instrument="Guitar"):
     )
 
 
-def fretboard_diagram(key, instrument="Guitar"):
+def fretboard_diagram(key, instrument="Guitar", frets_shown=FRETS_SHOWN):
     """
     A fingerboard with every position marked.
 
@@ -538,8 +548,10 @@ def fretboard_diagram(key, instrument="Guitar"):
     the neck two different ways.
     """
 
-    structure_parts, width, height = _fretboard_structure_parts(instrument)
-    scale_parts = _fretboard_scale_parts(key, instrument)
+    structure_parts, width, height = _fretboard_structure_parts(
+        instrument, frets_shown
+    )
+    scale_parts = _fretboard_scale_parts(key, instrument, frets_shown)
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -552,11 +564,16 @@ def fretboard_diagram(key, instrument="Guitar"):
     )
 
 
-def _fretboard_structure_parts(instrument="Guitar"):
+def _fretboard_structure_parts(instrument="Guitar", frets_shown=FRETS_SHOWN):
     """
     Nut, frets, strings, fret numbers, inlay dots - no key
     involved, nothing marked. Raises for an instrument this
     app cannot draw, same as the diagram functions do.
+
+    frets_shown is a display choice (a compact neck for a
+    quick glance, the full neck for anything further up),
+    not a fact about the instrument - the same fretboard,
+    shown shorter or longer.
     """
 
     tuning = STRING_TUNINGS.get(instrument)
@@ -573,19 +590,23 @@ def _fretboard_structure_parts(instrument="Guitar"):
     string_gap = FRETBOARD_LAYOUT["string_gap"]
 
     height = top + (len(tuning) - 1) * string_gap + 30
-    width = left + FRETS_SHOWN * fret_width + 20
+    width = left + frets_shown * fret_width + 20
 
     parts = []
 
     # The inlaid dots first, behind everything.
     for fret in MARKER_FRETS:
+
+        if fret > frets_shown:
+            continue
+
         parts.append(
             f'<circle cx="{left + fret * fret_width - fret_width / 2}" '
             f'cy="{top + (len(tuning) - 1) * string_gap / 2}" '
             f'r="7" fill="#eceff1"/>'
         )
 
-    for fret in range(FRETS_SHOWN + 1):
+    for fret in range(frets_shown + 1):
 
         x = left + fret * fret_width
 
@@ -614,7 +635,7 @@ def _fretboard_structure_parts(instrument="Guitar"):
 
         parts.append(
             f'<line x1="{left}" y1="{y}" '
-            f'x2="{left + FRETS_SHOWN * fret_width}" y2="{y}" '
+            f'x2="{left + frets_shown * fret_width}" y2="{y}" '
             f'stroke="{LINE_COLOUR}" stroke-width="1"/>'
         )
 
@@ -628,7 +649,7 @@ def _fretboard_structure_parts(instrument="Guitar"):
     return parts, width, height
 
 
-def _fretboard_scale_parts(key, instrument="Guitar"):
+def _fretboard_scale_parts(key, instrument="Guitar", frets_shown=FRETS_SHOWN):
     """
     Just the marks fretboard_diagram draws on top of the
     neck - every fretted position, coloured home/in-key/
@@ -657,7 +678,7 @@ def _fretboard_scale_parts(key, instrument="Guitar"):
 
         y = top + index * string_gap
 
-        for fret in range(FRETS_SHOWN + 1):
+        for fret in range(frets_shown + 1):
 
             semitone = _note_at(open_string, fret)
 
@@ -957,7 +978,7 @@ LEFT_HAND_COLOUR = "#1565c0"
 RIGHT_HAND_COLOUR = SHAPE_COLOUR
 
 
-def piano_chord_overlay(key, chord_semitone_set):
+def piano_chord_overlay(key, chord_semitone_set, octaves=None):
     """
     Chord tones only, on a transparent piano, positioned
     exactly as piano_diagram places its marks - same
@@ -969,7 +990,7 @@ def piano_chord_overlay(key, chord_semitone_set):
     piano_diagram separately and layers this on top.
     """
 
-    octaves = PIANO_LAYOUT["octaves"]
+    octaves = octaves or PIANO_LAYOUT["octaves"]
     white_width = PIANO_LAYOUT["white_width"]
     white_height = PIANO_LAYOUT["white_height"]
     black_width = PIANO_LAYOUT["black_width"]
@@ -1037,11 +1058,12 @@ def piano_chord_overlay(key, chord_semitone_set):
     )
 
 
-def fretboard_chord_overlay(key, chord_semitone_set, instrument="Guitar"):
+def fretboard_chord_overlay(key, chord_semitone_set, instrument="Guitar",
+                             frets_shown=FRETS_SHOWN):
     """
     Chord tones only, on a transparent fretboard, at the
     same coordinates fretboard_diagram uses - same
-    FRETBOARD_LAYOUT, same FRETS_SHOWN, so it stacks in
+    FRETBOARD_LAYOUT, same frets_shown, so it stacks in
     register.
     """
 
@@ -1059,7 +1081,7 @@ def fretboard_chord_overlay(key, chord_semitone_set, instrument="Guitar"):
     string_gap = FRETBOARD_LAYOUT["string_gap"]
 
     height = top + (len(tuning) - 1) * string_gap + 30
-    width = left + FRETS_SHOWN * fret_width + 20
+    width = left + frets_shown * fret_width + 20
 
     parts = []
 
@@ -1067,7 +1089,7 @@ def fretboard_chord_overlay(key, chord_semitone_set, instrument="Guitar"):
 
         y = top + index * string_gap
 
-        for fret in range(FRETS_SHOWN + 1):
+        for fret in range(frets_shown + 1):
 
             semitone = _note_at(open_string, fret)
 
@@ -1185,20 +1207,79 @@ def _violin_position_for(instrument):
     )
 
 
+def _base_instrument_name(instrument):
+    """
+    The instrument family an "instrument" string like
+    "Piano, 2 octaves" or "Guitar, 8 frets" names, with any
+    size variant stripped off - the part STRING_TUNINGS and
+    every drawing function actually key on.
+    """
+
+    return instrument.split(",")[0]
+
+
+def _octaves_for(instrument):
+    """
+    How many octaves a "Piano, N octaves" string asks for -
+    a display choice, not a fact about the instrument,
+    parsed here once so every dispatcher agrees.
+    """
+
+    return 2 if "2" in instrument else PIANO_LAYOUT["octaves"]
+
+
+def _frets_shown_for(instrument):
+    """
+    How many frets a "Guitar, N frets" or "Ukulele, N
+    frets" string asks for - a display choice, not a fact
+    about the instrument, parsed here once so every
+    dispatcher agrees.
+
+    Guitar and ukulele don't share one compact/full pair:
+    guitar's compact option is 8, checked directly against
+    every guitar shape this app draws (major, minor,
+    dominant, minor-seventh, all twelve roots) - 8 is the
+    actual highest fret any of them uses (the Eb family's
+    barre reaches it), and a smaller cutoff would have
+    sliced that shape off mid-picture. Ukulele's own shapes
+    never pass fret 4, and its short scale means a player is
+    less likely to go far up the neck at all, so both its
+    options - 6 and 10 - are smaller than guitar's, not the
+    same numbers reused out of habit.
+
+    Reads the number straight out of the instrument string
+    rather than special-casing each pair here, so Python's
+    INSTRUMENTS list stays the one place these numbers are
+    decided.
+    """
+
+    import re
+
+    match = re.search(r"\d+", instrument)
+
+    return int(match.group()) if match else FRETS_SHOWN
+
+
 def structure_for(instrument):
     """
     The always-there background picture of one instrument -
     no key involved. The mixer's base layer, drawn once and
     never toggled off.
+
+    instrument may carry a size variant ("Piano, 2 octaves",
+    "Guitar, 8 frets") - a display choice parsed out here,
+    not a different instrument.
     """
 
-    if instrument == "Piano":
-        return piano_structure()
+    base = _base_instrument_name(instrument)
 
-    if instrument.startswith("Violin"):
+    if base == "Piano":
+        return piano_structure(_octaves_for(instrument))
+
+    if base.startswith("Violin"):
         return violin_structure(_violin_position_for(instrument))
 
-    return fretboard_structure(instrument)
+    return fretboard_structure(base, _frets_shown_for(instrument))
 
 
 def scale_overlay_for(key, instrument):
@@ -1208,13 +1289,15 @@ def scale_overlay_for(key, instrument):
     structure_for(instrument). The mixer's Scale layer.
     """
 
-    if instrument == "Piano":
-        return piano_scale_overlay(key)
+    base = _base_instrument_name(instrument)
 
-    if instrument.startswith("Violin"):
+    if base == "Piano":
+        return piano_scale_overlay(key, _octaves_for(instrument))
+
+    if base.startswith("Violin"):
         return violin_scale_overlay(key, _violin_position_for(instrument))
 
-    return fretboard_scale_overlay(key, instrument)
+    return fretboard_scale_overlay(key, base, _frets_shown_for(instrument))
 
 
 # A beginner's shape, not the theory - one concrete place
@@ -1481,18 +1564,22 @@ def chord_overlay_for(key, instrument, chord_name):
 
     tones = set(chord_semitones(chord_name))
 
-    if instrument == "Piano":
-        return piano_chord_overlay(key, tones)
+    base = _base_instrument_name(instrument)
 
-    if instrument.startswith("Violin"):
+    if base == "Piano":
+        return piano_chord_overlay(key, tones, _octaves_for(instrument))
+
+    if base.startswith("Violin"):
         return violin_chord_overlay(
             key, tones, _violin_position_for(instrument)
         )
 
-    return fretboard_chord_overlay(key, tones, instrument)
+    return fretboard_chord_overlay(
+        key, tones, base, _frets_shown_for(instrument)
+    )
 
 
-def piano_chord_shape_overlay(key, chord_name):
+def piano_chord_shape_overlay(key, chord_name, octaves=None):
     """
     A beginner's two-hand voicing for one chord, transparent
     background, positioned to stack on piano_structure the
@@ -1500,7 +1587,9 @@ def piano_chord_shape_overlay(key, chord_name):
     Left hand one octave, right hand the next - the same
     fixed layout every chord uses, so the shape someone
     learns for one chord is the shape they find again for
-    the next.
+    the next. Fits within the compact two-octave keyboard
+    exactly as well as the full one, since two octaves is
+    exactly what both hands need.
 
     Returns None if piano_shape_for has no voicing for this
     chord's quality - the caller falls back to the
@@ -1519,18 +1608,20 @@ def piano_chord_shape_overlay(key, chord_name):
 
     left_hand, right_hand = shape
 
-    _, width, height = _piano_structure_parts()
+    octaves = octaves or PIANO_LAYOUT["octaves"]
+
+    _, width, height = _piano_structure_parts(octaves)
     white_height = PIANO_LAYOUT["white_height"]
 
     white_semitones = [
         semitone + octave * 12
-        for octave in range(PIANO_LAYOUT["octaves"])
+        for octave in range(octaves)
         for semitone in [0, 2, 4, 5, 7, 9, 11]
     ]
 
     black_after = {
         semitone + octave * 12: raised + octave * 12
-        for octave in range(PIANO_LAYOUT["octaves"])
+        for octave in range(octaves)
         for semitone, raised in
         {0: 1, 2: 3, 5: 6, 7: 8, 9: 10}.items()
     }
@@ -1598,7 +1689,8 @@ def piano_chord_shape_overlay(key, chord_name):
     )
 
 
-def fretted_chord_shape_overlay(key, chord_name, instrument="Guitar"):
+def fretted_chord_shape_overlay(key, chord_name, instrument="Guitar",
+                                 frets_shown=FRETS_SHOWN):
     """
     A beginner's standard shape for one chord, transparent
     background, positioned to stack on fretboard_structure
@@ -1613,6 +1705,13 @@ def fretted_chord_shape_overlay(key, chord_name, instrument="Guitar"):
     Returns None if that instrument's table has no standard
     shape for this chord's quality or root - the caller
     falls back to the all-positions chord overlay.
+
+    A shape needing a fret past frets_shown still draws at
+    its real fret position, which can land past the visible
+    neck in the compact view - known, not hidden or auto-
+    corrected: the honest answer to "the shape needs more
+    room than this view shows" is to widen the view, which
+    the toggle is right there for.
     """
 
     from chords import split_chord
@@ -1637,7 +1736,7 @@ def fretted_chord_shape_overlay(key, chord_name, instrument="Guitar"):
             f"app can draw."
         )
 
-    _, width, height = _fretboard_structure_parts(instrument)
+    _, width, height = _fretboard_structure_parts(instrument, frets_shown)
 
     left = FRETBOARD_LAYOUT["left"]
     top = FRETBOARD_LAYOUT["top"]
@@ -1909,21 +2008,30 @@ def shape_overlay_for(key, instrument, chord_name):
     back to chord_overlay_for.
     """
 
-    if instrument == "Piano":
-        return piano_chord_shape_overlay(key, chord_name)
+    base = _base_instrument_name(instrument)
 
-    if instrument.startswith("Violin"):
+    if base == "Piano":
+        return piano_chord_shape_overlay(
+            key, chord_name, _octaves_for(instrument)
+        )
+
+    if base.startswith("Violin"):
         return violin_chord_shape_overlay(
             key, chord_name, _violin_position_for(instrument)
         )
 
-    return fretted_chord_shape_overlay(key, chord_name, instrument)
+    return fretted_chord_shape_overlay(
+        key, chord_name, base, _frets_shown_for(instrument)
+    )
 
 
 INSTRUMENTS = [
-    "Piano",
-    "Guitar",
-    "Ukulele",
+    "Piano, 2 octaves",
+    "Piano, 3 octaves",
+    "Guitar, 8 frets",
+    "Guitar, 12 frets",
+    "Ukulele, 6 frets",
+    "Ukulele, 10 frets",
     "Violin, first position",
     "Violin, third position"
 ]
@@ -1934,13 +2042,15 @@ def diagram_for(key, instrument):
     The picture of a key on one instrument.
     """
 
-    if instrument == "Piano":
-        return piano_diagram(key)
+    base = _base_instrument_name(instrument)
 
-    if instrument.startswith("Violin"):
+    if base == "Piano":
+        return piano_diagram(key, _octaves_for(instrument))
+
+    if base.startswith("Violin"):
         return violin_chart(key, _violin_position_for(instrument))
 
-    return fretboard_diagram(key, instrument)
+    return fretboard_diagram(key, base, _frets_shown_for(instrument))
 
 
 def show_instruments(key, chosen):

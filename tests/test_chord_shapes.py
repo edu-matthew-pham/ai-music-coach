@@ -494,3 +494,63 @@ def test_ukulele_and_guitar_do_not_share_shape_data():
     ukulele_c, _ = ukulele_shape_frets("C", "")
 
     assert [f for f, _ in guitar_c] != [f for f, _ in ukulele_c]
+
+
+def test_guitars_compact_fret_range_fits_every_shape():
+    """
+    8 is not a round number chosen for looks - it's the
+    actual highest fret any guitar shape this app draws
+    uses (the Eb family's barre reaches it). A smaller
+    compact range would silently cut that shape off
+    mid-picture rather than draw it wrong or refuse it,
+    which is worse than either.
+    """
+
+    from instrument_diagrams import (
+        GUITAR_TRUE_OPENS, GUITAR_E_SHAPE, guitar_shape_frets
+    )
+
+    roots = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+
+    max_fret = 0
+
+    for root in roots:
+        for quality in GUITAR_E_SHAPE:
+            result = guitar_shape_frets(root, quality)
+            if result is None:
+                continue
+            frets, _barre = result
+            for fret, _finger in frets:
+                if fret is not None:
+                    max_fret = max(max_fret, fret)
+
+    assert max_fret == 8
+    assert shape_overlay_for("C", "Guitar, 8 frets", "Eb") is not None
+
+
+def test_ukuleles_own_range_is_smaller_than_guitars():
+    """
+    Ukulele's shapes never pass fret 4, and its short scale
+    means a player is less likely to go far up the neck at
+    all - both its options are smaller than guitar's, not
+    guitar's own numbers reused out of habit.
+    """
+
+    from instrument_diagrams import (
+        UKULELE_SHAPES, ukulele_shape_frets, _frets_shown_for
+    )
+
+    max_fret = 0
+
+    for root, quality in UKULELE_SHAPES:
+        frets, _barre = ukulele_shape_frets(root, quality)
+        for fret, _finger in frets:
+            if fret is not None:
+                max_fret = max(max_fret, fret)
+
+    assert max_fret == 4
+
+    assert _frets_shown_for("Ukulele, 6 frets") == 6
+    assert _frets_shown_for("Ukulele, 10 frets") == 10
+    assert _frets_shown_for("Guitar, 8 frets") == 8
+    assert _frets_shown_for("Guitar, 12 frets") == 12

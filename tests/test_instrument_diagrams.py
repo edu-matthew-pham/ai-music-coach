@@ -144,6 +144,8 @@ def test_every_instrument_is_rendered_a_consistent_height_on_screen():
 
     import re
 
+    from instrument_diagrams import _base_instrument_name
+
     heights = {}
 
     for instrument in INSTRUMENTS:
@@ -153,7 +155,7 @@ def test_every_instrument_is_rendered_a_consistent_height_on_screen():
 
     fretted_and_keyed = {
         name: height for name, height in heights.items()
-        if name != "Ukulele"
+        if _base_instrument_name(name) != "Ukulele"
     }
 
     assert len(set(fretted_and_keyed.values())) == 1
@@ -162,7 +164,9 @@ def test_every_instrument_is_rendered_a_consistent_height_on_screen():
     # each other, even though they differ from everyone
     # else's height - covered by the alignment tests
     # elsewhere in this file, not repeated here.
-    assert heights["Ukulele"] != next(iter(fretted_and_keyed.values()))
+    for name, height in heights.items():
+        if _base_instrument_name(name) == "Ukulele":
+            assert height != next(iter(fretted_and_keyed.values()))
 
 
 def test_home_is_marked_apart_from_the_rest_of_the_key():
@@ -180,7 +184,7 @@ def test_the_piano_draws_twelve_keys_to_the_octave():
 
 
 def test_the_view_says_what_it_is_showing():
-    shown = show_instrument("F", "Guitar")
+    shown = show_instrument("F", "Guitar, 12 frets")
 
     assert "F major / D minor" in shown
     assert "Bb" in shown
@@ -225,7 +229,7 @@ def test_an_unknown_instrument_is_ignored_rather_than_guessed():
     # real one drawn.
     from instrument_diagrams import show_instruments
 
-    both = show_instruments("C", ["Kazoo", "Piano"])
+    both = show_instruments("C", ["Kazoo", "Piano, 3 octaves"])
 
     assert both.count("<svg") == 1
     assert "Piano" in both

@@ -82,19 +82,52 @@ export const notesShowLabels = $state({ value: true });
 // a toggle, because this file kept its own separate copy of
 // "what instruments exist" that nothing kept in sync.
 //
-// So this only remembers two things Python's data genuinely
-// cannot tell us: which instruments should start ticked (a
-// UX choice, not a fact about the instrument), and whatever
-// the player has actually chosen since. Names arrive lazily,
-// through ensureInstrumentToggle, called once per name the
-// first time InstrumentPanel sees it in real data.
+// Python's own names now carry a size variant too - "Piano,
+// 3 octaves", "Guitar, 12 frets", "Violin, first position" -
+// a display choice, not a different instrument, the same
+// way Violin's two positions always were. diagramInstruments
+// is keyed by the instrument family (the part before the
+// comma) - one toggle per real instrument the player thinks
+// about, not one per size variant. diagramVariant remembers
+// which size is currently chosen for each family; the two
+// together give the actual key to look up in Python's data
+// (family + ", " + variant), reconstructed in
+// InstrumentPanel rather than duplicated here.
+//
+// So this file only remembers what Python's data genuinely
+// cannot tell us: which instruments should start ticked and
+// which size each should start at (both UX choices, not
+// facts about the instrument), and whatever the player has
+// actually chosen since. Families and variants both arrive
+// lazily, through ensureInstrumentToggle and
+// ensureInstrumentVariant, called once per name the first
+// time InstrumentPanel sees it in real data.
 const DEFAULT_ON_INSTRUMENTS = new Set(["Piano", "Guitar", "Ukulele"]);
 
+// The fuller size for Piano/Guitar/Ukulele, first position
+// for Violin (not the fuller option there - a beginner
+// starts in first position, and third is the thing to grow
+// into, not the default view). A family with no entry here
+// falls back to whichever variant it saw first.
+const DEFAULT_VARIANTS: Record<string, string> = {
+	Piano: "3 octaves",
+	Guitar: "12 frets",
+	Ukulele: "10 frets",
+	Violin: "first position"
+};
+
 export const diagramInstruments: Record<string, boolean> = $state({});
+export const diagramVariant: Record<string, string> = $state({});
 
 export function ensureInstrumentToggle(name: string): void {
 	if (!(name in diagramInstruments)) {
 		diagramInstruments[name] = DEFAULT_ON_INSTRUMENTS.has(name);
+	}
+}
+
+export function ensureInstrumentVariant(family: string, firstSeen: string): void {
+	if (!(family in diagramVariant)) {
+		diagramVariant[family] = DEFAULT_VARIANTS[family] ?? firstSeen;
 	}
 }
 
