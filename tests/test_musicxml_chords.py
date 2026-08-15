@@ -156,6 +156,116 @@ def test_a_chord_with_no_representable_triad_is_dropped():
     assert chart == ""
 
 
+def test_a_no_chord_mark_is_skipped_not_a_crash():
+    """
+    A printed "N.C." (no chord) mark is real notation, not a
+    malformed file - a real Disney lead sheet (Mulan's "I'll
+    Make a Man Out of You") crashed the whole import on one
+    of these. music21 parses it as a ChordSymbol with kind
+    "none" and no root pitch at all, so symbol.root() is
+    None; the surrounding chord should carry through the gap
+    exactly as it would for a beat with no symbol printed.
+
+    Built through MusicXML directly rather than
+    harmony.ChordSymbol("N.C.") - that string form raises in
+    music21 before ever reaching root(), so it would not
+    reproduce the real bug. The <kind>none</kind> shape below
+    is what a real file actually contains.
+    """
+
+    from music21 import converter
+
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Music</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <harmony print-frame="no">
+        <root><root-step text="">C</root-step></root>
+        <kind text="">none</kind>
+      </harmony>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>
+"""
+
+    score = converter.parse(xml)
+
+    chart = _printed_chart(list(score.parts), 4.0, 4.0)
+
+    assert chart == ""
+
+
+def test_a_no_chord_mark_between_real_chords_does_not_crash():
+    """
+    The same "N.C." case, but sitting between two real
+    printed chords rather than alone - the gap it leaves
+    should be filled from the chord before it, same as any
+    other beat with nothing printed. Built through MusicXML
+    directly, same reasoning as the test above: constructing
+    a rootless ChordSymbol any other way doesn't reproduce
+    what a real file actually contains.
+    """
+
+    from music21 import converter
+
+    xml = """<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE score-partwise PUBLIC "-//Recordare//DTD MusicXML 3.1 Partwise//EN" "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="3.1">
+  <part-list>
+    <score-part id="P1"><part-name>Music</part-name></score-part>
+  </part-list>
+  <part id="P1">
+    <measure number="1">
+      <attributes>
+        <divisions>1</divisions>
+        <time><beats>4</beats><beat-type>4</beat-type></time>
+      </attributes>
+      <harmony print-frame="no">
+        <root><root-step text="">E</root-step></root>
+        <kind text="">minor</kind>
+      </harmony>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <harmony print-frame="no">
+        <root><root-step text="">C</root-step></root>
+        <kind text="">none</kind>
+      </harmony>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+    </measure>
+    <measure number="2">
+      <harmony print-frame="no">
+        <root><root-step text="">G</root-step></root>
+        <kind text="">major</kind>
+      </harmony>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+      <note><pitch><step>C</step><octave>4</octave></pitch><duration>1</duration><type>quarter</type></note>
+    </measure>
+  </part>
+</score-partwise>
+"""
+
+    score = converter.parse(xml)
+
+    chart = _printed_chart(list(score.parts), 8.0, 4.0)
+
+    assert chart == "| Em . . . | G . . . |"
+
+
 def test_offsets_are_read_across_the_whole_piece_not_one_measure():
     """
     A chord symbol's own .offset resets to zero at every

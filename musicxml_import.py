@@ -227,7 +227,19 @@ def _printed_chart(parts, total_beats, beats_per_bar):
 
     for symbol in symbols:
 
-        root_name = symbol.root().name.replace("-", "b")
+        root = symbol.root()
+
+        # music21 parses a printed "N.C." (no chord) mark as
+        # a ChordSymbol with kind "none" and no root pitch at
+        # all - real notation, not a malformed file. Skipped
+        # like any other symbol this chart can't represent
+        # (see the quality checks below): the beat is left as
+        # a gap for fill_gaps to carry the surrounding chord
+        # through, the same as a beat with no symbol printed.
+        if root is None:
+            continue
+
+        root_name = root.name.replace("-", "b")
 
         if root_name not in NOTE_SEMITONES:
             continue
