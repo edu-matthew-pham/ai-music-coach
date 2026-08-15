@@ -246,11 +246,34 @@ class Piece:
         reaching back to the start of the slice: a phrase
         beginning in the middle of a bar of D minor is
         still in D minor.
+
+        Every chord (including a half-beat split, "A>B") is
+        clipped to the window and re-based to start at the
+        slice's own beat 0, then handed to write_chart -
+        the same function a detected chart is written with,
+        so a slice does not need its own parallel token-
+        building logic. A chord already sounding when the
+        slice opens is clipped to start exactly at 0, which
+        is what lets write_chart name it there rather than
+        writing a leading dot.
+
+        One disclosed edge case: write_chart only recognises
+        an EXACT half-beat start as a genuine split. Slicing
+        re-bases every chord's start relative to `opened`,
+        so a split chord whose true position survives the
+        rebasing only if `opened` itself sits on a whole or
+        half beat of the original chart. A phrase opening on
+        some other fraction (rare - most phrases start on a
+        beat or a clean pickup) would floor a split chord
+        inside it to the nearest whole beat, the same
+        graceful fallback a chart with no split information
+        at all already gets.
         """
 
         if not self.chart.strip():
             return ""
 
+        from chord_detector import write_chart
         from chords import read_chart, ChartError
 
         try:
@@ -276,59 +299,26 @@ class Piece:
         if bars:
             beats_per_bar = int(round(bars[0][1])) or 4
 
-        # What is sounding on each beat of the slice.
-        sounding = []
+        windowed = []
 
-        for beat in range(length):
+        for start, chord_length, name in chords:
 
-            at = opened + beat
+            clipped_start = max(start, opened)
+            clipped_end = min(start + chord_length, opened + length)
 
-            found = None
+            if clipped_end <= clipped_start:
+                continue
 
-            for start, chord_length, name in chords:
+            windowed.append((
+                clipped_start - opened,
+                clipped_end - clipped_start,
+                name
+            ))
 
-                if start <= at < start + chord_length:
-                    found = name
-                    break
-
-            sounding.append(found)
-
-        # Named where it changes, a dot where it carries
-        # on. The first beat always names its chord, even
-        # if the slice began in the middle of one: a phrase
-        # starting halfway through a bar of D minor is
-        # still in D minor.
-        tokens = []
-
-        previous = None
-
-        for beat in range(length):
-
-            name = sounding[beat]
-
-            if name is None:
-                tokens.append("." if tokens else "")
-
-            elif beat == 0 or name != previous:
-                tokens.append(name)
-
-            else:
-                tokens.append(".")
-
-            previous = name
-
-        if not tokens or not tokens[0]:
+        if not windowed:
             return ""
 
-        lines = []
-
-        for position in range(0, len(tokens), beats_per_bar):
-
-            lines.append(
-                " ".join(tokens[position:position + beats_per_bar])
-            )
-
-        return "| " + " | ".join(lines) + " |"
+        return write_chart(windowed, length, beats_per_bar)
 
     def chord_at(self, beat):
         """

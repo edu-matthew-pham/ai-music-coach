@@ -27,7 +27,19 @@
 	// same way, plus one line rendering it here - nothing
 	// about the panels already working has to change.
 
+	// $props() is captured into a named const rather than
+	// inlined, and the warning below is a known false
+	// positive for that: Gradio's constructor takes exactly
+	// what $props() returns, and reactivity is established
+	// inside the Gradio class itself (a $state field plus
+	// an internal $effect watching this same argument for
+	// the component's whole lifetime), not by how this
+	// local variable is read afterwards. Confirmed against
+	// upstream's own simpletextbox template and Gradio's
+	// utils_svelte.ts source, which ship this identical
+	// two-line form.
 	const props = $props();
+	// svelte-ignore state_referenced_locally
 	const gradio = new Gradio<MusicMixerEvents, MusicMixerProps>(props);
 
 	const layers = $derived(gradio.props.value?.layers ?? []);
@@ -60,8 +72,16 @@
 	// before the loop-seeding block below: a freshly built
 	// mixer always sends loop_start as null anyway, so this
 	// ordering just means nothing is left to re-seed by
-	// mistake.
-	engine.noteLayers(layers);
+	// mistake. Wrapped in $effect deliberately - plain
+	// top-level code here would only run once, at mount, and
+	// silently never clear a stale loop again after the
+	// first song. It happens to keep working without this
+	// today only because Gradio 6 remounts the whole
+	// component on every value round trip; that is not a
+	// reactivity guarantee worth relying on.
+	$effect(() => {
+		engine.noteLayers(layers);
+	});
 
 	// Fader positions default from the engine (survives a
 	// remount) and fall back to each layer's opening level

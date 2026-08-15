@@ -60,10 +60,12 @@ def test_a_layer_louder_than_the_speaker_is_brought_back():
     assert max(abs(int(value)) for value in samples) <= 32767
 
 
-def test_the_timeline_says_when_each_chord_sounds():
+def test_the_timeline_says_when_each_bar_sounds():
     """
     In seconds, because the browser knows where it is in a
-    sound file and not what a beat is.
+    sound file and not what a beat is. One box per real
+    bar now, not one per chord run - every bar carries at
+    least one chord in its own chords list.
     """
 
     pitches, durations, lyrics, key, chart, tempo = song()
@@ -78,7 +80,8 @@ def test_the_timeline_says_when_each_chord_sounds():
 
     assert first["start"] == 0
     assert first["end"] > 0
-    assert first["name"]
+    assert first["chords"]
+    assert first["chords"][0]["name"]
 
     # In order, and touching: a gap would leave the
     # playhead lighting nothing.
@@ -136,41 +139,95 @@ def test_no_chart_means_no_timeline():
     assert _timeline("C4 D4 E4", "1 1 1", "C", 120, "", "", None) == []
 
 
-def test_bar_number_is_the_real_bar_not_the_chord_run_index():
+def test_a_bar_shows_every_chord_it_holds_not_one_run_per_box():
     """
-    read_chart() returns chords (one box per chord run, dots
-    merged) and bars (one entry per actual bar) as two
-    separate lists. A chord spanning several bars is still
-    one box; a bar with more than one chord change is still
-    one bar. enumerate(chords) used to be sent to the browser
-    as "bar", so a chord spanning two bars produced a single
-    box mislabelled "bar 1" with nothing shown for the second
-    bar, and a bar with two chord changes produced two boxes
-    both claiming to be sequential bars - the strip's numbers
-    drifted further from the real bar count as the song went
-    on. bar_number is the real bar each run starts in; bar
-    stays as the box's own unique index, since the frontend
-    keys and scrolls by it.
+    read_chart() returns chords (one entry per chord run,
+    dots merged) and bars (one entry per actual bar) as two
+    separate lists. A chord spanning several bars used to
+    swallow them - one box claiming to be "bar 1", nothing
+    shown for the bars after; a bar with more than one
+    chord change used to split into several boxes, each
+    claiming to be its own bar. Both were the same mistake:
+    a box was a chord run, not a bar.
 
-    Em holds the whole first bar (bar 1). D and G split the
-    second bar in half (both bar 2). C holds the third bar
-    (bar 3) - four chord-run boxes over three real bars.
+    Em holds bars 1 and 2 whole. D and G split bar 3 in
+    half. Three real bars, three boxes - not four run-boxes
+    drifting away from the real bar count.
     """
 
     pitches = "C4 D4 E4 F4 G4 A4 B4 C5 D5 E5 F5 G5"
     durations = "1 1 1 1 1 1 1 1 1 1 1 1"
-    chart = "| Em . . . | D . G . | C . . . |"
+    chart = "| Em . . . | . . . . | D . G . |"
 
     strip = _timeline(
         pitches, durations, "C", 120, chart, "", None
     )
 
-    assert [bar["name"] for bar in strip] == ["Em", "D", "G", "C"]
-    assert [bar["bar_number"] for bar in strip] == [1, 2, 2, 3]
+    assert [bar["bar"] for bar in strip] == [1, 2, 3]
 
-    # The old, buggy number - kept distinct from bar_number,
-    # since the frontend still needs a unique key per box.
-    assert [bar["bar"] for bar in strip] == [1, 2, 3, 4]
+    assert strip[0]["chords"] == [
+        {"name": "Em", "beat_in_bar": 0.0, "carried": False}
+    ]
+
+    # Bar 2 is entirely carried - not new here, but still
+    # its own bar, present and numbered.
+    assert strip[1]["chords"] == [
+        {"name": "Em", "beat_in_bar": 0.0, "carried": True}
+    ]
+
+    assert strip[2]["chords"] == [
+        {"name": "D", "beat_in_bar": 0.0, "carried": False},
+        {"name": "G", "beat_in_bar": 2.0, "carried": False}
+    ]
+
+
+def test_a_half_beat_split_carries_its_true_position_within_the_bar():
+    """
+    A syncopated chord change (stage 1's "A>B" token) keeps
+    its true half-beat position inside the bar it lands in -
+    the same position that now drives real audio timing too
+    (make_accompaniment strikes at a chord's own start).
+    """
+
+    pitches = "C4 D4 E4 F4 G4 A4 B4 C5"
+    durations = "1 1 1 1 1 1 1 1"
+    chart = "| Em . . D>G | Am . . . |"
+
+    strip = _timeline(
+        pitches, durations, "C", 120, chart, "", None
+    )
+
+    assert strip[0]["chords"] == [
+        {"name": "Em", "beat_in_bar": 0.0, "carried": False},
+        {"name": "D", "beat_in_bar": 3.0, "carried": False},
+        {"name": "G", "beat_in_bar": 3.5, "carried": False}
+    ]
+
+
+def test_an_instrumental_intro_bar_is_present_and_wordless():
+    """
+    The original symptom this shape fix was built for: an
+    intro held by one chord across several bars used to be
+    invisible on the strip entirely (one box for the whole
+    span, nothing for the bars inside it). Now every bar
+    gets a box, whether or not anything is sung in it.
+    """
+
+    pitches = "R R R R C4 D4 E4 F4"
+    durations = "1 1 1 1 1 1 1 1"
+    lyrics = "here we go now"
+    chart = "| Em . . . | D . G . |"
+
+    strip = _timeline(
+        pitches, durations, "C", 120, chart, lyrics, None
+    )
+
+    assert len(strip) == 2
+    assert strip[0]["words"] == ""
+    assert strip[0]["chords"] == [
+        {"name": "Em", "beat_in_bar": 0.0, "carried": False}
+    ]
+    assert strip[1]["words"]
 
 
 def test_the_faders_start_where_the_sliders_did():
@@ -244,7 +301,9 @@ def test_mixer_data_has_the_shape_the_component_expects():
     assert set(value["diagrams"]["scale"].keys()) == set(INSTRUMENTS)
 
     chart_chord_names = {
-        bar["name"] for bar in value["timeline"] if bar["name"]
+        chord["name"]
+        for bar in value["timeline"]
+        for chord in bar["chords"]
     }
 
     assert (

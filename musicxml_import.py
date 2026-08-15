@@ -252,16 +252,27 @@ def _printed_chart(parts, total_beats, beats_per_bar):
         if quality is None:
             continue
 
-        # A chart here holds one token per beat, so a
-        # symbol arriving between beats - an eighth-note
-        # pickup into the next bar, say - has to give up
-        # that timing. Floored to the beat it starts
-        # within, not rounded to the nearest one: rounding
-        # can push a symbol a whole beat late (Python
-        # rounds a half beat to even, so 3.5 becomes 4, not
-        # 3), which would land a pickup chord in the bar
-        # after the one it was written into.
-        beat = int(symbol.offset)
+        # A chart here can keep a symbol's timing down to
+        # the half beat - an eighth-note pickup arriving on
+        # the "and" of a beat, the syncopated-strum case a
+        # real lead sheet marks - but no finer. A symbol
+        # landing exactly on a half keeps that precision;
+        # anything else still gives up its timing and floors
+        # to the beat it starts within. Not rounded to the
+        # nearest one: rounding can push a symbol a whole
+        # beat late (Python rounds a half beat to even, so
+        # 3.5 becomes 4, not 3) - that same 3.5 is exactly
+        # the position now worth keeping as 3.5, which is
+        # why this checks for a genuine half explicitly
+        # rather than calling round().
+        floor_beat = int(symbol.offset)
+        fraction = symbol.offset - floor_beat
+
+        if abs(fraction - 0.5) < 1e-6:
+            beat = floor_beat + 0.5
+
+        else:
+            beat = float(floor_beat)
 
         by_beat[beat] = root_name + quality
 
@@ -269,7 +280,7 @@ def _printed_chart(parts, total_beats, beats_per_bar):
         return ""
 
     chords = sorted(
-        (float(beat), 0.0, name) for beat, name in by_beat.items()
+        (beat, 0.0, name) for beat, name in by_beat.items()
     )
 
     return write_chart(

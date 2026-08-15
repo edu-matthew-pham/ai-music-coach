@@ -156,6 +156,54 @@ class TestSongChange:
         ).to_be_visible()
 
 
+class TestBarGrouping:
+    def test_a_bar_with_two_chord_changes_is_one_box(
+        self, page: Page, mixer_url: str
+    ):
+        # Twinkle's own chart (loaded via "Load a different
+        # song") has a genuine multi-chord bar: bar 2 is F
+        # then C. Before the bar-grouped rewrite this would
+        # have shown as two separate boxes, both claiming to
+        # be sequential bars - here it must be exactly one
+        # box, holding both chord names.
+        build_mixer(page, mixer_url)
+
+        page.get_by_role("button", name="Load a different song").click()
+        expect(bar(page, 1)).to_be_visible(timeout=15000)
+
+        second_bar = bar(page, 2)
+
+        expect(second_bar).to_contain_text("F")
+        expect(second_bar).to_contain_text("C")
+
+        # Exactly one box claims to be bar 2 - not a second
+        # box further along the strip also labelled "2".
+        expect(page.locator('[data-bar="2"]')).to_have_count(1)
+
+    def test_an_instrumental_intro_bar_is_present_and_numbered(
+        self, page: Page, mixer_url: str
+    ):
+        # The original symptom: an intro bar with nothing
+        # sung in it used to be invisible on the strip
+        # entirely, swallowed into whichever chord-run box
+        # happened to hold its chord. Bar 1 here has no
+        # words at all; it must still get its own numbered
+        # box, not be skipped or merged into bar 2.
+        build_mixer(page, mixer_url)
+
+        page.get_by_role("button", name="Load a wordless intro").click()
+        expect(bar(page, 1)).to_be_visible(timeout=15000)
+
+        first_bar = bar(page, 1)
+
+        expect(first_bar).to_contain_text("Em")
+        expect(first_bar.locator(".words")).to_have_text("")
+
+        second_bar = bar(page, 2)
+
+        expect(second_bar).to_contain_text("here we go now")
+
+
 class TestToggles:
     def test_repeat_only_appears_once_a_range_exists(self, page: Page, mixer_url: str):
         build_mixer(page, mixer_url)

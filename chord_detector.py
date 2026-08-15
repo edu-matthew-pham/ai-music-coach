@@ -20,7 +20,7 @@ what each is made of, and how a chart is written all live
 there.
 """
 
-from chords import CHORD_QUALITIES, CHORD_QUALITIES as QUALITIES
+from chords import CHORD_QUALITIES, CHORD_QUALITIES as QUALITIES, SPLIT
 from notes import (
     SHARP_NAMES, FLAT_NAMES, FLAT_KEYS, note_to_midi
 )
@@ -443,28 +443,62 @@ def write_chart(chords, total_beats, beats_per_bar=4):
 
     One token per beat, a dot carrying the chord on, and a
     bar line every few beats as the time signature says.
+
+    A chord starting exactly on a half beat (X.5 - an
+    eighth-note syncopation) keeps that precision, written
+    as a split token in its beat's slot: "A>B" when both
+    halves are new chords, ">B" when only the second half
+    is. Anything not exactly on a half floors to the whole
+    beat it starts within, precisely as before - detected
+    chords are uncertain in their exact timing and were
+    never meant to claim half-beat precision; only a source
+    that genuinely states the half (a printed score, or a
+    hand-typed split token surviving a round trip) should
+    produce one.
     """
 
     if not chords:
         return ""
 
-    on_beat = {}
+    on_half = {}
 
     for start, length, name in chords:
-        on_beat[int(round(start))] = name
+
+        fraction = start - int(start)
+
+        if abs(fraction - 0.5) < 1e-6:
+            slot = int(start) * 2 + 1
+
+        else:
+            slot = int(round(start)) * 2
+
+        on_half[slot] = name
 
     tokens = []
 
-    for beat in range(int(round(total_beats))):
+    total_slots = int(round(total_beats * 2))
 
-        if beat in on_beat:
-            tokens.append(on_beat[beat])
+    for slot in range(0, total_slots, 2):
+
+        first = on_half.get(slot)
+        second = on_half.get(slot + 1)
+
+        if first is not None and second is not None:
+            tokens.append(f"{first}{SPLIT}{second}")
+
+        elif first is not None:
+            tokens.append(first)
+
+        elif second is not None:
+            tokens.append(f"{SPLIT}{second}")
 
         else:
             tokens.append(".")
 
-    # A chart cannot begin with a dot.
-    if tokens and tokens[0] == ".":
+    # A chart cannot begin with a dot, or with a bare ">B"
+    # (which would mean carrying a chord that was never
+    # named) - both are the same problem: nothing to open on.
+    if tokens and (tokens[0] == "." or tokens[0].startswith(SPLIT)):
         return ""
 
     bars = []

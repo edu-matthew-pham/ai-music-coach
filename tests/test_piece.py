@@ -156,3 +156,37 @@ def test_line_breaks_survive_being_read():
 
     assert "\n" in piece.lyrics
     assert len(piece.phrases()) == 2
+
+
+# Half-beat chords: a syncopated chart entry (A>B, or >B
+# carrying the first half) has to survive being sliced the
+# same way any other chord does - chart_between reuses
+# write_chart to reconstruct a windowed chart rather than
+# duplicating its token-building logic, so this is really a
+# test that the two stay in agreement.
+
+SYNCOPATED = Piece.read(
+    "C4 C4 C4 C4 A4 A4 A4 A4",
+    "1 1 1 1 1 1 1 1",
+    "",
+    "C",
+    "| C . . D>G | Am . . . |"
+)
+
+
+def test_a_split_chord_survives_a_slice_that_contains_it():
+    assert SYNCOPATED.slice(0, 3).chart == "| C . . D>G |"
+    assert SYNCOPATED.slice(4, 7).chart == "| Am . . . |"
+
+
+def test_a_slice_opening_exactly_on_the_split_names_its_own_half():
+    """
+    A slice that opens right where a beat splits still
+    follows the same rule as any other chord: the beat it
+    opens on names itself rather than starting with a dot,
+    even though that beat is itself half of a split token.
+    """
+
+    middle = SYNCOPATED.slice(3, 7)
+
+    assert middle.chart == "| D>G Am . . | . |"

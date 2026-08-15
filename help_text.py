@@ -79,8 +79,21 @@ the first line is two bars of four with a chord change
 halfway through the first. The bars set the metre
 themselves: three slots to a bar is three four.
 
+A chord that arrives on the "and" of a beat rather than
+squarely on it - a strummed, syncopated push - writes as
+two chords sharing one beat's slot, split by a `>`:
+`D>G` means D for the first half of the beat, G for the
+second. Leaving the first half off, `>G`, means the chord
+already sounding just carries through the first half and
+G is the only new arrival. A beat can only split in two -
+into halves, not further.
+
 Importing a file fills the chart in for you, read from
-every voice sounding together.
+every voice sounding together. A score's own printed
+chord symbols keep their half-beat timing where they have
+it; a chord detected from the notes only ever lands on
+the beat, since it is a best guess rather than something
+stated.
 
 **Suggest chords** fills it for any music in the boxes.
 Where several voices are sounding it reads what the

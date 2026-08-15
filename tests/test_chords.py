@@ -1736,3 +1736,110 @@ def test_a_harmony_line_keeps_its_colour_when_alone():
 
     assert HARMONY_BELOW_COLOUR in below_alone
     assert HARMONY_ABOVE_COLOUR not in below_alone
+
+
+# Half-beat chords: a syncopated change writes as A>B in
+# one beat's slot, or >B when the first half just carries
+# the chord before it. Found needed by a real Disney lead
+# sheet (Mulan's "I'll Make a Man Out of You") where the
+# printed chart genuinely changes on the "and" of a beat -
+# a chart holding only whole beats either dropped that
+# chord or struck it a whole beat early.
+
+
+def test_a_split_token_reads_as_two_half_beat_chords():
+    chords, bars = read_chart("| D>G |")
+
+    assert chords == [(0.0, 0.5, "D"), (0.5, 0.5, "G")]
+    assert bars == [(0.0, 1.0)]
+
+
+def test_a_bare_split_carries_the_previous_chord_for_the_first_half():
+    """
+    ">G" means the chord already sounding just continues
+    through the first half of the beat, and G is the only
+    genuinely new arrival - the common case, a chord pushed
+    early onto the "and".
+    """
+
+    chords, bars = read_chart("| D >G |")
+
+    assert chords == [
+        (0.0, 1.5, "D"),
+        (1.5, 0.5, "G")
+    ]
+
+
+def test_a_beat_cannot_split_more_than_once():
+    with pytest.raises(ChartError, match="more than one"):
+        read_chart("| A>B>C . . . |")
+
+
+def test_a_split_needs_a_chord_after_the_mark():
+    with pytest.raises(ChartError, match="needs a chord"):
+        read_chart("| > . . . |")
+
+
+def test_a_chart_cannot_open_on_a_bare_split():
+    """
+    Same shape as opening on a dot: nothing to carry on for
+    the first half.
+    """
+
+    with pytest.raises(ChartError, match="cannot begin with"):
+        read_chart("| >G . . . |")
+
+
+def test_write_chart_round_trips_a_split_exactly():
+    from chord_detector import write_chart
+
+    for original in ("| D>G . . . |", "| D . >G . |", "| Em . . D>G |"):
+
+        chords, bars = read_chart(original)
+
+        assert write_chart(chords, chart_beats(original), 4.0) == original
+
+
+def test_write_chart_still_floors_whole_beat_detector_output():
+    """
+    A detector never lands on a genuine half - it only ever
+    samples whole beats - so its output must render exactly
+    as it always did, with no split tokens appearing where
+    none were ever intended. This is the regression guard
+    for the two protected ground-truth fixtures: a chord
+    list shaped like detector output must be untouched by
+    the half-beat change.
+    """
+
+    from chord_detector import write_chart
+
+    chords = [(0.0, 2.0, "Dm"), (2.0, 2.0, "Bb")]
+
+    assert write_chart(chords, 4.0, 4.0) == "| Dm . Bb . |"
+
+
+def test_write_chart_floors_a_finer_than_half_start_gracefully():
+    """
+    Only an exact half is kept - a start landing at, say, a
+    third of the way through a beat still floors to the
+    beat it began within, the same graceful fallback a
+    whole-beat-only chart has always had.
+    """
+
+    from chord_detector import write_chart
+
+    chords = [(0.0, 2.33, "D"), (2.33, 1.67, "G")]
+
+    assert write_chart(chords, 4.0, 4.0) == "| D . G . |"
+
+
+def test_transpose_moves_both_halves_of_a_split():
+    from chords import transpose_chart
+
+    assert transpose_chart("| D>G . . . |", 2) == "| E>A . . . |"
+
+
+def test_transpose_moves_the_bare_half_of_a_split():
+    from chords import transpose_chart
+
+    assert transpose_chart("| >G . . . |", -2, key="F") == "| >F . . . |"

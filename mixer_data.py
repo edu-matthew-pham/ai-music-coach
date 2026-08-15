@@ -93,6 +93,19 @@ def _timeline(pitch_text, duration_text, key, bpm, chart_text,
     it: which chord is sounding now, where to jump to, and
     which stretch to go round again.
 
+    One entry per real bar, always - not one per chord run.
+    A chord spanning several bars used to swallow them (one
+    box claiming to be "bar 1", nothing shown for the bars
+    after); a bar with more than one chord change used to
+    split into several boxes each claiming to be its own
+    bar. Both are the same mistake: a box was a chord run,
+    not a bar. Now every bar gets a box, whether or not
+    anything is sung in it - an instrumental intro is
+    present and numbered like any other bar - and a bar's
+    own chord changes (including a half-beat split written
+    "A>B") sit inside that one box, each carrying its
+    position within the bar rather than the song.
+
     Beats are turned into seconds here because the browser
     should not have to know what a beat is. It knows where
     it is in a sound file, and this says what is happening
@@ -112,21 +125,8 @@ def _timeline(pitch_text, duration_text, key, bpm, chart_text,
 
     chords, bars = read_chart(piece.chart)
 
-    # The chart holds one chord *run* per box (dots merged
-    # into the chord they carry on), which is not the same
-    # thing as a bar - a chord can span several bars, or a
-    # bar can hold several chord changes. `enumerate(chords)`
-    # used to be sent as "bar", so a chord spanning two bars
-    # showed one box claiming to be "bar 1" with no box for
-    # the second bar, and a bar with two chord changes showed
-    # two boxes both claiming to be sequential bars. bar_number
-    # below is the real bar each run starts in, computed the
-    # same way piece.py works out beats_per_bar from the
-    # chart's own bars list.
-    beats_per_bar = 4
-
-    if bars:
-        beats_per_bar = int(round(bars[0][1])) or 4
+    if not bars:
+        return []
 
     per_beat = 60.0 / float(bpm)
 
@@ -152,26 +152,45 @@ def _timeline(pitch_text, duration_text, key, bpm, chart_text,
 
     strip = []
 
-    for number, (start, length, name) in enumerate(chords):
+    for number, (bar_start, bar_length) in enumerate(bars):
+
+        bar_end = bar_start + bar_length
+
+        bar_chords = []
+
+        for chord_start, chord_length, name in chords:
+
+            chord_end = chord_start + chord_length
+
+            # No overlap with this bar at all.
+            if chord_end <= bar_start or chord_start >= bar_end:
+                continue
+
+            # A chord already sounding when the bar opens
+            # sits at the bar's own beat 0, however far
+            # back it actually started - the same rule
+            # invariant 2's slicing already follows. One
+            # this way, at most, per bar: a genuinely new
+            # start clamps to where it really begins.
+            beat_in_bar = max(chord_start, bar_start) - bar_start
+
+            bar_chords.append({
+                "name": name,
+                "beat_in_bar": beat_in_bar,
+                "carried": chord_start < bar_start
+            })
 
         words = " ".join(
             word for beat, word in words_at
-            if start <= beat < start + length
+            if bar_start <= beat < bar_end
         )
 
         strip.append({
-            "name": name,
-            "start": start * per_beat,
-            "end": (start + length) * per_beat,
-            # A unique box index - keeps every chord run its
-            # own box (frontend keying and scroll-target rely
-            # on this being distinct per box, even when two
-            # runs share a bar).
             "bar": number + 1,
-            # The real musical bar this run starts in, for
-            # what the browser actually displays as the bar
-            # number.
-            "bar_number": int(start // beats_per_bar) + 1,
+            "start": bar_start * per_beat,
+            "end": bar_end * per_beat,
+            "beats": bar_length,
+            "chords": bar_chords,
             "words": words
         })
 
@@ -233,7 +252,11 @@ def _diagrams(key, timeline):
         for instrument in INSTRUMENTS
     }
 
-    chord_names = sorted({bar["name"] for bar in timeline if bar["name"]})
+    chord_names = sorted({
+        chord["name"]
+        for bar in timeline
+        for chord in bar["chords"]
+    })
 
     chords = {instrument: {} for instrument in INSTRUMENTS}
     shapes = {instrument: {} for instrument in INSTRUMENTS}

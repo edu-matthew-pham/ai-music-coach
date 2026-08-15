@@ -20,11 +20,13 @@
 	// positioning happens here - this component only decides
 	// which layers are visible and which chord to look up.
 	//
-	// The current chord is found the same way ChordStrip
-	// finds the current bar: the first timeline entry the
-	// playhead is inside of. Kept independent of ChordStrip
-	// rather than passed a bar object, since this panel can
-	// be shown without the Chart panel being open at all.
+	// The current chord is found from the timeline entry
+	// (bar) the playhead is inside of, the same way
+	// ChordStrip finds its current bar - then within that
+	// bar's own chords list, whichever one's start has
+	// arrived. Kept independent of ChordStrip rather than
+	// passed a bar object, since this panel can be shown
+	// without the Chart panel being open at all.
 	interface Props {
 		diagrams: MixerDiagrams;
 		timeline: MixerBar[];
@@ -89,17 +91,64 @@
 		currentIndex >= 0 ? timeline[currentIndex] : undefined
 	);
 
-	// Each timeline entry is already one whole chord's span,
-	// not one physical bar - read_chart merges consecutive
-	// bars holding the same chord into a single entry before
-	// this ever reaches the mixer. So the very next entry is
-	// the next chord change, with no scanning needed to find
-	// it.
-	const nextBar = $derived(
-		currentIndex >= 0 && currentIndex + 1 < timeline.length
-			? timeline[currentIndex + 1]
-			: undefined
-	);
+	// A bar's own chords carry their position as beat_in_bar,
+	// not seconds - converted here against that bar's own
+	// beats-to-seconds ratio, since a phrase-view bar and a
+	// bar elsewhere in the piece are not guaranteed the same
+	// tempo-relative width once real per-bar lengths are
+	// possible.
+	function chordsWithSeconds(
+		bar: MixerBar | undefined
+	): { name: string; start: number }[] {
+		if (!bar) return [];
+
+		const secondsPerBeat = (bar.end - bar.start) / bar.beats;
+
+		return bar.chords.map((chord) => ({
+			name: chord.name,
+			start: bar.start + chord.beat_in_bar * secondsPerBeat
+		}));
+	}
+
+	// The chord actually sounding at the playhead - a bar can
+	// now hold more than one (a syncopated split, or an
+	// ordinary mid-bar change), so this is the last one whose
+	// own start has arrived, the same "starts under, still
+	// sounding" rule chord_at already uses in Python.
+	const currentChord = $derived.by(() => {
+		let found: { name: string; start: number } | undefined;
+
+		for (const chord of chordsWithSeconds(currentBar)) {
+			if (chord.start <= playhead) {
+				found = chord;
+			}
+		}
+
+		return found;
+	});
+
+	// The next chord to arrive - later in the same bar if
+	// this bar holds more than one change, otherwise the
+	// first chord of the next bar. Only ever looks one bar
+	// ahead: this is a preview of what's coming, not a search.
+	const nextChord = $derived.by(() => {
+		const currentStart = currentChord?.start;
+
+		if (currentStart !== undefined) {
+			const laterInBar = chordsWithSeconds(currentBar).find(
+				(chord) => chord.start > currentStart
+			);
+
+			if (laterInBar) return laterInBar;
+		}
+
+		const followingBar =
+			currentIndex >= 0 && currentIndex + 1 < timeline.length
+				? timeline[currentIndex + 1]
+				: undefined;
+
+		return chordsWithSeconds(followingBar)[0];
+	});
 
 	const chosenInstruments = $derived(
 		families.filter((family) => diagramInstruments[family])
@@ -167,17 +216,17 @@
 			{@const key = keyFor(family)}
 			{@const structureSvg = diagrams.structure?.[key]}
 			{@const scaleSvg = diagrams.scale?.[key]}
-			{@const notesSvg = currentBar
-				? diagrams.chords?.[key]?.[currentBar.name]
+			{@const notesSvg = currentChord
+				? diagrams.chords?.[key]?.[currentChord.name]
 				: undefined}
-			{@const shapeSvg = currentBar
-				? diagrams.shapes?.[key]?.[currentBar.name]
+			{@const shapeSvg = currentChord
+				? diagrams.shapes?.[key]?.[currentChord.name]
 				: undefined}
-			{@const nextNotesSvg = nextBar
-				? diagrams.chords?.[key]?.[nextBar.name]
+			{@const nextNotesSvg = nextChord
+				? diagrams.chords?.[key]?.[nextChord.name]
 				: undefined}
-			{@const nextShapeSvg = nextBar
-				? diagrams.shapes?.[key]?.[nextBar.name]
+			{@const nextShapeSvg = nextChord
+				? diagrams.shapes?.[key]?.[nextChord.name]
 				: undefined}
 			<div class="instrument-card">
 				<h4>{family} <span class="variant-label">({diagramVariant[family]})</span></h4>
@@ -196,20 +245,20 @@
 					</div>
 					{#if diagramLayers.chordNotes && !notesSvg}
 						<p class="instrument-note">
-							Chord notes: {currentBar ? "no picture for this bar." : "nothing playing yet."}
+							Chord notes: {currentChord ? "no picture for this bar." : "nothing playing yet."}
 						</p>
 					{/if}
 					{#if diagramLayers.chordShape && !shapeSvg}
 						<p class="instrument-note">
-							Chord shape: {currentBar
-								? `no standard shape for ${currentBar.name} on ${family}.`
+							Chord shape: {currentChord
+								? `no standard shape for ${currentChord.name} on ${family}.`
 								: "nothing playing yet."}
 						</p>
 					{/if}
 
 					{#if previewNextChord.value}
-						{#if nextBar}
-							<p class="next-chord-label">Next: {nextBar.name}</p>
+						{#if nextChord}
+							<p class="next-chord-label">Next: {nextChord.name}</p>
 							<div class="diagram-stack next-chord-preview">
 								<div class="layer structure-layer">{@html structureSvg}</div>
 								{#if diagramLayers.scale && scaleSvg}

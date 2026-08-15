@@ -5,12 +5,18 @@ export interface MixerLayer {
 	wav: string;
 }
 
+export interface MixerBarChord {
+	name: string;
+	beat_in_bar: number;
+	carried: boolean;
+}
+
 export interface MixerBar {
 	bar: number;
-	bar_number: number;
-	name: string;
 	start: number;
 	end: number;
+	beats: number;
+	chords: MixerBarChord[];
 	words: string;
 }
 

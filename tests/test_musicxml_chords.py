@@ -297,15 +297,16 @@ def test_offsets_are_read_across_the_whole_piece_not_one_measure():
     assert chart == "| G . . . | . . . . |"
 
 
-def test_a_pickup_chord_lands_in_the_bar_it_was_written_into():
+def test_a_pickup_chord_lands_on_its_true_half_beat():
     """
-    A symbol on the "and" of a beat has to give up that
-    timing - a chart here holds one token per beat - and it
-    has to give it up by rounding down to the beat it
-    starts within, not to the nearest beat. Python's own
-    round() sends a half beat to the nearest even number,
-    which would push this chord a whole beat late, into the
-    bar after the one it was written into.
+    A symbol on the "and" of a beat used to have to give up
+    that timing entirely - the chart only held one token per
+    beat, so this landed floored to the beat it started
+    within. Now a genuine half-beat offset keeps its true
+    position: the previous chord (Em) carries through the
+    first half of the last beat, and G arrives on its own
+    half via the bare ">G" token - a chord already sounding
+    just continuing, with only the second half new.
     """
 
     from music21 import stream, harmony, meter
@@ -314,6 +315,27 @@ def test_a_pickup_chord_lands_in_the_bar_it_was_written_into():
     part.insert(0, meter.TimeSignature("4/4"))
     part.insert(0, harmony.ChordSymbol("Em"))
     part.insert(3.5, harmony.ChordSymbol("G"))
+
+    chart = _printed_chart([part], 4.0, 4.0)
+
+    assert chart == "| Em . . >G |"
+
+
+def test_a_finer_than_half_beat_pickup_still_floors():
+    """
+    Only an EXACT half keeps its precision. A sixteenth-note
+    pickup (offset 3.25) is finer than a chart split can
+    hold, so it still gives up its timing entirely and
+    floors to the beat it starts within - the same graceful
+    fallback as before, not a crash and not a wrong split.
+    """
+
+    from music21 import stream, harmony, meter
+
+    part = stream.Part()
+    part.insert(0, meter.TimeSignature("4/4"))
+    part.insert(0, harmony.ChordSymbol("Em"))
+    part.insert(3.25, harmony.ChordSymbol("G"))
 
     chart = _printed_chart([part], 4.0, 4.0)
 

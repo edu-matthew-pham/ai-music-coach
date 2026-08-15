@@ -72,7 +72,10 @@ def build_other():
     into a mixer that already has a loop selected is the one
     thing the single-song demo could never exercise on its
     own, and it is exactly the case the fingerprint fix in
-    the engine is for.
+    the engine is for. Its own chart also has a genuine
+    multi-chord bar (bar 2: F then C), which the bar-grouped
+    strip test reuses rather than building a third fixture
+    for the same shape.
     """
 
     pitches, durations, lyrics, key, chart, tempo = load_twinkle()
@@ -85,6 +88,29 @@ def build_other():
         chart,
         lyric_text=lyrics,
         phrase_label="Whole part"
+    )
+
+
+def build_intro():
+    """
+    A short, made-up fixture for the one shape neither real
+    song happens to have: a wordless instrumental bar. Bar 1
+    is a bar of rest under a held Em with nothing sung; bar
+    2 sings four words under a bar that itself splits D then
+    G - both symptoms the bar-grouped strip was built to
+    fix, in two bars' worth of music. Verified directly
+    against mixer_data() (not just assumed from the fixture)
+    before being wired up here.
+    """
+
+    return mixer_data(
+        "R R R R C4 D4 E4 F4",
+        "1 1 1 1 1 1 1 1",
+        "C",
+        120,
+        "| Em . . . | D . G . |",
+        lyric_text="here we go now",
+        phrase_label=None
     )
 
 
@@ -112,6 +138,7 @@ with gr.Blocks() as demo:
 
     build_button = gr.Button("Build the mixer", variant="primary")
     build_other_button = gr.Button("Load a different song")
+    build_intro_button = gr.Button("Load a wordless intro")
 
     mixer = MusicMixer(label="Mix it live", key="mixer")
 
@@ -119,6 +146,7 @@ with gr.Blocks() as demo:
 
     build_button.click(fn=build, inputs=None, outputs=mixer)
     build_other_button.click(fn=build_other, inputs=None, outputs=mixer)
+    build_intro_button.click(fn=build_intro, inputs=None, outputs=mixer)
 
     mixer.change(fn=report, inputs=mixer, outputs=readout)
 
