@@ -1194,7 +1194,11 @@ def test_the_two_opinions_answer_different_questions():
 
     notes, bpm = read_notes(mido.MidiFile(path))
 
-    chords = fill_gaps(detect_chords(notes, 48, 4), 48)
+    # 48 beats no longer reaches a chorder disagreement:
+    # SEVENTH_COST made our own reading of this stretch
+    # more accurate, so chorder has nothing left to add
+    # here specifically. 72 does.
+    chords = fill_gaps(detect_chords(notes, 72, 4), 72)
 
     namer = second_opinion(notes, chords)
     reader = midi_reader_opinion(notes, chords)
@@ -1236,6 +1240,205 @@ def test_two_notes_are_thin_but_real():
     weights, lowest = weigh_pitches(notes, 0, 4)
 
     assert name_chord(weights, lowest) == "D"
+
+
+def test_a_trace_note_cannot_rename_the_chord():
+    """
+    A pitch heard for a sliver of the beat is decoration.
+    Without the floor, a whisper of C under an E flat
+    triad names the beat C minor seventh: the whisper
+    fills the seventh chord's fourth tone and, lying
+    lowest, collects the bass bonus too. Measured against
+    the Wellerman's published sheet, this one whisper cost
+    two chorus bars.
+    """
+
+    from chord_detector import name_chord, weigh_pitches
+
+    # A solid E flat triad, and a low C for four percent
+    # of the beat.
+    notes = [
+        (0.0, 4.0, 63),
+        (0.0, 4.0, 67),
+        (0.0, 4.0, 70),
+        (0.0, 0.48, 48),
+    ]
+
+    weights, lowest = weigh_pitches(notes, 0, 4)
+
+    assert weights[0] == 0.0
+    assert lowest == 3
+    assert name_chord(weights, lowest) == "D#"
+
+
+def test_a_real_bass_note_still_names_itself():
+    """
+    The floor drops whispers, not quiet voices: a bass
+    note sounding for a proper share of the beat keeps
+    its claim.
+    """
+
+    from chord_detector import name_chord, weigh_pitches
+
+    notes = [
+        (0.0, 4.0, 63),
+        (0.0, 4.0, 67),
+        (0.0, 4.0, 70),
+        (0.0, 2.0, 48),
+    ]
+
+    weights, lowest = weigh_pitches(notes, 0, 4)
+
+    assert weights[0] > 0
+    assert lowest == 0
+
+
+def test_a_missing_third_breaks_toward_the_key_not_a_list():
+    """
+    A root and a fifth alone, no third at all, score
+    identically as major or minor - neither reading
+    explains or contradicts the other's missing note.
+    Untouched, that tie always fell to major, because
+    DETECTED_QUALITIES lists "" before "m" and a strict
+    greater-than only replaces the first candidate tried.
+    That was a real, measured bias, not a hypothetical one:
+    fifteen genuinely minor bars read as major in one
+    published song alone, every one of them exactly this
+    shape. On a true tie the key breaks it instead: E is
+    the sixth degree of G major, which is minor, so a bare
+    E-and-B, no third, should read E minor here.
+    """
+
+    from chord_detector import name_chord, weigh_pitches
+
+    notes = [
+        (0.0, 4.0, 64),  # E4, the root
+        (0.0, 4.0, 71),  # B4, the fifth - no third present
+    ]
+
+    weights, lowest = weigh_pitches(notes, 0, 4)
+
+    assert name_chord(weights, lowest, "G") == "Em"
+
+
+def test_the_same_tie_still_reads_major_when_the_key_says_so():
+    """
+    The fix is a tie-break, not a new bias toward minor: a
+    bare root-and-fifth on the tonic of a major key, G in G
+    major, should still read as G major, not flip to minor
+    out of overcorrection.
+    """
+
+    from chord_detector import name_chord, weigh_pitches
+
+    notes = [
+        (0.0, 4.0, 67),  # G4, the root
+        (0.0, 4.0, 74),  # D5, the fifth
+    ]
+
+    weights, lowest = weigh_pitches(notes, 0, 4)
+
+    assert name_chord(weights, lowest, "G") == "G"
+
+
+def test_a_diatonic_seventh_needs_no_accidental_to_be_reached():
+    """
+    The search only widens to all sixty candidates when a
+    real accidental sounds - a pitch outside the key's own
+    seven notes. It does not widen just because a seventh
+    is being considered: A7's own tones (A, C sharp, E, G)
+    are every one of them a note of D major already, so
+    this should be reachable with nothing outside the key
+    at all. Restricting the quiet case to the seven plain
+    triads alone - rather than any chord whose own tones
+    stay diatonic - was a real bug caught by exactly this
+    case: it silently turned real, ordinary sevenths into
+    the wrong triad, found on the app's own O Holy Night
+    fixture.
+    """
+
+    from chord_detector import name_chord, weigh_pitches
+
+    notes = [
+        (0.0, 4.0, 57),  # A3
+        (0.0, 4.0, 61),  # C#4
+        (0.0, 4.0, 64),  # E4
+        (0.0, 4.0, 67),  # G4 - the seventh, still a D major note
+    ]
+
+    weights, lowest = weigh_pitches(notes, 0, 4)
+
+    assert name_chord(weights, lowest, "D") == "A7"
+
+
+def test_a_real_accidental_opens_the_search_past_the_key():
+    """
+    A pitch that genuinely is not one of the key's own seven
+    notes is real evidence the music has left the key, and
+    only then does the search widen to all sixty candidates.
+    F minor in C major needs an A flat, which C major does
+    not have - found on a real published song, where the
+    seven-triad-only version of this fix could never reach
+    it no matter how loud the F minor was.
+    """
+
+    from chord_detector import name_chord, weigh_pitches
+
+    notes = [
+        (0.0, 4.0, 65),  # F4
+        (0.0, 4.0, 68),  # A flat 4 - not a note of C major
+        (0.0, 4.0, 72),  # C5
+    ]
+
+    weights, lowest = weigh_pitches(notes, 0, 4)
+
+    assert name_chord(weights, lowest, "C") == "Fm"
+
+
+def test_a_passing_sixth_does_not_turn_a_triad_into_a_seventh():
+    """
+    A seventh chord explains one more tone than the triad
+    inside it, so on a beat where that fourth tone is only
+    a decoration, the wider net scoops it up for free. A
+    sung sixth over a B flat triad should stay B flat, not
+    read as the minor seventh a third below (G minor
+    seventh happens to share three of its four tones with
+    it). Found on a real published sheet, where this
+    mistake was systematic rather than occasional.
+    """
+
+    from chord_detector import name_chord, weigh_pitches
+
+    notes = [
+        (0.0, 4.0, 58),  # B flat 3
+        (0.0, 4.0, 62),  # D4
+        (0.0, 4.0, 65),  # F4
+        (0.0, 1.0, 67),  # G4, a quarter of the beat
+    ]
+
+    weights, lowest = weigh_pitches(notes, 0, 4)
+
+    assert name_chord(weights, lowest) == "A#"
+
+
+def test_a_real_seventh_still_wins():
+    """
+    The cost only stops a seventh winning by default; a
+    seventh that is genuinely, fully there still wins.
+    """
+
+    from chord_detector import name_chord, weigh_pitches
+
+    notes = [
+        (0.0, 4.0, 55),  # G3
+        (0.0, 4.0, 59),  # B3
+        (0.0, 4.0, 62),  # D4
+        (0.0, 4.0, 65),  # F4
+    ]
+
+    weights, lowest = weigh_pitches(notes, 0, 4)
+
+    assert name_chord(weights, lowest) == "G7"
 
 
 def test_an_empty_chart_explains_itself():

@@ -460,6 +460,36 @@ def _syllable(item, verse):
     return None
 
 
+def _stated_key(score):
+    """
+    The key, read from the score's own signature.
+
+    A signature only says how many flats or sharps - the
+    same count belongs to a major key and its relative
+    minor, so this cannot say which the piece actually
+    resolves to. It does not need to: the key box holds a
+    signature, not a tonic-with-mode, and asKey("major")
+    hands back the one spelling that count has always meant.
+
+    None when the score carries no signature to read - a
+    rare score, or a bare part MusicXML did not attach one
+    to - so the caller falls back to guessing from the notes.
+    """
+
+    signatures = list(
+        score.recurse().getElementsByClass("KeySignature")
+    )
+
+    if not signatures:
+        return None
+
+    tonic = signatures[0].asKey("major").tonic.name
+
+    # music21 spells a flat with a dash; the rest of this
+    # app spells it with a b.
+    return tonic.replace("-", "b")
+
+
 def import_musicxml(path, part_label=None, verse=1):
     """
     A score into the boxes.
@@ -505,8 +535,15 @@ def import_musicxml(path, part_label=None, verse=1):
         metre = signatures[0]
         beats_per_bar = float(metre.barDuration.quarterLength)
 
-    # The tempo, if the score carries one.
-    marks = list(score.recurse().getElementsByClass("MetronomeMark"))
+    # The tempo, if the score carries one. A mark can be
+    # words alone - "Moderately", with no number - and a
+    # wordy mark says nothing a BPM box can hold.
+    marks = [
+        mark for mark in score.recurse().getElementsByClass(
+            "MetronomeMark"
+        )
+        if mark.number is not None
+    ]
 
     bpm = int(round(marks[0].number)) if marks else 100
 
@@ -612,10 +649,23 @@ def import_musicxml(path, part_label=None, verse=1):
 
     total = sum(durations)
 
-    # The same reading the MIDI importer does: a minor
-    # piece is set to its relative major, because the key
-    # box names a signature rather than a tonic.
-    key = spelling_key([
+    # A key signature states a flat/sharp count, not a
+    # tonic - four flats is A flat major or its relative,
+    # F minor, and the file does not say which. But the key
+    # box only ever names a signature, never a tonic with a
+    # mode (the same reading the MIDI importer does: a minor
+    # piece is set to its relative major) - so the count
+    # alone already answers the only question the box asks,
+    # with nothing left to guess. This is what the module's
+    # own reason for existing says to do: the file already
+    # states its key, the same as its lengths and its metre.
+    #
+    # Found on a real score: the note-based guess, with no
+    # signature to check against, picked C minor - three
+    # flats - for a piece whose own header states four. The
+    # notes it was guessing from were real; the signature it
+    # never looked at was the actual answer.
+    key = _stated_key(score) or spelling_key([
         (0, float(length), number)
         for number, length in zip(pitches, durations)
         if number != REST

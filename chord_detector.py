@@ -21,7 +21,9 @@ there.
 """
 
 from chords import CHORD_QUALITIES, CHORD_QUALITIES as QUALITIES
-from notes import SHARP_NAMES, FLAT_NAMES, FLAT_KEYS
+from notes import (
+    SHARP_NAMES, FLAT_NAMES, FLAT_KEYS, note_to_midi
+)
 
 
 # The chords worth looking for. Kept deliberately short:
@@ -58,6 +60,35 @@ MISSING_PENALTY = 0.5
 # A beat with almost nothing sounding cannot be named, and
 # guessing there produces chords nobody played.
 QUIET_BEAT = 0.05
+
+
+# A pitch heard for less than this share of a beat is
+# decoration, not harmony. Without a floor, a whisper of a
+# note - the tail of a melody line crossing the beat - can
+# rename the chord twice over: it fills the fourth tone of
+# a seventh chord that would otherwise pay for missing it,
+# and if it happens to lie lowest it collects the whole
+# bass bonus. On the Wellerman's chorus a C sounding for
+# four percent of the beat turned two honest E flat bars
+# into C minor sevenths this way, measured against the
+# published sheet. Trace notes are dropped before scoring:
+# no credit, no penalty, no claim to the bass.
+TRACE_FLOOR = 0.05
+
+
+# What it costs a seventh chord to claim a beat, beyond
+# what its four tones already have to earn on their own
+# merits. A seventh explains one more tone than the triad
+# it contains, so on a beat where that fourth tone is only
+# a passing decoration, the seventh's wider net scoops it
+# up for free and reports harmony nobody played: measured
+# against A Thousand Years' printed sheet, a sung sixth
+# over a plain major triad was repeatedly read as a minor
+# seventh built a third below - Bb become Gm7, F became
+# Dm7, Eb became Cm7 - the same relative-minor mistake
+# each time. A seventh still wins when it is genuinely
+# there; it must now win outright, not by default.
+SEVENTH_COST = 0.1
 
 
 # How many different notes have to be sounding before a
@@ -101,11 +132,13 @@ def weigh_pitches(notes, start, end):
     Returns (weights, lowest) where weights is a list of
     twelve durations and lowest is the pitch class of the
     lowest note sounding, or None.
+
+    Pitch classes below TRACE_FLOOR of the span's sound are
+    zeroed, and the bass is the lowest note of a pitch
+    class that survives - a trace note names nothing.
     """
 
     weights = [0.0] * 12
-
-    lowest_midi = None
 
     for note_start, length, midi_number in notes:
 
@@ -118,6 +151,27 @@ def weigh_pitches(notes, start, end):
 
         weights[midi_number % 12] += overlap
 
+    total = sum(weights)
+
+    for semitone in range(12):
+
+        if weights[semitone] < TRACE_FLOOR * total:
+            weights[semitone] = 0.0
+
+    lowest_midi = None
+
+    for note_start, length, midi_number in notes:
+
+        note_end = note_start + length
+
+        overlap = min(end, note_end) - max(start, note_start)
+
+        if overlap <= 0:
+            continue
+
+        if weights[midi_number % 12] == 0.0:
+            continue
+
         if lowest_midi is None or midi_number < lowest_midi:
             lowest_midi = midi_number
 
@@ -126,13 +180,21 @@ def weigh_pitches(notes, start, end):
     return weights, lowest
 
 
-def score_chord(weights, lowest, root, quality):
+def score_chord(weights, lowest, root, quality, seventh_cost=0.0):
     """
     How well a chord explains what is sounding.
 
     Every note belonging to the chord counts for it, and
     every note outside counts against, so the winner is the
     chord that leaves least unexplained.
+
+    seventh_cost, when given, additionally costs a seventh
+    chord SEVENTH_COST's worth of its own total - see that
+    constant. Off by default: this only belongs where a
+    winner is being chosen among rival readings of the same
+    beat, not in the alternatives and second opinions shown
+    alongside it, which exist to surface genuine ambiguity
+    rather than to repeat the same bias against it.
     """
 
     intervals = QUALITIES[quality]
@@ -164,12 +226,54 @@ def score_chord(weights, lowest, root, quality):
     if missing:
         score -= MISSING_PENALTY * total * missing / len(tones)
 
+    if seventh_cost and len(tones) > 3:
+        score -= seventh_cost * total
+
     return score
 
 
 def name_chord(weights, lowest, key=None):
     """
     The chord that best explains a span, or None.
+
+    A root's own qualities can tie exactly - a beat with
+    only a root and a fifth sounding, no third at all,
+    scores identically as major or minor, since neither
+    reading explains or contradicts anything the other
+    doesn't. Untouched, that tie always fell to major:
+    DETECTED_QUALITIES lists "" before "m", and a strict
+    greater-than only ever replaces the first candidate
+    tried, never matches it. That is not a musical
+    preference, it is an accident of a list's order, and it
+    was a real, systematic bias, not a rare edge case:
+    measured against two published charts, it called
+    fifteen genuinely minor bars major in one song alone,
+    every one of them a beat where the third simply never
+    sounds. On a true tie, and only then, the key breaks it
+    instead: a minor scale degree is more often actually
+    minor than an arbitrary list position is.
+
+    A wide search has a cost of its own: with sixty
+    candidates and only a handful of real notes to judge
+    them by, a chord built on the wrong root can still
+    explain everything sounding, purely because a key's own
+    seven notes overlap so much between neighbours. The
+    search only opens that wide when the music has actually
+    left the key - a real accidental sounding, a pitch class
+    outside the key's own seven notes. Until then, only
+    chords whose own tones are all diatonic are considered,
+    which is a different and looser thing than only the
+    seven plain triads: a dominant seventh built entirely
+    from the key's own notes stays reachable without any
+    accidental, only a chord that actually needs one does
+    not. Measured against real songs: no accidental, no
+    change to what already worked: an accidental present,
+    the true chord found where the seven-triad list alone
+    could never have reached it (Viva la Vida's borrowed
+    Db was a false alarm from an earlier key-detection bug,
+    but I'm Yours' F minor - built on an A flat the key of C
+    does not have - is a real one, and is exactly this
+    shape).
     """
 
     total = sum(weights)
@@ -182,18 +286,67 @@ def name_chord(weights, lowest, key=None):
     if sounding < FEWEST_NOTES:
         return None
 
+    key_tonic = (
+        note_to_midi(key + "4") % 12 if key is not None else None
+    )
+
+    diatonic_quality = {
+        (key_tonic + degree) % 12: quality
+        for degree, quality in DIATONIC
+    } if key_tonic is not None else {}
+
+    diatonic_notes = {
+        (key_tonic + degree) % 12 for degree, _ in DIATONIC
+    } if key_tonic is not None else None
+
+    has_accidental = (
+        diatonic_notes is not None and any(
+            weight > 0 and semitone not in diatonic_notes
+            for semitone, weight in enumerate(weights)
+        )
+    )
+
     best = None
     best_score = None
 
     for root in range(12):
 
+        root_best = None
+        root_best_score = None
+
         for quality in DETECTED_QUALITIES:
 
-            score = score_chord(weights, lowest, root, quality)
+            if (
+                diatonic_notes is not None
+                and not has_accidental
+                and not all(
+                    (root + interval) % 12 in diatonic_notes
+                    for interval in QUALITIES[quality]
+                )
+            ):
+                continue
 
-            if best_score is None or score > best_score:
-                best_score = score
-                best = note_name(root, key) + quality
+            score = score_chord(
+                weights, lowest, root, quality,
+                seventh_cost=SEVENTH_COST
+            )
+
+            if root_best_score is None or score > root_best_score:
+                root_best_score = score
+                root_best = quality
+
+            elif (
+                score == root_best_score
+                and diatonic_quality.get(root) == quality
+            ):
+                root_best = quality
+
+        if root_best_score is None:
+            continue
+
+        if best_score is None or root_best_score > best_score:
+            best_score = root_best_score
+            best = note_name(root, key) + root_best
 
     # A chord that explains less than it leaves out is not
     # worth naming.

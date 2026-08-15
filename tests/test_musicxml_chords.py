@@ -258,3 +258,35 @@ def test_chord_symbols_are_not_counted_as_notes(tmp_path):
     )
 
     assert len(pitches.split()) == 4
+
+
+def test_a_wordy_tempo_mark_does_not_crash_the_import(tmp_path):
+    """
+    A metronome mark can be words alone - "Moderately",
+    with no number - and music21 reads its number as None.
+    A wordy mark says nothing a BPM box can hold, so the
+    import falls back to the default rather than falling
+    over. Found by a real published arrangement, not
+    invented.
+    """
+
+    from music21 import stream, note, meter, tempo
+
+    path = tmp_path / "test.musicxml"
+
+    part = stream.Part()
+    part.insert(0, meter.TimeSignature("4/4"))
+    part.insert(0, tempo.MetronomeMark("Moderately"))
+
+    for offset in range(4):
+        part.insert(offset, note.Note(60 + offset, quarterLength=1))
+
+    score = stream.Score()
+    score.append(part)
+    score.write("musicxml", fp=str(path))
+
+    label = parts_in(str(path))[0]
+
+    _, _, _, bpm, _, _, _, _ = import_musicxml(str(path), label)
+
+    assert bpm == 100
