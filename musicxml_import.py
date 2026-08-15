@@ -263,7 +263,7 @@ def _printed_chart(parts, total_beats, beats_per_bar):
         # after the one it was written into.
         beat = int(symbol.offset)
 
-        by_beat.setdefault(beat, root_name + quality)
+        by_beat[beat] = root_name + quality
 
     if not by_beat:
         return ""
