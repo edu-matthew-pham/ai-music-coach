@@ -7,6 +7,7 @@ export interface MixerLayer {
 
 export interface MixerBar {
 	bar: number;
+	bar_number: number;
 	name: string;
 	start: number;
 	end: number;

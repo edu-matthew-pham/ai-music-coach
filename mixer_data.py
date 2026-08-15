@@ -112,6 +112,22 @@ def _timeline(pitch_text, duration_text, key, bpm, chart_text,
 
     chords, bars = read_chart(piece.chart)
 
+    # The chart holds one chord *run* per box (dots merged
+    # into the chord they carry on), which is not the same
+    # thing as a bar - a chord can span several bars, or a
+    # bar can hold several chord changes. `enumerate(chords)`
+    # used to be sent as "bar", so a chord spanning two bars
+    # showed one box claiming to be "bar 1" with no box for
+    # the second bar, and a bar with two chord changes showed
+    # two boxes both claiming to be sequential bars. bar_number
+    # below is the real bar each run starts in, computed the
+    # same way piece.py works out beats_per_bar from the
+    # chart's own bars list.
+    beats_per_bar = 4
+
+    if bars:
+        beats_per_bar = int(round(bars[0][1])) or 4
+
     per_beat = 60.0 / float(bpm)
 
     # The words under each bar, so the strip reads as the
@@ -147,7 +163,15 @@ def _timeline(pitch_text, duration_text, key, bpm, chart_text,
             "name": name,
             "start": start * per_beat,
             "end": (start + length) * per_beat,
+            # A unique box index - keeps every chord run its
+            # own box (frontend keying and scroll-target rely
+            # on this being distinct per box, even when two
+            # runs share a bar).
             "bar": number + 1,
+            # The real musical bar this run starts in, for
+            # what the browser actually displays as the bar
+            # number.
+            "bar_number": int(start // beats_per_bar) + 1,
             "words": words
         })
 

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { MusicMixerProps, MusicMixerEvents } from "./types";
-	import type { MixerBarData } from "./mixerEngine.svelte";
+	import type { MixerBar } from "./types";
 	import type { MixerPhrase } from "./types";
 	import { Gradio } from "@gradio/utils";
 	import { Block } from "@gradio/atoms";
@@ -109,7 +109,7 @@
 		gradio.dispatch("change");
 	}
 
-	function selectBar(bar: MixerBarData, event: MouseEvent | KeyboardEvent): void {
+	function selectBar(bar: MixerBar, event: MouseEvent | KeyboardEvent): void {
 		const wasPlaying = engine.playing;
 
 		// Only tell Python when the range itself changed - a

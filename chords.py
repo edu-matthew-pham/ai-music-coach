@@ -57,6 +57,13 @@ CONTINUE = "."
 
 BAR_LINE = "|"
 
+# The mark that splits a beat in two - a syncopated chord
+# change arriving on the "and" of the beat, as in "D>G" or
+# a bare ">G" when the first half just carries the chord
+# before it. No chord name this app knows contains it, so
+# it can never collide with an existing chart.
+SPLIT = ">"
+
 
 def split_chord(name):
     """
@@ -142,7 +149,9 @@ def transpose_chart(chart_text, semitones, key=None):
 
     Bar lines, dots and metre are untouched. A dot means
     "the chord before, still sounding", which is true at
-    any pitch, so the chart's shape survives exactly.
+    any pitch, so the chart's shape survives exactly. A
+    split token ("A>B" or ">B") moves each half on its own
+    side of the ">" the same way, and stays split.
     """
 
     from notes import FLAT_KEYS, FLAT_NAMES, SHARP_NAMES
@@ -154,6 +163,14 @@ def transpose_chart(chart_text, semitones, key=None):
 
     names = FLAT_NAMES if key in FLAT_KEYS else SHARP_NAMES
 
+    def moved_name(name):
+
+        root, quality = split_chord(name)
+
+        semitone = (NOTE_SEMITONES[root] + semitones) % 12
+
+        return names[semitone] + quality
+
     moved = []
 
     for token in text.split():
@@ -162,11 +179,25 @@ def transpose_chart(chart_text, semitones, key=None):
             moved.append(token)
             continue
 
-        root, quality = split_chord(token)
+        if SPLIT in token:
 
-        semitone = (NOTE_SEMITONES[root] + semitones) % 12
+            halves = token.split(SPLIT)
 
-        moved.append(names[semitone] + quality)
+            if len(halves) != 2:
+                raise ChartError(
+                    f"'{token}' has more than one {SPLIT} - "
+                    "a beat can only split in two."
+                )
+
+            left, right = halves
+
+            new_left = moved_name(left) if left else ""
+
+            moved.append(f"{new_left}{SPLIT}{moved_name(right)}")
+
+            continue
+
+        moved.append(moved_name(token))
 
     return " ".join(moved)
 
@@ -180,6 +211,19 @@ def read_chart(chart_text):
     (start_beats, length_beats). A chord that lasts several
     beats appears once, with its full length, however many
     dots carried it.
+
+    A beat slot may hold a token of the form "A>B", meaning
+    A sounds for the first half of the beat and B for the
+    second - a syncopated chord change arriving on the "and"
+    of the beat, the way a real lead sheet marks it. "B" with
+    the A left off means the beat's first half continues
+    whatever chord came before, and only the second half is
+    new - the common case, a chord pushed early. Each half
+    becomes its own 0.5-beat-long entry (or extends the
+    previous entry by 0.5, for a bare ">B"); everything that
+    reads the returned list already works in fractional
+    beats, so no further change is needed downstream. Only
+    halves are supported - a beat splits in at most two.
     """
 
     text = chart_text.strip()
@@ -220,6 +264,49 @@ def read_chart(chart_text):
                 start, length, name = chords[-1]
 
                 chords[-1] = (start, length + 1.0, name)
+
+            elif SPLIT in token:
+
+                halves = token.split(SPLIT)
+
+                if len(halves) != 2:
+                    raise ChartError(
+                        f"'{token}' has more than one "
+                        f"{SPLIT} - a beat can only split "
+                        "in two, as in 'D>G'."
+                    )
+
+                left, right = halves
+
+                if right == "":
+                    raise ChartError(
+                        f"'{token}' needs a chord after "
+                        f"the {SPLIT}, as in 'D>G' or '>G'."
+                    )
+
+                # Reading it now means a bad chord name is
+                # reported where it was written.
+                split_chord(right)
+
+                if left == "":
+
+                    if len(chords) == 0:
+                        raise ChartError(
+                            f"A chart cannot begin with "
+                            f"'{SPLIT}...': there is no "
+                            "chord to carry on for the "
+                            "first half."
+                        )
+
+                    start, length, name = chords[-1]
+
+                    chords[-1] = (start, length + 0.5, name)
+
+                else:
+                    split_chord(left)
+                    chords.append((beat, 0.5, left))
+
+                chords.append((beat + 0.5, 0.5, right))
 
             else:
 

@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { engine } from "./mixerEngine.svelte";
-	import type { MixerBarData } from "./mixerEngine.svelte";
+	import type { MixerBar } from "./types";
 
 	interface Props {
-		timeline: MixerBarData[];
+		timeline: MixerBar[];
 		playhead: number;
 		follow: boolean;
-		onSelectBar: (bar: MixerBarData, event: MouseEvent | KeyboardEvent) => void;
+		onSelectBar: (bar: MixerBar, event: MouseEvent | KeyboardEvent) => void;
 	}
 
 	let { timeline, playhead, follow, onSelectBar }: Props = $props();
@@ -63,7 +63,7 @@
 					}
 				}}
 			>
-				<div class="number">{bar.bar}</div>
+				<div class="number">{bar.bar_number}</div>
 				<div class="chord">{bar.name}</div>
 				<div class="words">{bar.words}</div>
 			</button>

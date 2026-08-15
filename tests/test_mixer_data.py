@@ -136,6 +136,43 @@ def test_no_chart_means_no_timeline():
     assert _timeline("C4 D4 E4", "1 1 1", "C", 120, "", "", None) == []
 
 
+def test_bar_number_is_the_real_bar_not_the_chord_run_index():
+    """
+    read_chart() returns chords (one box per chord run, dots
+    merged) and bars (one entry per actual bar) as two
+    separate lists. A chord spanning several bars is still
+    one box; a bar with more than one chord change is still
+    one bar. enumerate(chords) used to be sent to the browser
+    as "bar", so a chord spanning two bars produced a single
+    box mislabelled "bar 1" with nothing shown for the second
+    bar, and a bar with two chord changes produced two boxes
+    both claiming to be sequential bars - the strip's numbers
+    drifted further from the real bar count as the song went
+    on. bar_number is the real bar each run starts in; bar
+    stays as the box's own unique index, since the frontend
+    keys and scrolls by it.
+
+    Em holds the whole first bar (bar 1). D and G split the
+    second bar in half (both bar 2). C holds the third bar
+    (bar 3) - four chord-run boxes over three real bars.
+    """
+
+    pitches = "C4 D4 E4 F4 G4 A4 B4 C5 D5 E5 F5 G5"
+    durations = "1 1 1 1 1 1 1 1 1 1 1 1"
+    chart = "| Em . . . | D . G . | C . . . |"
+
+    strip = _timeline(
+        pitches, durations, "C", 120, chart, "", None
+    )
+
+    assert [bar["name"] for bar in strip] == ["Em", "D", "G", "C"]
+    assert [bar["bar_number"] for bar in strip] == [1, 2, 2, 3]
+
+    # The old, buggy number - kept distinct from bar_number,
+    # since the frontend still needs a unique key per box.
+    assert [bar["bar"] for bar in strip] == [1, 2, 3, 4]
+
+
 def test_the_faders_start_where_the_sliders_did():
     """
     The tune audible, a click under it, the rest waiting.

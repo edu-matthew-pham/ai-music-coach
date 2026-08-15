@@ -24,14 +24,6 @@ export interface MixerLayerData {
 	wav: string;
 }
 
-export interface MixerBarData {
-	bar: number;
-	name: string;
-	start: number;
-	end: number;
-	words: string;
-}
-
 // What select() actually needs from whatever gets clicked -
 // a bar or a phrase both qualify, structurally, without
 // either needing to know about the other. One selection
