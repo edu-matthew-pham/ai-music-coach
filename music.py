@@ -3,7 +3,7 @@
 import numpy as np
 
 from chords import chord_semitones, transpose_chart
-from piece import Piece
+
 from playback import (
     make_melody,
     make_accompaniment,
@@ -25,6 +25,10 @@ from harmony import (
     make_bass,
     keys_containing,
     notes_outside,
+    read_key,
+    format_key,
+    key_at,
+    KeyError_,
     MAJOR_SCALES,
     RELATIVE_MINORS
 )
@@ -116,7 +120,7 @@ def check_bpm(bpm):
     return bpm
 
 
-def describe_key_fit(pitches, key):
+def describe_key_fit(pitches, durations=None, key="C"):
     """
     How well the chosen key suits the music.
 
@@ -125,18 +129,36 @@ def describe_key_fit(pitches, key):
     harmonised, at the nearest note in the scale, and are
     named here so the resulting interval is no surprise.
 
+    `key` is either a single key name or a full timeline -
+    a list of (beat, name) pairs - for a piece that
+    genuinely modulates: each note is checked against
+    whichever key was actually in force at its own beat.
+
     Returns a sentence, or None when everything fits.
     """
 
-    outside = notes_outside(pitches, key)
+    outside = notes_outside(pitches, durations, key)
 
     if len(outside) == 0:
         return None
 
     named = ", ".join(outside)
 
+    key_changes = [(0.0, key)] if isinstance(key, str) else key
+
+    # A single sentence naming "the key" only makes sense
+    # when there is one - a modulating piece checked each
+    # note against whichever key was actually in force at
+    # its own beat, not one key for the whole count, so the
+    # sentence says that instead of naming just the opening
+    # one and quietly misdescribing the rest.
+    description = (
+        f"{key_changes[0][1]} major" if len(key_changes) == 1
+        else "the key in force at that point"
+    )
+
     return (
-        f"{len(outside)} notes fall outside {key} major "
+        f"{len(outside)} notes fall outside {description} "
         f"({named}). They will be harmonised at the "
         f"nearest note in the scale."
     )
@@ -1197,10 +1219,23 @@ def harmony_line(
     Styles that read the chords take the chart; with no
     chart, every style comes out as parallel thirds, so
     the choice is always safe to make.
+
+    `key` is the key box's own raw text - a single name, or
+    a whole timeline for a piece that genuinely modulates -
+    read here the same way Piece.read and transpose_music
+    read it, so each note harmonises against whichever key
+    was actually in force at its own beat rather than one
+    key for the whole piece.
     """
 
+    try:
+        key_changes = read_key(key)
+
+    except KeyError_ as problem:
+        raise MusicInputError(str(problem))
+
     if style == "Parallel thirds" or not chart_text.strip():
-        return make_harmony(pitches, key=key, steps=steps)
+        return make_harmony(pitches, durations, key_changes, steps)
 
     chords, bars = read_chords(chart_text, durations)
 
@@ -1213,7 +1248,7 @@ def harmony_line(
         pitches,
         durations,
         voiced,
-        key=key,
+        key=key_changes,
         steps=steps,
         style=style
     )
@@ -1514,7 +1549,7 @@ def semitones_between(from_key, to_key):
     return distance - 12 if distance > 6 else distance
 
 
-def transpose_music(pitch_text, key, chart_text,
+def transpose_music(pitch_text, duration_text, key, chart_text,
                     chart_notes, semitones):
     """
     Move the music, and everything that describes it.
@@ -1523,6 +1558,16 @@ def transpose_music(pitch_text, key, chart_text,
     so does the hidden polyphony the picture and Suggest
     chords read: it lives in pitch, so left behind it
     would describe the key the music used to be in.
+
+    `key` is the key box's own raw text - a single name, or
+    a whole timeline ("G, Ab from beat 156") for a piece
+    that genuinely modulates. Every key in the timeline
+    moves by the same interval and respells in its own new
+    dialect; each note respells against whichever key was
+    actually in force at its own beat, not one key for the
+    whole piece - which needs `duration_text` alongside the
+    pitches, the same pairing Piece.read already needs, to
+    know where in the piece each note actually sits.
 
     This is one edit of the boxes and nothing else. No
     memory of where the music started is kept: after the
@@ -1537,23 +1582,35 @@ def transpose_music(pitch_text, key, chart_text,
 
     semitones = check_transpose(semitones)
 
-    if key not in MAJOR_SCALES:
-        raise MusicInputError(
-            f"'{key}' is not a key this app knows."
+    try:
+        key_changes = read_key(key)
+
+    except KeyError_ as problem:
+        raise MusicInputError(str(problem))
+
+    for _, name in key_changes:
+
+        if name not in MAJOR_SCALES:
+            raise MusicInputError(
+                f"'{name}' is not a key this app knows."
+            )
+
+    pitches, durations = read_music(pitch_text, duration_text)
+
+    # Every key in the timeline moves by the same interval
+    # and respells in its own new dialect - the beats never
+    # move, since transposing changes pitch, not time.
+    new_key_changes = [
+        (
+            beat,
+            KEY_BY_SEMITONE[
+                (NOTE_SEMITONES[name] + semitones) % 12
+            ]
         )
-
-    pitches = pitch_text.split()
-
-    if len(pitches) == 0:
-        raise MusicInputError(
-            "Enter some notes first, such as C4 D4 E4."
-        )
-
-    check_note_names(pitches)
-
-    new_key = KEY_BY_SEMITONE[
-        (NOTE_SEMITONES[key] + semitones) % 12
+        for beat, name in key_changes
     ]
+
+    new_key = new_key_changes[0][1]
 
     # The numbers first, then the check, then the names.
     # A note pushed past the ends of the keyboard cannot be
@@ -1576,12 +1633,25 @@ def transpose_music(pitch_text, key, chart_text,
                 "keyboard. Try a smaller shift."
             )
 
-    moved = [
-        REST if number is None else midi_to_note(number, new_key)
-        for number in numbers
-    ]
+    position = 0.0
 
-    new_chart = transpose_chart(chart_text, semitones, new_key)
+    moved = []
+
+    for number, length in zip(numbers, durations):
+
+        if number is None:
+            moved.append(REST)
+
+        else:
+            moved.append(
+                midi_to_note(
+                    number, key_at(new_key_changes, position)
+                )
+            )
+
+        position += float(length)
+
+    new_chart = transpose_chart(chart_text, semitones, new_key_changes)
 
     new_notes = chart_notes
 
@@ -1591,7 +1661,12 @@ def transpose_music(pitch_text, key, chart_text,
             for start, length, number in chart_notes
         ]
 
-    return " ".join(moved), new_key, new_chart, new_notes
+    return (
+        " ".join(moved),
+        format_key(new_key_changes),
+        new_chart,
+        new_notes
+    )
 
 
 def describe_transpose(old_key, new_key, semitones, pitch_text):
@@ -1750,7 +1825,7 @@ def sounds_minor(pitches, durations):
     return best.endswith("minor")
 
 
-def suggest_key(pitch_text, duration_text):
+def suggest_key(pitch_text, duration_text, key=None):
     """
     Name the keys this music might be in.
 
@@ -1758,6 +1833,17 @@ def suggest_key(pitch_text, duration_text):
     order. Nothing is chosen automatically: a short melody
     often genuinely suits several keys, and which one to
     sing in is the player's decision.
+
+    `key` is the key box's own current text, optional and
+    read-only here - this never overwrites the box, it only
+    checks what is already in it. Detection reads one whole-
+    piece profile and returns one best guess; a key box that
+    already states a real change (read from the score itself,
+    not guessed) is more informative than that guess can ever
+    be, so the report says so up front rather than silently
+    proposing a single key as if nothing more were known.
+    Invariant 5: detection reads, suggestion proposes, and a
+    proposal should not quietly replace a read.
     """
 
     pitches, durations = read_music(
@@ -1765,9 +1851,38 @@ def suggest_key(pitch_text, duration_text):
         duration_text
     )
 
+    lines = []
+
+    if key is not None:
+
+        try:
+            key_changes = read_key(key)
+
+        except KeyError_:
+            key_changes = [(0.0, "C")]
+
+        if len(key_changes) > 1:
+
+            described = ", ".join(
+                f"{name} from beat {beat:g}"
+                if position > 0 else name
+                for position, (beat, name) in enumerate(key_changes)
+            )
+
+            lines.append(
+                f"The key box already states a change this "
+                f"score prints ({described}) - a single "
+                f"guess below cannot know about that, and "
+                f"is worth less than what is already there. "
+                f"Shown for interest; keeping the box as it "
+                f"is is very likely the better choice."
+            )
+
+            lines.append("")
+
     scored = plausible_keys(pitches, durations)
 
-    lines = [describe_key(pitches, durations)]
+    lines.append(describe_key(pitches, durations))
 
     lines.append("")
 

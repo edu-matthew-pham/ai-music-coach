@@ -386,6 +386,68 @@ def test_the_chord_sounds_again_on_each_bar_line():
     assert peak_at(0) > peak_at(3) * 3
 
 
+def test_a_chord_arriving_just_before_a_bar_line_is_not_struck_twice():
+    """
+    A chord that arrives less than a beat before a bar line
+    - a syncopated push onto the "and" of the last beat, say
+    - would otherwise be struck once on its true arrival and
+    then struck again almost immediately by the bar-line
+    reinforcement rule, audibly doubling a note that was
+    never meant to repeat. Found against a real recording
+    (BUILDNOTES.md), not guessed: Mulan's Em arrives at beat
+    63.5, half a beat before the bar line at 64.0.
+
+    Proven by comparison rather than by reading a peak out
+    of an ambiguous decay curve (a struck string's own ring
+    can still be loud shortly after the strike, which is
+    what made this bug easy to miss by ear the first time):
+    with the bar line too close to matter, the sound must be
+    bit-identical to having no bar-line information at all,
+    since a genuine second strike would change the waveform.
+    """
+
+    import numpy as np
+
+    from playback import make_accompaniment
+
+    close = make_accompaniment(
+        [(3.5, 4.5, chord_semitones("C"))],
+        [(0.0, 4.0), (4.0, 4.0)], 8, 120, 8000
+    )
+
+    no_bar_info = make_accompaniment(
+        [(3.5, 4.5, chord_semitones("C"))], [], 8, 120, 8000
+    )
+
+    assert np.allclose(close, no_bar_info)
+
+
+def test_a_chord_arriving_well_before_a_bar_line_still_reinforces():
+    """
+    The one-beat guard only skips a reinforcement that would
+    be redundant. A chord that has genuinely been sounding
+    for a while before the bar line still gets struck again
+    there, exactly as before - the regression this test
+    guards against is the guard swallowing the whole feature
+    rather than just the too-close case.
+    """
+
+    import numpy as np
+
+    from playback import make_accompaniment
+
+    far = make_accompaniment(
+        [(2.0, 6.0, chord_semitones("C"))],
+        [(0.0, 4.0), (4.0, 4.0)], 8, 120, 8000
+    )
+
+    no_bar_info = make_accompaniment(
+        [(2.0, 6.0, chord_semitones("C"))], [], 8, 120, 8000
+    )
+
+    assert not np.allclose(far, no_bar_info)
+
+
 def test_no_chart_means_no_accompaniment():
     from playback import make_accompaniment
 
@@ -504,6 +566,40 @@ def test_the_sour_third_is_corrected():
 
     # Everything after the repair is the parallel line.
     assert corrected[2:] == parallel[2:]
+
+
+def test_the_parallel_third_fallback_respects_a_key_change():
+    """
+    A note with no chord under it falls back to the parallel
+    third - and that fallback has to know which key was in
+    force at its own beat, not one key for the whole line,
+    the same requirement make_harmony has and for the same
+    reason (proven on the real Mulan file: a note at beat
+    164.5, after its own modulation, harmonised as C5 under
+    the old single-key bug and Db5 correctly).
+    """
+
+    from harmony import make_chord_harmony
+
+    pitches = ["C4", "C4", "Ab4", "Ab4"]
+    durations = [1.0, 1.0, 1.0, 1.0]
+
+    # No chords at all, so chord_tones_at is always None and
+    # every note takes the parallel-third fallback - the one
+    # path that reads `key` at all.
+    changed = make_chord_harmony(
+        pitches, durations, [],
+        key=[(0.0, "C"), (2.0, "Ab")], steps=-2
+    )
+
+    before = make_chord_harmony(
+        pitches[:2], durations[:2], [], key="C", steps=-2
+    )
+    after = make_chord_harmony(
+        pitches[2:], durations[2:], [], key="Ab", steps=-2
+    )
+
+    assert changed == before + after
 
 
 def test_chord_tones_follow_the_harmony_not_the_tune():
@@ -1843,3 +1939,43 @@ def test_transpose_moves_the_bare_half_of_a_split():
     from chords import transpose_chart
 
     assert transpose_chart("| >G . . . |", -2, key="F") == "| >F . . . |"
+
+
+def test_transpose_respells_each_chord_against_its_own_key():
+    """
+    A chart's own timeline (Piece.key_changes' shape) means
+    a chord respells against whichever key was actually in
+    force at its own start, not one key for the whole
+    chart. The same C, transposed by the same interval,
+    lands as C# under a sharp-dialect key and Db under a
+    flat one - same pitch, different truth about where it
+    sits.
+    """
+
+    from chords import transpose_chart
+
+    key_changes = [(0.0, "C"), (4.0, "Ab")]
+
+    moved = transpose_chart(
+        "| C . . . | C . . . |", 1, key=key_changes
+    )
+
+    assert moved == "| C# . . . | Db . . . |"
+
+
+def test_transpose_preserves_a_bar_with_no_chord_in_it():
+    """
+    read_chart silently drops a bar with nothing in it
+    (found on the Wellerman's own committed chart), and a
+    round trip through read_chart/write_chart would quietly
+    lose it - transpose_chart only promises to move roots,
+    so the bar-line structure has to survive exactly,
+    decorative empty bars included.
+    """
+
+    from chords import transpose_chart
+
+    assert (
+        transpose_chart("| Dm . . . | | Dm . . . |", 2)
+        == "| Em . . . | | Em . . . |"
+    )

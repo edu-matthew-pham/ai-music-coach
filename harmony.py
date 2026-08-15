@@ -65,6 +65,146 @@ def key_choices():
     ]
 
 
+class KeyError_(ValueError):
+    """
+    Something about the key box stops it being read.
+
+    Named with a trailing underscore because `KeyError` is
+    already a Python builtin with a different meaning
+    entirely - a dict lookup failure, not a music one - and
+    shadowing it would be its own source of confusion.
+    """
+
+
+def read_key(key_text):
+    """
+    Read the key box into a timeline.
+
+    Returns a list of (beat, key_name) pairs, sorted by
+    beat. A piece that never changes key - every piece
+    before this format existed, and most pieces after -
+    parses to a single entry at beat 0, so a caller asking
+    "what key is in force at beat B" gets the same one
+    answer for every B, the same as reading `Piece.key`
+    directly always has.
+
+    The opening key is a bare name, with no "from" clause -
+    "G" or "G, Ab from beat 156" are both legal, and the
+    first is exactly today's format, unchanged. A later key
+    is written "KEY from beat N", N strictly increasing:
+    beats, not bars, because a Piece has no bars of its own
+    outside a chart, and a key change is a fact about the
+    piece whether or not one exists yet.
+    """
+
+    text = key_text.strip()
+
+    if len(text) == 0:
+        raise KeyError_("Choose a key first, such as C or G.")
+
+    changes = []
+
+    for position, entry in enumerate(text.split(",")):
+
+        entry = entry.strip()
+
+        if position == 0:
+
+            if " from beat " in entry:
+                raise KeyError_(
+                    "The opening key has no 'from beat' - "
+                    "only a key that arrives partway through "
+                    "does, as in 'G, Ab from beat 156'."
+                )
+
+            name = entry
+            beat = 0.0
+
+        else:
+
+            if " from beat " not in entry:
+                raise KeyError_(
+                    f"'{entry}' needs its own 'from beat N', "
+                    "as in 'Ab from beat 156'."
+                )
+
+            name, _, beat_text = entry.partition(" from beat ")
+
+            name = name.strip()
+
+            try:
+                beat = float(beat_text.strip())
+
+            except ValueError:
+                raise KeyError_(
+                    f"'{beat_text.strip()}' is not a beat "
+                    "number this app understands."
+                )
+
+        if name not in MAJOR_SCALES:
+            raise KeyError_(
+                f"'{name}' is not a key this app knows."
+            )
+
+        if changes and beat <= changes[-1][0]:
+            raise KeyError_(
+                "Each key change has to arrive later than "
+                "the one before it."
+            )
+
+        changes.append((beat, name))
+
+    return changes
+
+
+def format_key(changes):
+    """
+    The reverse of read_key: a timeline back into the box's
+    own text.
+
+    A single-entry timeline - the ordinary case - writes as
+    a bare key name, identical to what has always been
+    typed into this box. Only a genuine change grows the
+    ", KEY from beat N" tail.
+    """
+
+    if not changes:
+        return ""
+
+    opening = changes[0][1]
+
+    tail = "".join(
+        f", {name} from beat {beat:g}"
+        for beat, name in changes[1:]
+    )
+
+    return opening + tail
+
+
+def key_at(changes, beat):
+    """
+    Which key is in force at a given beat, from a timeline.
+
+    The one canonical walk - Piece.key_at, transpose_chart
+    and transpose_music all call this rather than each
+    keeping their own copy, found worth doing once the same
+    ten lines had been written a third time. A single-entry
+    timeline (the ordinary case) returns that one key for
+    every beat, since there is nothing else it could return.
+    """
+
+    result = changes[0][1]
+
+    for change_beat, change_key in changes:
+
+        if change_beat > beat:
+            break
+
+        result = change_key
+
+    return result
+
+
 def build_scale_notes(key, lowest=24, highest=108):
     """
     Build all notes belonging to a major key across
@@ -160,30 +300,56 @@ def nearest_position(scale_notes, note_midi):
     return best
 
 
-def notes_outside(pitches, key):
+def notes_outside(pitches, durations=None, key="C"):
     """
     The notes of this music that the key does not contain.
 
     They can still be harmonised, at the nearest note in
     the scale, but they are worth naming so nobody is
     surprised by the interval that results.
+
+    `key` is either a single key name or a full timeline -
+    a list of (beat, name) pairs, Piece.key_changes' own
+    shape - for a piece that genuinely modulates: each note
+    is checked against whichever key was actually in force
+    at its own beat, not one key for the whole piece.
+    `durations` is needed to know where each note sits;
+    left as None, every note is assumed one beat long, which
+    the lookup never notices unless the key genuinely
+    changes underneath it.
     """
 
-    scale_semitones = {
-        NOTE_SEMITONES[pitch]
-        for pitch in MAJOR_SCALES[key]
+    if durations is None:
+        durations = [1.0] * len(pitches)
+
+    key_changes = [(0.0, key)] if isinstance(key, str) else key
+
+    scale_semitones_by_key = {
+        name: {
+            NOTE_SEMITONES[note] for note in MAJOR_SCALES[name]
+        }
+        for _, name in key_changes
     }
 
     outside = []
 
-    for pitch in pitches:
+    beat = 0.0
+
+    for pitch, length in zip(pitches, durations):
 
         if is_rest(pitch):
+            beat += float(length)
             continue
+
+        scale_semitones = scale_semitones_by_key[
+            key_at(key_changes, beat)
+        ]
 
         if note_to_midi(pitch) % 12 not in scale_semitones:
             if pitch not in outside:
                 outside.append(pitch)
+
+        beat += float(length)
 
     return outside
 
@@ -222,31 +388,50 @@ def move_in_scale(note, key="C", steps=-2):
     return new_note
 
 
-def make_harmony(pitches, key="C", steps=-2):
+def make_harmony(pitches, durations=None, key="C", steps=-2):
     """
     Create a harmony line for a sequence of pitches.
 
-    Default:
-    a third below in the selected major key.
+    Default: a third below in the selected major key. `key`
+    is either a single key name (the ordinary case) or a
+    full timeline - a list of (beat, name) pairs, Piece.
+    key_changes' own shape - for a piece that genuinely
+    modulates: each note harmonises against whichever key
+    was actually in force at its own beat, not one key for
+    the whole line. `durations` is needed to know where
+    each note sits; left as None (every caller before this
+    format existed, and most after), every note is assumed
+    one beat long, which the lookup never notices unless the
+    key genuinely changes underneath it.
     """
+
+    if durations is None:
+        durations = [1.0] * len(pitches)
+
+    key_changes = [(0.0, key)] if isinstance(key, str) else key
 
     harmony = []
 
-    for pitch in pitches:
+    beat = 0.0
+
+    for pitch, length in zip(pitches, durations):
 
         # A silence in the melody is a silence in the
         # harmony: both parts breathe together.
         if is_rest(pitch):
             harmony.append(pitch)
+            beat += float(length)
             continue
 
         harmony_note = move_in_scale(
             pitch,
-            key,
+            key_at(key_changes, beat),
             steps
         )
 
         harmony.append(harmony_note)
+
+        beat += float(length)
 
     return harmony
 
@@ -337,7 +522,16 @@ def make_chord_harmony(
     outside the chord keeps its parallel third too, since
     correcting an intentional dissonance would flatten
     what the composer wrote.
+
+    `key` is either a single key name or a full timeline -
+    a list of (beat, name) pairs, Piece.key_changes' own
+    shape - for a piece that genuinely modulates: the
+    parallel-third fallback (used whether or not a chord is
+    present) is worked out against whichever key was
+    actually in force at each note's own beat.
     """
+
+    key_changes = [(0.0, key)] if isinstance(key, str) else key
 
     harmony = []
 
@@ -361,7 +555,7 @@ def make_chord_harmony(
         tones = chord_tones_at(chords, beat)
 
         parallel = note_to_midi(
-            move_in_scale(pitch, key, steps)
+            move_in_scale(pitch, key_at(key_changes, beat), steps)
         )
 
         if tones is None:

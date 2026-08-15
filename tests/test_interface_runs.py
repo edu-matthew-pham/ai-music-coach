@@ -214,7 +214,8 @@ def test_transposing_writes_every_box_the_music_lives_in():
     import main
 
     out = main.transpose_to(
-        "C4 E4 G4", "C", "| C . Am . |", [(0.0, 1.0, 60)], "D"
+        "C4 E4 G4", "1 1 1", "C", "| C . Am . |",
+        [(0.0, 1.0, 60)], "D"
     )
 
     pitches, key, chart, notes, said, target = out
@@ -236,7 +237,9 @@ def test_transposing_to_the_key_it_is_in_changes_nothing():
 
     import main
 
-    out = main.transpose_to("C4", "C", "| C . . . |", None, "C")
+    out = main.transpose_to(
+        "C4", "1", "C", "| C . . . |", None, "C"
+    )
 
     assert "Already in C" in out[4]
 
@@ -247,7 +250,7 @@ def test_the_octave_buttons_leave_the_key_alone():
     down = main.transpose_octave(-1)
 
     pitches, key, chart, notes, said, target = down(
-        "C4 E4", "C", "| C . . . |", None
+        "C4 E4", "1 1", "C", "| C . . . |", None
     )
 
     assert pitches == "C3 E3"

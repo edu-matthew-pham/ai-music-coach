@@ -91,6 +91,18 @@
 		currentIndex >= 0 ? timeline[currentIndex] : undefined
 	);
 
+	// Which musical key the Scale layer should draw - the
+	// current bar's own key (Piece.key_at, resolved once in
+	// Python and sent per bar), or the piece's opening key
+	// before anything has started playing. diagrams.scale is
+	// keyed by this musical key first, then by instrument -
+	// not the same "key" as the instrument-variant loop
+	// variable used further down in the template, which is
+	// an unrelated naming collision worth keeping distinct.
+	const currentMusicalKey = $derived(
+		currentBar?.key ?? timeline[0]?.key
+	);
+
 	// A bar's own chords carry their position as beat_in_bar,
 	// not seconds - converted here against that bar's own
 	// beats-to-seconds ratio, since a phrase-view bar and a
@@ -213,20 +225,22 @@
 {:else}
 	<div class="instrument-grid">
 		{#each chosenInstruments as family}
-			{@const key = keyFor(family)}
-			{@const structureSvg = diagrams.structure?.[key]}
-			{@const scaleSvg = diagrams.scale?.[key]}
+			{@const instrumentKey = keyFor(family)}
+			{@const structureSvg = diagrams.structure?.[instrumentKey]}
+			{@const scaleSvg = currentMusicalKey
+				? diagrams.scale?.[currentMusicalKey]?.[instrumentKey]
+				: undefined}
 			{@const notesSvg = currentChord
-				? diagrams.chords?.[key]?.[currentChord.name]
+				? diagrams.chords?.[instrumentKey]?.[currentChord.name]
 				: undefined}
 			{@const shapeSvg = currentChord
-				? diagrams.shapes?.[key]?.[currentChord.name]
+				? diagrams.shapes?.[instrumentKey]?.[currentChord.name]
 				: undefined}
 			{@const nextNotesSvg = nextChord
-				? diagrams.chords?.[key]?.[nextChord.name]
+				? diagrams.chords?.[instrumentKey]?.[nextChord.name]
 				: undefined}
 			{@const nextShapeSvg = nextChord
-				? diagrams.shapes?.[key]?.[nextChord.name]
+				? diagrams.shapes?.[instrumentKey]?.[nextChord.name]
 				: undefined}
 			<div class="instrument-card">
 				<h4>{family} <span class="variant-label">({diagramVariant[family]})</span></h4>

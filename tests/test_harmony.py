@@ -1,3 +1,5 @@
+import pytest
+
 from harmony import move_in_scale, make_harmony
 
 
@@ -19,6 +21,49 @@ def test_harmony_sequence():
     expected = ["A3", "A3", "E4", "E4", "F4"]
 
     assert make_harmony(melody, key="C") == expected
+
+
+def test_harmony_respects_a_key_change():
+    """
+    Each note harmonises against whichever key was actually
+    in force at its own beat - a piece opening in G and
+    modulating to Ab partway through harmonises its first
+    notes in G and everything from the change onward in Ab,
+    not one key for the whole line.
+    """
+
+    melody = ["Ab4", "Bb4", "C5", "Db5", "Eb5"]
+    durations = [1.0, 1.0, 1.0, 1.0, 1.0]
+
+    changed = make_harmony(
+        melody, durations, key=[(0.0, "G"), (0.5, "Ab")]
+    )
+
+    # Piecing the same melody together from two single-key
+    # calls, split at the same boundary, must give exactly
+    # the same answer - the timeline is not a different
+    # mechanism from calling make_harmony twice, it is the
+    # same lookup automated.
+    first_in_g = make_harmony(melody[:1], durations[:1], key="G")
+    rest_in_ab = make_harmony(melody[1:], durations[1:], key="Ab")
+
+    assert changed == first_in_g + rest_in_ab
+
+
+def test_harmony_with_no_durations_assumes_one_beat_each():
+    """
+    Regression pin for the common case: a caller that never
+    knew about key changes and never passed durations (every
+    caller before this format existed) must still work
+    exactly as before.
+    """
+
+    melody = ["C4", "C4", "G4", "G4", "A4"]
+
+    assert make_harmony(melody, key="C") == [
+        "A3", "A3", "E4", "E4", "F4"
+    ]
+
 
 def test_every_major_key_is_available():
     """
@@ -91,10 +136,32 @@ def test_notes_outside_the_key_are_named():
     from harmony import notes_outside
 
     assert notes_outside(
-        ["F#4", "G#4", "A4"], "D"
+        ["F#4", "G#4", "A4"], key="D"
     ) == ["G#4"]
 
-    assert notes_outside(["D4", "F#4", "A4"], "D") == []
+    assert notes_outside(["D4", "F#4", "A4"], key="D") == []
+
+
+def test_notes_outside_respects_a_key_change():
+    """
+    Each note is checked against whichever key was actually
+    in force at its own beat, not one key for the whole
+    piece: F# fits D but not Eb, and Bb fits Eb but not D -
+    a piece opening in D and modulating to Eb correctly
+    finds nothing outside either half, where checking the
+    whole piece against just D would wrongly flag the Bb.
+    """
+
+    from harmony import notes_outside
+
+    pitches = ["F#4", "F#4", "Bb4", "Bb4"]
+    durations = [1.0, 1.0, 1.0, 1.0]
+
+    assert notes_outside(pitches, durations, key="D") == ["Bb4"]
+
+    assert notes_outside(
+        pitches, durations, key=[(0.0, "D"), (2.0, "Eb")]
+    ) == []
 
 
 def test_a_chromatic_line_still_harmonises():
@@ -150,3 +217,74 @@ def test_relative_minors_are_a_third_below():
         ) % 12
 
         assert distance == 3, f"{major} and {minor}"
+
+
+# Multi-key: the key box's own timeline syntax. Beats, not
+# bars, since a Piece has no bars of its own outside a
+# chart - checked directly (piece.py's beats_per_bar only
+# ever appears inside chart_between, read off the chart)
+# before committing to the grammar.
+
+def test_a_single_key_round_trips_unchanged():
+    from harmony import read_key, format_key
+
+    assert read_key("G") == [(0.0, "G")]
+    assert format_key(read_key("G")) == "G"
+
+
+def test_a_key_change_round_trips_exactly():
+    from harmony import read_key, format_key
+
+    changes = read_key("G, Ab from beat 156")
+
+    assert changes == [(0.0, "G"), (156.0, "Ab")]
+    assert format_key(changes) == "G, Ab from beat 156"
+
+
+def test_several_key_changes_round_trip():
+    from harmony import read_key, format_key
+
+    text = "C, G from beat 16, D from beat 40"
+
+    assert format_key(read_key(text)) == text
+
+
+def test_an_empty_key_box_is_an_error():
+    from harmony import read_key, KeyError_
+
+    with pytest.raises(KeyError_, match="Choose a key"):
+        read_key("")
+
+
+def test_an_unknown_key_name_is_an_error():
+    from harmony import read_key, KeyError_
+
+    with pytest.raises(KeyError_, match="not a key"):
+        read_key("Z")
+
+    with pytest.raises(KeyError_, match="not a key"):
+        read_key("G, Z from beat 16")
+
+
+def test_key_changes_must_arrive_in_order():
+    from harmony import read_key, KeyError_
+
+    with pytest.raises(KeyError_, match="later than"):
+        read_key("G, Ab from beat 16, D from beat 10")
+
+    with pytest.raises(KeyError_, match="later than"):
+        read_key("G, Ab from beat 16, D from beat 16")
+
+
+def test_the_opening_key_cannot_have_a_from_clause():
+    from harmony import read_key, KeyError_
+
+    with pytest.raises(KeyError_, match="no 'from beat'"):
+        read_key("G from beat 0")
+
+
+def test_a_later_key_must_state_its_own_beat():
+    from harmony import read_key, KeyError_
+
+    with pytest.raises(KeyError_, match="from beat"):
+        read_key("G, Ab")

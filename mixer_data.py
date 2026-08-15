@@ -191,7 +191,8 @@ def _timeline(pitch_text, duration_text, key, bpm, chart_text,
             "end": bar_end * per_beat,
             "beats": bar_length,
             "chords": bar_chords,
-            "words": words
+            "words": words,
+            "key": piece.key_at(bar_start)
         })
 
     return strip
@@ -207,8 +208,13 @@ def _diagrams(key, timeline):
       strings), key-independent, always sent - it is not a
       toggleable layer, since a picture of marks with no
       instrument under them is illegible.
-    - scale: the key's notes, transparent, for the Scale
-      toggle.
+    - scale: the notes of every distinct key this piece
+      actually uses, transparent, for the Scale toggle - one
+      entry per key name (most pieces use only one, so this
+      is a one-entry dict in the ordinary case), since a
+      modulating piece's Scale layer has to show the right
+      key's notes on both sides of the change, not the
+      opening key for the whole song.
     - chords: one transparent overlay per distinct chord
       this song's chart actually uses, for the "Chord
       notes" toggle - every place the chord's tones occur.
@@ -237,19 +243,46 @@ def _diagrams(key, timeline):
     a page that fails to render.
     """
 
-    if not key or key not in MAJOR_SCALES:
+    if not key:
         return {}
 
+    from harmony import read_key, KeyError_
     from chords import ChartError
+
+    try:
+        key_changes = read_key(key)
+
+    except KeyError_:
+        return {}
+
+    opening_key = key_changes[0][1]
+
+    if opening_key not in MAJOR_SCALES:
+        return {}
 
     structure = {
         instrument: structure_for(instrument)
         for instrument in INSTRUMENTS
     }
 
+    # One Scale overlay per distinct key the piece actually
+    # uses, not just the opening one - a modulating piece's
+    # Scale layer would otherwise show the wrong key's notes
+    # for every bar after the change (or, before this fix,
+    # the whole panel would go blank: the guard above used to
+    # reject the box's own multi-key text outright, since it
+    # is not itself a single valid key name). Every bar in
+    # the timeline carries its own key (Piece.key_at, the
+    # same lookup transpose and harmony already use), so the
+    # frontend picks the right entry at the playhead.
+    distinct_keys = sorted({name for _, name in key_changes})
+
     scale = {
-        instrument: scale_overlay_for(key, instrument)
-        for instrument in INSTRUMENTS
+        key_name: {
+            instrument: scale_overlay_for(key_name, instrument)
+            for instrument in INSTRUMENTS
+        }
+        for key_name in distinct_keys
     }
 
     chord_names = sorted({
@@ -265,11 +298,25 @@ def _diagrams(key, timeline):
         for instrument in INSTRUMENTS:
 
             try:
+
+                # Spelled in the piece's opening key. The
+                # marks themselves never move with the key -
+                # checked directly: chord_overlay_for("G", ...)
+                # and chord_overlay_for("Ab", ...) for the
+                # same chord differ only in their text labels,
+                # never in a mark's position - and a single
+                # chord name can occur in more than one key's
+                # section of a modulating piece, so there is
+                # no one key that is straightforwardly
+                # "correct" to spell it in. Left as a smaller,
+                # cosmetic known gap rather than solved here.
                 chords[instrument][chord_name] = chord_overlay_for(
-                    key, instrument, chord_name
+                    opening_key, instrument, chord_name
                 )
 
-                shape = shape_overlay_for(key, instrument, chord_name)
+                shape = shape_overlay_for(
+                    opening_key, instrument, chord_name
+                )
 
                 if shape is not None:
                     shapes[instrument][chord_name] = shape

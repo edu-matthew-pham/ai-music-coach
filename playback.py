@@ -303,11 +303,25 @@ def make_accompaniment(chords, bars, total_beats, bpm=120,
     A chord part to sing over.
 
     The chord sounds when it arrives and again on each bar
-    line it lasts through. Struck only on the changes, a
-    chord held for four bars would ring once and then leave
-    the singer with nothing underneath at exactly the point
-    a long note is hardest to hold. Struck every bar, the
-    harmony and the beat both stay present.
+    line it lasts through, provided it was already sounding
+    a full beat or more before that bar line. Struck only
+    on the changes, a chord held for four bars would ring
+    once and then leave the singer with nothing underneath
+    at exactly the point a long note is hardest to hold.
+    Struck every bar, the harmony and the beat both stay
+    present.
+
+    The one-beat guard exists for a chord that arrives just
+    before a bar line - a syncopated push onto the "and" of
+    the last beat, say. Without it, the chord is struck once
+    on its own true arrival and then struck again almost
+    immediately by the very next bar line, audibly doubling
+    a note that was never meant to repeat: real evidence
+    against real recordings, not a guess (BUILDNOTES.md, the
+    stage-1 half-beat session). A chord that has genuinely
+    been sounding for a while still gets reinforced exactly
+    as before; only an arrival too recent to need reinforcing
+    is skipped.
     """
 
     seconds_per_beat = 60 / bpm
@@ -326,11 +340,15 @@ def make_accompaniment(chords, bars, total_beats, bpm=120,
         chord_end = chord_start + chord_length
 
         # Where this chord is struck: when it arrives, and
-        # on any bar line before it ends.
+        # on any bar line before it ends that the chord had
+        # already been sounding for at least a beat by.
         moments = [chord_start]
 
         for bar_start in bar_starts:
-            if chord_start < bar_start < chord_end:
+            if (
+                chord_start < bar_start < chord_end
+                and bar_start - chord_start >= 1.0
+            ):
                 moments.append(bar_start)
 
         for position in range(len(moments)):

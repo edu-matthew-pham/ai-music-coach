@@ -4,7 +4,7 @@ import os
 
 import gradio as gr
 
-from harmony import key_choices
+from harmony import key_choices, read_key
 from gradio_musicmixer import MusicMixer
 from lyric_merge import merge_lyrics
 from mixer_data import mixer_data
@@ -343,10 +343,15 @@ with gr.Blocks(
                         key_choices(),
                         value="C",
                         label="Key",
+                        allow_custom_value=True,
                         info="A key signature belongs to a major key "
                              "and its relative minor equally. Notes "
                              "outside it are harmonised at the "
-                             "nearest scale note."
+                             "nearest scale note. A piece that "
+                             "genuinely changes key partway through "
+                             "shows as \"G, Ab from beat 156\" - "
+                             "typed by hand, or filled in "
+                             "automatically on import."
                     )
 
                     bpm_input = gr.Number(
@@ -369,6 +374,7 @@ with gr.Blocks(
                         key_choices(),
                         value="C",
                         label="Transpose to",
+                        allow_custom_value=True,
                         info="Moves the notes, the key and the "
                              "chords together, by the shortest "
                              "way round."
@@ -575,9 +581,9 @@ with gr.Blocks(
     # EVENTS
     # -----------------------------------------------------
 
-    def show_key_report(pitch_text, duration_text):
+    def show_key_report(pitch_text, duration_text, key):
         return gr.update(
-            value=suggest_key(pitch_text, duration_text),
+            value=suggest_key(pitch_text, duration_text, key),
             visible=True
         )
 
@@ -680,7 +686,7 @@ with gr.Blocks(
 
     detect_key_button.click(
         fn=guard(show_key_report),
-        inputs=[pitch_input, duration_input],
+        inputs=[pitch_input, duration_input, key_input],
         outputs=key_report
     )
 
@@ -928,8 +934,8 @@ with gr.Blocks(
 
         return moved
 
-    def transposed(pitch_text, key, chart_text, chart_notes,
-                   semitones):
+    def transposed(pitch_text, duration_text, key, chart_text,
+                   chart_notes, semitones):
         """
         Move the music and say what moved.
 
@@ -943,8 +949,18 @@ with gr.Blocks(
         """
 
         pitches, new_key, chart, notes = transpose_music(
-            pitch_text, key, chart_text, chart_notes, semitones
+            pitch_text, duration_text, key, chart_text,
+            chart_notes, semitones
         )
+
+        # The dropdown follows the music, so pressing again
+        # from where it landed is the obvious next gesture -
+        # but the dropdown only ever picks one target key, so
+        # a modulating piece's own opening key goes there, not
+        # the full "G, Ab from beat 156" text: that text would
+        # fail transpose_to's own MAJOR_SCALES check the very
+        # next time the button was pressed.
+        opening_key = read_key(new_key)[0][1]
 
         return (
             pitches,
@@ -952,30 +968,35 @@ with gr.Blocks(
             chart,
             notes,
             describe_transpose(key, new_key, semitones, pitches),
-            # The dropdown follows the music, so pressing
-            # again from where it landed is the obvious
-            # next gesture.
-            new_key
+            opening_key
         )
 
-    def transpose_to(pitch_text, key, chart_text, chart_notes,
-                     target):
+    def transpose_to(pitch_text, duration_text, key, chart_text,
+                     chart_notes, target):
         """
         Transpose to a chosen key, the shortest way round.
+
+        The shift is worked out from the piece's own opening
+        key - a modulating piece's whole timeline then moves
+        by that same interval, each key landing in its own
+        new dialect, not just the one the dropdown named.
         """
 
-        semitones = semitones_between(key, target)
+        opening_key = read_key(key)[0][1]
+
+        semitones = semitones_between(opening_key, target)
 
         if semitones == 0:
             return (
                 gr.update(), gr.update(), gr.update(),
                 gr.update(),
-                f"Already in {key}.",
+                f"Already in {opening_key}.",
                 gr.update()
             )
 
         return transposed(
-            pitch_text, key, chart_text, chart_notes, semitones
+            pitch_text, duration_text, key, chart_text,
+            chart_notes, semitones
         )
 
     def transpose_octave(step):
@@ -983,10 +1004,11 @@ with gr.Blocks(
         Move by a whole octave, which leaves the key alone.
         """
 
-        def moved(pitch_text, key, chart_text, chart_notes):
+        def moved(pitch_text, duration_text, key, chart_text,
+                  chart_notes):
             return transposed(
-                pitch_text, key, chart_text, chart_notes,
-                12 * step
+                pitch_text, duration_text, key, chart_text,
+                chart_notes, 12 * step
             )
 
         return moved
@@ -1004,6 +1026,7 @@ with gr.Blocks(
         fn=guard(transpose_to),
         inputs=[
             pitch_input,
+            duration_input,
             key_input,
             chart_input,
             chart_notes_state,
@@ -1021,6 +1044,7 @@ with gr.Blocks(
             fn=guard(transpose_octave(step)),
             inputs=[
                 pitch_input,
+                duration_input,
                 key_input,
                 chart_input,
                 chart_notes_state

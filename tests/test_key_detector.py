@@ -142,12 +142,33 @@ def test_key_fit_reports_rather_than_refuses():
 
     from music import describe_key_fit
 
-    assert describe_key_fit(["D4", "F#4", "A4"], "D") is None
+    assert describe_key_fit(["D4", "F#4", "A4"], key="D") is None
 
-    sentence = describe_key_fit(["D4", "G#4", "A4"], "D")
+    sentence = describe_key_fit(["D4", "G#4", "A4"], key="D")
 
     assert "G#4" in sentence
     assert "nearest note" in sentence
+
+
+def test_key_fit_reports_a_key_change_generically():
+    """
+    A modulating piece's outside-notes sentence cannot
+    honestly name one key for the whole count, since each
+    note was checked against whichever key was actually in
+    force at its own beat - it says "the key in force at
+    that point" instead of quietly misdescribing the notes
+    checked against the second key as failing the first.
+    """
+
+    from music import describe_key_fit
+
+    sentence = describe_key_fit(
+        ["G#4", "B4"], [1.0, 1.0], key=[(0.0, "D"), (1.0, "F")]
+    )
+
+    assert sentence is not None
+    assert "the key in force at that point" in sentence
+    assert "D major" not in sentence
 
 
 def test_the_whole_texture_names_the_key_more_surely():
@@ -307,6 +328,54 @@ def test_the_report_names_every_setting_that_fits():
     # as surely as F major does.
     assert "C major / A minor" in report
     assert "also fit" in report
+
+
+def test_the_report_defers_to_an_already_stated_key_change():
+    """
+    Detect key returns one whole-piece guess; a key box that
+    already states a real change (read from the score, not
+    guessed) is more informative than that guess can ever be
+    - invariant 5, detection reads and a proposal should not
+    quietly replace a read. The button never overwrites the
+    box on its own, but the report itself has to say so
+    rather than silently suggesting a single key as if
+    nothing more were already known.
+    """
+
+    from music import suggest_key
+
+    report = suggest_key(
+        "C4 D4 E4 F4 G4", "1 1 1 1 1", key="C, G from beat 3"
+    )
+
+    assert "already states a change" in report
+    assert "C, G from beat 3" in report
+
+
+def test_the_report_says_nothing_extra_for_an_ordinary_key():
+    """
+    Regression pin: a single-key box (every piece before
+    this format existed, and most after) gets no notice at
+    all - the guard only fires on a real, stated change.
+    """
+
+    from music import suggest_key
+
+    report = suggest_key("C4 D4 E4", "1 1 1", key="C")
+
+    assert "already states a change" not in report
+
+
+def test_the_report_works_with_no_key_given_at_all():
+    """
+    `key` is optional - a caller with no key box to check
+    against (or one that has not been built yet) gets
+    exactly the report it always got.
+    """
+
+    from music import suggest_key
+
+    assert "This sounds like" in suggest_key("C4 D4 E4", "1 1 1")
 
 
 def test_how_many_candidates_depends_on_the_music():

@@ -17,6 +17,7 @@ import io
 from mixer_data import (
     as_wav_data,
     _timeline,
+    _diagrams,
     OPENING_LEVELS,
     LAYER_COLOURS,
     mixer_data,
@@ -230,6 +231,63 @@ def test_an_instrumental_intro_bar_is_present_and_wordless():
     assert strip[1]["words"]
 
 
+def test_each_bar_carries_the_key_in_force_there():
+    """
+    A modulating piece's own bars each know their own key
+    (Piece.key_at, the same lookup transpose and harmony
+    already use) - needed so the mixer's diagram panel can
+    show the right key's Scale overlay at the playhead
+    rather than the opening key for the whole song.
+    """
+
+    pitches = "C4 C4 C4 C4 G4 G4 G4 G4"
+    durations = "1 1 1 1 1 1 1 1"
+    key = "C, G from beat 4"
+    chart = "| C . . . | G . . . |"
+
+    strip = _timeline(pitches, durations, key, 120, chart, "", None)
+
+    assert strip[0]["key"] == "C"
+    assert strip[1]["key"] == "G"
+
+
+def test_diagrams_build_a_scale_overlay_per_distinct_key():
+    """
+    The bug this fix replaced: _diagrams used to reject the
+    key box's own multi-key text outright ("key not in
+    MAJOR_SCALES"), sending back an empty dict and leaving
+    the whole diagram panel blank for any modulating piece -
+    not just the Scale layer, everything, since the guard
+    sat before structure/chords/shapes were built too.
+    """
+
+    pitches = "C4 C4 C4 C4 G4 G4 G4 G4"
+    durations = "1 1 1 1 1 1 1 1"
+    key = "C, G from beat 4"
+    chart = "| C . . . | G . . . |"
+
+    strip = _timeline(pitches, durations, key, 120, chart, "", None)
+
+    diagrams = _diagrams(key, strip)
+
+    # Not empty - the whole-panel outage this fix closes.
+    assert diagrams
+
+    assert set(diagrams["scale"].keys()) == {"C", "G"}
+
+    from instrument_diagrams import INSTRUMENTS
+
+    for instruments in diagrams["scale"].values():
+        assert set(instruments.keys()) == set(INSTRUMENTS)
+
+    # The two keys' own Scale pictures genuinely differ -
+    # not the same overlay duplicated under two names.
+    assert (
+        diagrams["scale"]["C"]["Piano, 3 octaves"]
+        != diagrams["scale"]["G"]["Piano, 3 octaves"]
+    )
+
+
 def test_the_faders_start_where_the_sliders_did():
     """
     The tune audible, a click under it, the rest waiting.
@@ -292,13 +350,19 @@ def test_mixer_data_has_the_shape_the_component_expects():
 
     # The diagrams stack in the browser, so mixer_data must
     # always ship the full instrument set for the structure
-    # (always-there background) and the scale base, and one
-    # chord overlay per chord name the chart actually
-    # printed on the strip.
+    # (always-there background), and the scale base for
+    # every distinct key the piece actually uses (one entry
+    # in the ordinary, single-key case), and one chord
+    # overlay per chord name the chart actually printed on
+    # the strip.
     from instrument_diagrams import INSTRUMENTS
 
     assert set(value["diagrams"]["structure"].keys()) == set(INSTRUMENTS)
-    assert set(value["diagrams"]["scale"].keys()) == set(INSTRUMENTS)
+
+    assert set(value["diagrams"]["scale"].keys()) == {key}
+
+    for instruments in value["diagrams"]["scale"].values():
+        assert set(instruments.keys()) == set(INSTRUMENTS)
 
     chart_chord_names = {
         chord["name"]
@@ -347,7 +411,7 @@ def test_mixer_data_has_the_shape_the_component_expects():
     # the combined diagram as "scale" and left nothing for
     # an always-there background.
     structure_piano = value["diagrams"]["structure"]["Piano, 3 octaves"]
-    scale_piano = value["diagrams"]["scale"]["Piano, 3 octaves"]
+    scale_piano = value["diagrams"]["scale"][key]["Piano, 3 octaves"]
 
     assert structure_piano != scale_piano
     assert "<rect" in structure_piano

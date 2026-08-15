@@ -285,3 +285,223 @@ def test_a_verse_is_taken_whole_and_alone():
 
     # And the joined string is never what lands in a box.
     assert "\n" not in _syllable(item, 1)
+
+
+# Multi-key scores: a piece that genuinely modulates (Mulan's
+# own "I'll Make a Man Out of You" changes from G major to Ab
+# partway through) used to be read as one key throughout -
+# the key box's own value, which is all _stated_key ever
+# looked at. Melody pitches after the change came out spelled
+# in the wrong dialect, since one midi_to_note(number, key)
+# call served the whole piece. These build a small synthetic
+# score directly (real key changes are rare enough that no
+# committable fixture has one) rather than reusing the O Holy
+# Night fixture, which never modulates.
+
+def _build_modulating_score(path):
+
+    from music21 import stream, note, key as m21key, meter
+
+    part = stream.Part()
+    part.insert(0, meter.TimeSignature("4/4"))
+    part.insert(0, m21key.KeySignature(1))       # G major
+    part.insert(8, m21key.KeySignature(-4))      # Ab major
+
+    # F#4 (midi 66) spells unambiguously differently in G
+    # (F#) versus Ab (Gb); Eb4 (midi 63) the same the other
+    # way (Eb in Ab, D# in G) - either dialect used for the
+    # wrong half would show up as a visibly wrong name, not
+    # just a technically-equal enharmonic swap.
+    part.insert(0, note.Note(66, quarterLength=1))
+    part.insert(8, note.Note(63, quarterLength=1))
+
+    score = stream.Score()
+    score.append(part)
+    score.write("musicxml", fp=str(path))
+
+
+def test_a_note_after_the_key_change_spells_in_the_new_key(tmp_path):
+
+    from musicxml_import import import_musicxml, parts_in
+
+    path = tmp_path / "modulating.musicxml"
+
+    _build_modulating_score(path)
+
+    label = parts_in(str(path))[0]
+
+    pitches, _, _, _, feedback, _, _, key = import_musicxml(
+        str(path), label
+    )
+
+    words = pitches.split()
+
+    # The note before the change: G major's own dialect.
+    assert words[0] == "F#4"
+
+    # The note after: Ab major's, not G's D#4.
+    assert words[-1] == "Eb4"
+
+    # The key box itself now holds the whole timeline -
+    # stage 3's own change, transparently captured on
+    # import: nothing about how a person imports differs,
+    # the box just already says the whole story.
+    assert key == "G, Ab from beat 8"
+
+    assert "changes key" in feedback
+    assert "Ab major" in feedback
+    assert "bar 3" in feedback
+
+
+def test_a_single_key_score_gets_no_key_change_note(tmp_path):
+    """
+    Regression pin: the common case (one signature, or none)
+    must not grow a spurious "changes key" sentence, and
+    every note must still spell in the one key throughout -
+    exactly the behaviour before this feature existed.
+    """
+
+    from music21 import stream, note, key as m21key, meter
+
+    from musicxml_import import import_musicxml, parts_in
+
+    path = tmp_path / "single_key.musicxml"
+
+    part = stream.Part()
+    part.insert(0, meter.TimeSignature("4/4"))
+    part.insert(0, m21key.KeySignature(1))
+    part.insert(0, note.Note(66, quarterLength=1))
+    part.insert(4, note.Note(63, quarterLength=1))
+
+    score = stream.Score()
+    score.append(part)
+    score.write("musicxml", fp=str(path))
+
+    label = parts_in(str(path))[0]
+
+    pitches, _, _, _, feedback, _, _, key = import_musicxml(
+        str(path), label
+    )
+
+    words = pitches.split()
+
+    # Both notes spelled in G throughout - the second is
+    # D#4, not Eb4, since nothing ever changed key.
+    assert words[0] == "F#4"
+    assert words[-1] == "D#4"
+
+    assert key == "G"
+    assert "changes key" not in feedback
+
+
+def test_a_key_change_shown_only_on_another_part_is_still_caught(
+    tmp_path
+):
+    """
+    A modulation is sometimes restated on an accompaniment
+    part's engraving without being reprinted on the vocal
+    line's own staff - reading only the selected part would
+    miss it entirely, even though the vocal line is
+    genuinely in the new key from that point on.
+    """
+
+    from music21 import (
+        stream, note, key as m21key, meter, instrument
+    )
+
+    from musicxml_import import import_musicxml, parts_in
+
+    path = tmp_path / "cross_part.musicxml"
+
+    voice = stream.Part()
+    voice.insert(0, instrument.Vocalist())
+    voice.insert(0, meter.TimeSignature("4/4"))
+    voice.insert(0, m21key.KeySignature(1))
+    voice.insert(0, note.Note(66, quarterLength=4))
+    voice.insert(8, note.Note(63, quarterLength=4))
+
+    piano = stream.Part()
+    piano.insert(0, instrument.Piano())
+    piano.insert(0, meter.TimeSignature("4/4"))
+    piano.insert(0, m21key.KeySignature(1))
+    piano.insert(8, m21key.KeySignature(-4))
+    piano.insert(0, note.Note(50, quarterLength=8))
+
+    score = stream.Score()
+    score.append(voice)
+    score.append(piano)
+    score.write("musicxml", fp=str(path))
+
+    label = parts_in(str(path))[0]
+
+    pitches, _, _, _, feedback, _, _, key = import_musicxml(
+        str(path), label
+    )
+
+    words = pitches.split()
+
+    assert words[0] == "F#4"
+
+    # The vocal part's own note after beat 8 - it never
+    # restated the signature itself, but the compatible
+    # piano part did, and that is enough to spell it right.
+    assert "Eb4" in words
+
+    assert "changes key" in feedback
+
+
+def test_a_transposing_parts_signature_is_never_borrowed(tmp_path):
+    """
+    A part whose transposition differs from the selected
+    part's (a Bb trumpet against a concert-pitch voice) is
+    excluded outright: its signature is written in its own
+    transposed pitch space, and borrowing it to spell a
+    different part's notes would spell them wrong on
+    purpose, not by accident.
+    """
+
+    from music21 import (
+        stream, note, key as m21key, meter, instrument, interval
+    )
+
+    from musicxml_import import import_musicxml, parts_in
+
+    path = tmp_path / "transposed.musicxml"
+
+    voice = stream.Part()
+    voice.insert(0, instrument.Vocalist())
+    voice.insert(0, meter.TimeSignature("4/4"))
+    voice.insert(0, m21key.KeySignature(1))
+    voice.insert(0, note.Note(66, quarterLength=4))
+    voice.insert(8, note.Note(63, quarterLength=4))
+
+    trumpet = stream.Part()
+    bb_trumpet = instrument.Trumpet()
+    bb_trumpet.transposition = interval.Interval("M-2")
+    trumpet.insert(0, bb_trumpet)
+    trumpet.insert(0, meter.TimeSignature("4/4"))
+    trumpet.insert(0, m21key.KeySignature(3))
+    trumpet.insert(8, m21key.KeySignature(-2))
+    trumpet.insert(0, note.Note(50, quarterLength=8))
+
+    score = stream.Score()
+    score.append(voice)
+    score.append(trumpet)
+    score.write("musicxml", fp=str(path))
+
+    label = parts_in(str(path))[0]
+
+    pitches, _, _, _, feedback, _, _, key = import_musicxml(
+        str(path), label
+    )
+
+    words = pitches.split()
+
+    # Still spelled in G throughout - the trumpet's own
+    # signature (a different key entirely, in its own
+    # transposed space) is never consulted.
+    assert words[0] == "F#4"
+    assert "D#4" in words
+    assert "Eb4" not in words
+
+    assert "changes key" not in feedback

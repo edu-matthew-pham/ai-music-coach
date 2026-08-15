@@ -63,7 +63,7 @@ def test_out_of_key_notes_are_reported_not_refused():
 
     from music import describe_key_fit
 
-    sentence = describe_key_fit(["C4", "C4"], "D")
+    sentence = describe_key_fit(["C4", "C4"], key="D")
 
     assert "C4" in sentence
     assert "nearest note" in sentence

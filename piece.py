@@ -51,12 +51,57 @@ class Piece:
         self.pitches = list(pitches)
         self.durations = list(durations)
         self.lyrics = lyrics
-        self.key = key
         self.chart = chart or ""
+
+        # The key is never stored as a bare string: `key`
+        # holds the timeline, and .key is a view onto its
+        # first entry, always - not a second fact that could
+        # be constructed to disagree with it. A plain string
+        # ("G") is accepted here and wrapped into a one-entry
+        # timeline, so every existing call site keeps working
+        # unchanged; an already-parsed timeline (a list of
+        # (beat, name) pairs) is accepted as-is, for callers
+        # that already have one - Piece.read among them.
+        if isinstance(key, str):
+            self.key_changes = [(0.0, key)]
+
+        else:
+            self.key_changes = list(key)
 
         # What the file or the example says it goes at,
         # which the player is free to ignore.
         self.tempo = tempo
+
+    @property
+    def key(self):
+        """
+        The opening key, as every caller has always read it.
+
+        Always the timeline's own first entry - never a
+        separate value that construction could leave out of
+        step with it. A piece that never changes key (every
+        piece before this format existed, and most pieces
+        after) has a one-entry timeline, so this is exactly
+        what it always was: the one key the piece is in.
+        """
+
+        return self.key_changes[0][1]
+
+    def key_at(self, beat):
+        """
+        Which key is in force at a given beat.
+
+        The same shape as chord_at: walks the timeline,
+        returns whichever key was most recently in force.
+        A single-key piece returns that one key for every
+        beat, since its timeline only ever has one entry -
+        this is not a special case, it is what the general
+        walk already does with one entry.
+        """
+
+        from harmony import key_at
+
+        return key_at(self.key_changes, beat)
 
     @staticmethod
     def read(pitch_text, duration_text, lyric_text="",
@@ -69,14 +114,22 @@ class Piece:
         same checking as before and reports the same
         errors, since those are what tell a player what
         they have mistyped.
+
+        `key` is the key box's own raw text - "G", or "G,
+        Ab from beat 156" for a piece that genuinely
+        modulates - read here the same way chart_text and
+        lyric_text are: once, at the boundary, into the
+        shape the rest of the piece actually uses.
         """
 
         from music import read_music, read_lyrics, read_chords
+        from harmony import read_key
 
         pitches, durations = read_music(pitch_text, duration_text)
 
         piece = Piece(
-            pitches, durations, None, key, chart_text, tempo
+            pitches, durations, None, read_key(key),
+            chart_text, tempo
         )
 
         # Checked against the notes, and kept as written so
@@ -175,14 +228,45 @@ class Piece:
 
         return found
 
+    def key_between(self, opened, closed):
+        """
+        The keys in force over a stretch, windowed and
+        rebased to start at 0 - the same shape
+        chart_between already gives the chart, for the same
+        reason: a phrase beginning after a key change is
+        still in that key, not the whole piece's opening
+        one. A phrase straddling the change keeps both, at
+        their own beat relative to the phrase's own start.
+        """
+
+        changes = []
+
+        active = self.key_changes[0][1]
+
+        for beat, name in self.key_changes:
+
+            if beat >= closed:
+                break
+
+            if beat <= opened:
+                active = name
+                continue
+
+            changes.append((beat - opened, name))
+
+        return [(0.0, active)] + changes
+
     def slice(self, first, last):
         """
         The stretch from one note to another, as a piece.
 
         Everything comes with it: the lyrics for those
-        notes, and the chords sounding under them, cut in
+        notes, the chords sounding under them (cut in
         beats rather than in notes because a chart is
-        written in bars and the melody is not.
+        written in bars and the melody is not), and
+        whichever key was actually in force - a phrase
+        starting after a modulation is still in the new
+        key, not the piece's opening one.
 
         This is the conversion the rest of the app kept
         getting wrong by doing it in several places at
@@ -205,7 +289,7 @@ class Piece:
             self.pitches[first:last + 1],
             self.durations[first:last + 1],
             self.lyrics_between(first, last),
-            self.key,
+            self.key_between(opened, closed),
             self.chart_between(opened, closed),
             self.tempo
         )

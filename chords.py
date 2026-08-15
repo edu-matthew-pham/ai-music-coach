@@ -143,15 +143,27 @@ def transpose_chart(chart_text, semitones, key=None):
     seventh however far the music travels: the quality is
     the shape of the chord, the root is where it sits.
 
-    The spelling follows the key it lands in, so a chart
-    arriving in Bb reads Eb rather than D#. Given no key,
-    sharps are used, which is the app's default dialect.
+    The spelling follows the key each chord actually lands
+    under, so a chart arriving in Bb reads Eb rather than
+    D#. `key` is either a single key name (the ordinary
+    case) or a full timeline - a list of (beat, name) pairs,
+    Piece.key_changes' own shape - for a piece that
+    genuinely modulates: each chord respells against
+    whichever key was in force at its own start, not one
+    key for the whole chart. Given no key, sharps are used,
+    which is the app's default dialect.
 
-    Bar lines, dots and metre are untouched. A dot means
-    "the chord before, still sounding", which is true at
-    any pitch, so the chart's shape survives exactly. A
-    split token ("A>B" or ">B") moves each half on its own
-    side of the ">" the same way, and stays split.
+    Bar lines, dots and metre are untouched - literally: this
+    walks the same raw tokens as before, not read_chart's own
+    parsed shape, because read_chart silently drops a bar
+    that carries no chord at all (found on the Wellerman's
+    own committed chart, which writes one that way) and a
+    round trip through it would quietly reshape a chart this
+    function only promised to move the roots of. A local beat
+    counter - advanced once per real token, the same way
+    read_chart's own walk advances, bar lines and empty bars
+    contributing nothing to it - is all that is needed to know
+    which key a token lands under.
     """
 
     from notes import FLAT_KEYS, FLAT_NAMES, SHARP_NAMES
@@ -161,22 +173,42 @@ def transpose_chart(chart_text, semitones, key=None):
     if len(text) == 0:
         return chart_text
 
-    names = FLAT_NAMES if key in FLAT_KEYS else SHARP_NAMES
+    if key is None:
+        key_changes = [(0.0, None)]
 
-    def moved_name(name):
+    elif isinstance(key, str):
+        key_changes = [(0.0, key)]
+
+    else:
+        key_changes = list(key)
+
+    from harmony import key_at
+
+    def moved_name(name, beat):
 
         root, quality = split_chord(name)
 
         semitone = (NOTE_SEMITONES[root] + semitones) % 12
 
+        names = (
+            FLAT_NAMES if key_at(key_changes, beat) in FLAT_KEYS
+            else SHARP_NAMES
+        )
+
         return names[semitone] + quality
 
     moved = []
+
+    beat = 0.0
 
     for token in text.split():
 
         if token in (BAR_LINE, CONTINUE):
             moved.append(token)
+
+            if token == CONTINUE:
+                beat += 1.0
+
             continue
 
         if SPLIT in token:
@@ -191,13 +223,19 @@ def transpose_chart(chart_text, semitones, key=None):
 
             left, right = halves
 
-            new_left = moved_name(left) if left else ""
+            new_left = moved_name(left, beat) if left else ""
 
-            moved.append(f"{new_left}{SPLIT}{moved_name(right)}")
+            moved.append(
+                f"{new_left}{SPLIT}{moved_name(right, beat + 0.5)}"
+            )
+
+            beat += 1.0
 
             continue
 
-        moved.append(moved_name(token))
+        moved.append(moved_name(token, beat))
+
+        beat += 1.0
 
     return " ".join(moved)
 

@@ -39,6 +39,7 @@ import zipfile
 from fractions import Fraction
 
 from chord_detector import chart_from_notes, fill_gaps, write_chart
+from harmony import format_key
 from midi_import import spelling_key
 from notes import NOTE_SEMITONES, REST, midi_to_note
 
@@ -279,9 +280,26 @@ def _printed_chart(parts, total_beats, beats_per_bar):
     if not by_beat:
         return ""
 
-    chords = sorted(
-        (beat, 0.0, name) for beat, name in by_beat.items()
-    )
+    positions = sorted(by_beat)
+
+    # A score sometimes reprints the chord already sounding
+    # - a courtesy symbol at a new line or section, not a
+    # real change. Left as two separate entries, each got
+    # its own onset in playback: the chord struck once on
+    # its true arrival, then struck again moments later for
+    # no musical reason (BUILDNOTES.md, the syncopation
+    # session - real evidence against a real recording, not
+    # a guess). A reprint carries no new information the
+    # first symbol did not already state, so it is dropped
+    # here rather than kept as a second, silent-seeming
+    # "change" that still ends up sounding.
+    kept = [positions[0]]
+
+    for beat in positions[1:]:
+        if by_beat[beat] != by_beat[kept[-1]]:
+            kept.append(beat)
+
+    chords = [(beat, 0.0, by_beat[beat]) for beat in kept]
 
     return write_chart(
         fill_gaps(chords, total_beats), total_beats, beats_per_bar
@@ -513,6 +531,107 @@ def _stated_key(score):
     return tonic.replace("-", "b")
 
 
+def _key_signatures(all_parts, part):
+    """
+    Every key the score states, in beat order.
+
+    Read across every part that shares the selected part's
+    own transposition, not just the selected part alone: a
+    modulation is sometimes restated on an accompaniment
+    part's engraving without being reprinted on the vocal
+    line's own staff, which would otherwise carry on with no
+    signature to read at all. A part whose transposition
+    differs from the selected part's (a Bb trumpet against a
+    concert-pitch voice, say) is excluded outright - its
+    signature is written in its own transposed pitch space,
+    and borrowing it to spell a different part's notes would
+    spell them wrong on purpose, not by accident. Where two
+    compatible parts disagree at the same beat, the selected
+    part's own value wins: these are its own notes being
+    spelled, and another part is only consulted for a beat
+    the selected part is silent about.
+
+    Read from each part's own flattened stream rather than
+    score.recurse(): a signature's own .offset resets to zero
+    at every measure, the same trap _printed_chart's own
+    docstring warns about for chord symbols, and only
+    flattening turns that into one running count from the
+    start of the piece.
+
+    Returns a list of (beat, key_name) pairs, sorted, empty
+    if no compatible part carries a signature at all. The
+    first pair's beat is not necessarily 0.0 - a pickup bar
+    before the first full bar is real - so a caller wanting
+    "the key in force at beat B" should take the last entry
+    whose beat is at or before B, not assume the list opens
+    at zero.
+    """
+
+    def transposition_of(a_part):
+
+        instrument = a_part.getInstrument()
+
+        return instrument.transposition if instrument else None
+
+    own_transposition = transposition_of(part)
+
+    by_beat = {}
+
+    # Other compatible parts first, so the selected part's
+    # own values - read second, below - can overwrite them
+    # where both state something at the same beat.
+    for other in all_parts:
+
+        if other is part:
+            continue
+
+        if transposition_of(other) != own_transposition:
+            continue
+
+        for signature in other.flatten().getElementsByClass(
+            "KeySignature"
+        ):
+            by_beat[float(signature.offset)] = (
+                signature.asKey("major").tonic.name
+                .replace("-", "b")
+            )
+
+    for signature in part.flatten().getElementsByClass(
+        "KeySignature"
+    ):
+        by_beat[float(signature.offset)] = (
+            signature.asKey("major").tonic.name.replace("-", "b")
+        )
+
+    return sorted(by_beat.items())
+
+
+def _key_at(beat, signatures, opening_key):
+    """
+    Which key is in force at a given beat.
+
+    Walks the score's own list of changes rather than
+    assuming one key throughout - a modulating piece spells
+    its second half in the second key's dialect, not the
+    first's. Falls back to the opening key (however it was
+    found - stated or guessed) when the part carries no
+    signature that has arrived yet, which is every beat of a
+    single-key piece: this changes nothing for the common
+    case, only for one that genuinely modulates.
+    """
+
+    key = opening_key
+
+    for signature_beat, signature_key in signatures:
+
+        if signature_beat > beat:
+            break
+
+        key = signature_key
+
+    return key
+
+
 def import_musicxml(path, part_label=None, verse=1):
     """
     A score into the boxes.
@@ -595,9 +714,11 @@ def import_musicxml(path, part_label=None, verse=1):
 
     pitches = []
     durations = []
+    pitch_beats = []
     syllables = []
 
     sung = 0
+    position = 0.0
 
     for is_rest, length, item in merged:
 
@@ -609,6 +730,8 @@ def import_musicxml(path, part_label=None, verse=1):
             for piece in _rests_as_bars(length, beats_per_bar):
                 pitches.append(REST)
                 durations.append(piece)
+                pitch_beats.append(position)
+                position += float(piece)
 
             continue
 
@@ -619,6 +742,8 @@ def import_musicxml(path, part_label=None, verse=1):
 
         pitches.append(number)
         durations.append(length)
+        pitch_beats.append(position)
+        position += float(length)
 
         word = _syllable(item, verse)
 
@@ -694,6 +819,19 @@ def import_musicxml(path, part_label=None, verse=1):
         if number != REST
     ]) or "C"
 
+    # Every key the score itself states, opening key first -
+    # a piece with only one signature (or none) gets a list
+    # of at most one entry, so _key_at falls straight back to
+    # `key` for every note, unchanged from before. A piece
+    # that genuinely modulates spells its notes in whichever
+    # key was actually in force when each one sounds, rather
+    # than the opening key's dialect for the whole piece -
+    # the key box itself still only ever holds the opening
+    # key (invariant 1's boxes stay single-valued until the
+    # box itself learns to hold a timeline; see the design
+    # note on multi-key support).
+    key_signatures = _key_signatures(score.parts, part)
+
     chart = _printed_chart(parts, float(total), beats_per_bar)
 
     chart_source = "printed" if chart else None
@@ -705,8 +843,11 @@ def import_musicxml(path, part_label=None, verse=1):
         chart_source = "detected" if chart else None
 
     pitch_text = " ".join(
-        REST if number == REST else midi_to_note(number, key)
-        for number in pitches
+        REST if number == REST
+        else midi_to_note(
+            number, _key_at(beat, key_signatures, key)
+        )
+        for number, beat in zip(pitches, pitch_beats)
     )
 
     duration_text = " ".join(
@@ -777,6 +918,19 @@ def import_musicxml(path, part_label=None, verse=1):
         f"This sounds like {key} major."
     )
 
+    if len(key_signatures) > 1:
+
+        change_beat, change_key = key_signatures[1]
+
+        change_bar = int(change_beat // beats_per_bar) + 1
+
+        feedback += (
+            f" The score changes key partway through, to "
+            f"{change_key} major at bar {change_bar}. The "
+            f"key box holds the opening key only, but pitches "
+            f"after the change are already spelled correctly."
+        )
+
     if syllables and any(token != "_" for token in syllables):
 
         if marked:
@@ -826,5 +980,6 @@ def import_musicxml(path, part_label=None, verse=1):
         feedback,
         chart,
         polyphony,
-        key
+        format_key(key_signatures) if len(key_signatures) > 1
+        else key
     )

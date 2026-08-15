@@ -1,5 +1,7 @@
 # tests/test_music.py
 
+import os
+
 import numpy as np
 import pytest
 
@@ -791,7 +793,8 @@ def test_transposing_moves_the_notes_the_key_and_the_chords():
     from music import transpose_music
 
     pitches, key, chart, notes = transpose_music(
-        "C4 E4 R G4", "C", "| C . Am . | F . G7 . |", None, 2
+        "C4 E4 R G4", "1 1 1 1", "C",
+        "| C . Am . | F . G7 . |", None, 2
     )
 
     assert pitches == "D4 F#4 R A4"
@@ -811,16 +814,81 @@ def test_transposing_and_back_is_exact():
     original, durations, lyrics, key, chart, tempo = load_wellerman()
 
     moved, moved_key, moved_chart, _ = transpose_music(
-        original, key, chart, None, -3
+        original, durations, key, chart, None, -3
     )
 
     back, back_key, back_chart, _ = transpose_music(
-        moved, moved_key, moved_chart, None, 3
+        moved, durations, moved_key, moved_chart, None, 3
     )
 
     assert back == original
     assert back_key == key
     assert back_chart == chart
+
+
+def test_a_modulating_piece_transposes_both_keys():
+    """
+    Every key in the timeline moves by the same interval
+    and respells in its own new dialect - the notes and the
+    chart both, not just the key box's own text. Checked
+    with a piece the two keys of which respell very
+    differently under the same shift (C -> Db, a flat
+    landing; Ab -> A, a sharp one) so a bug that used one
+    key for the whole piece could not accidentally look
+    right.
+    """
+
+    from music import transpose_music
+
+    pitches = "C4 C4 C4 C4 Ab4 Ab4 Ab4 Ab4"
+    durations = "1 1 1 1 1 1 1 1"
+    key = "C, Ab from beat 4"
+    chart = "| C . . . | Ab . . . |"
+
+    new_pitches, new_key, new_chart, _ = transpose_music(
+        pitches, durations, key, chart, None, 1
+    )
+
+    assert new_pitches == "Db4 Db4 Db4 Db4 A4 A4 A4 A4"
+    assert new_key == "Db, A from beat 4"
+    assert new_chart == "| Db . . . | A . . . |"
+
+
+def test_a_zero_semitone_transpose_of_a_modulating_piece_is_a_no_op():
+    """
+    The bug this whole feature exists to fix: transposing by
+    zero semitones used to still respell every note through
+    one blanket key, corrupting a modulating piece's already-
+    correct spelling even though nothing was meant to move at
+    all. Checked against the real Mulan file, not a built
+    fixture - this is the exact case that was found broken.
+    """
+
+    from music import transpose_music
+    from musicxml_import import import_musicxml, parts_in
+
+    path = (
+        "/mnt/user-data/uploads/"
+        "mulan-ill-make-a-man-out-of-you.mxl"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("Mulan fixture not present in this sandbox")
+
+    label = parts_in(path)[0]
+
+    (
+        pitches, durations, lyrics, bpm, feedback,
+        chart, polyphony, key
+    ) = import_musicxml(path, label)
+
+    new_pitches, new_key, new_chart, _ = transpose_music(
+        pitches, durations, key, chart, polyphony, 0
+    )
+
+    assert new_pitches == pitches
+    assert new_key == key
+    assert new_chart == chart
 
 
 def test_the_hidden_polyphony_travels_with_the_music():
@@ -834,7 +902,7 @@ def test_the_hidden_polyphony_travels_with_the_music():
     from music import transpose_music
 
     _, _, _, notes = transpose_music(
-        "C4", "C", "", [(0.0, 1.0, 60), (0.0, 2.0, 64)], 5
+        "C4", "1", "C", "", [(0.0, 1.0, 60), (0.0, 2.0, 64)], 5
     )
 
     assert notes == [(0.0, 1.0, 65), (0.0, 2.0, 69)]
@@ -844,7 +912,7 @@ def test_an_octave_leaves_the_key_and_the_names_alone():
     from music import transpose_music
 
     pitches, key, chart, _ = transpose_music(
-        "C4 E4 G4", "C", "| C . . . |", None, -12
+        "C4 E4 G4", "1 1 1", "C", "| C . . . |", None, -12
     )
 
     assert pitches == "C3 E3 G3"
@@ -862,7 +930,7 @@ def test_the_spelling_follows_the_key_it_lands_in():
     from music import transpose_music
 
     pitches, key, chart, _ = transpose_music(
-        "A4 C5", "C", "| C . F . |", None, -2
+        "A4 C5", "1 1", "C", "| C . F . |", None, -2
     )
 
     assert key == "Bb"
@@ -888,7 +956,7 @@ def test_music_pushed_off_the_keyboard_is_refused():
     from music import transpose_music, MusicInputError
 
     with pytest.raises(MusicInputError):
-        transpose_music("C8 D8", "C", "", None, 36)
+        transpose_music("C8 D8", "1 1", "C", "", None, 36)
 
 
 def test_transposing_says_where_the_part_now_sits():
@@ -906,6 +974,60 @@ def test_transposing_says_where_the_part_now_sits():
     assert "up 2" in said
     assert "D4" in said
     assert "A4" in said
+
+
+def test_harmony_respects_a_real_key_change():
+    """
+    The other proven bug this whole feature exists to fix,
+    alongside transpose: a wrong-key harmony is not just a
+    wrong note NAME, it is a genuinely different note. Found
+    on the real Mulan file - a note at beat 164.5, after its
+    own key change (bar 40, G to Ab), harmonised as C5 under
+    the old single-key bug and Db5 correctly.
+    """
+
+    from music import harmony_line
+    from musicxml_import import import_musicxml, parts_in
+    from fractions import Fraction
+
+    path = (
+        "/mnt/user-data/uploads/"
+        "mulan-ill-make-a-man-out-of-you.mxl"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("Mulan fixture not present in this sandbox")
+
+    label = parts_in(path)[0]
+
+    (
+        pitch_text, duration_text, lyrics, bpm, feedback,
+        chart, polyphony, key
+    ) = import_musicxml(path, label)
+
+    pitches = pitch_text.split()
+    durations = [
+        float(Fraction(length))
+        for length in duration_text.split()
+    ]
+
+    correct = harmony_line(
+        pitches, durations, key, steps=-2,
+        style="Parallel thirds"
+    )
+
+    # The bug's own shape: using only the opening key for
+    # every note, the way harmony_line used to.
+    opening_only = key.split(",")[0]
+
+    wrong = harmony_line(
+        pitches, durations, opening_only, steps=-2,
+        style="Parallel thirds"
+    )
+
+    assert correct[197] == "Db5"
+    assert wrong[197] == "C5"
+    assert correct != wrong
 
 
 def test_the_layers_are_the_same_ones_the_mix_uses():

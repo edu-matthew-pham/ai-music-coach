@@ -190,3 +190,67 @@ def test_a_slice_opening_exactly_on_the_split_names_its_own_half():
     middle = SYNCOPATED.slice(3, 7)
 
     assert middle.chart == "| D>G Am . . | . |"
+
+
+# Multi-key: Piece.key stays a plain string for every
+# unmigrated caller (a computed view of the timeline's own
+# first entry, never a second fact that construction could
+# leave out of step with it - checked directly: nothing
+# anywhere mutates piece.key after construction, which is
+# what makes the property safe). key_at and slicing are the
+# two things that actually need the full timeline.
+
+MODULATING = Piece.read(
+    "C4 C4 C4 C4 G4 G4 G4 G4",
+    "1 1 1 1 1 1 1 1",
+    "",
+    "C, G from beat 4"
+)
+
+
+def test_key_stays_a_plain_string_for_backward_compatibility():
+    assert MODULATING.key == "C"
+    assert isinstance(MODULATING.key, str)
+
+
+def test_a_single_key_piece_has_a_one_entry_timeline():
+    plain = Piece.read("C4 D4", "1 1", "", "C")
+
+    assert plain.key_changes == [(0.0, "C")]
+    assert plain.key_at(0) == "C"
+    assert plain.key_at(100) == "C"
+
+
+def test_key_at_resolves_the_real_change():
+    assert MODULATING.key_at(0) == "C"
+    assert MODULATING.key_at(3) == "C"
+    assert MODULATING.key_at(4) == "G"
+    assert MODULATING.key_at(7) == "G"
+
+
+def test_a_slice_entirely_before_the_change_stays_in_the_first_key():
+    before = MODULATING.slice(0, 3)
+
+    assert before.key == "C"
+    assert before.key_changes == [(0.0, "C")]
+
+
+def test_a_slice_entirely_after_the_change_opens_in_the_new_key():
+    """
+    Not just resolvable via key_at - the sliced piece's own
+    .key (what every unmigrated consumer still reads) must
+    already be the right one, not the whole piece's opening
+    key.
+    """
+
+    after = MODULATING.slice(4, 7)
+
+    assert after.key == "G"
+    assert after.key_changes == [(0.0, "G")]
+
+
+def test_a_slice_straddling_the_change_carries_both_keys():
+    middle = MODULATING.slice(2, 5)
+
+    assert middle.key_changes == [(0.0, "C"), (2.0, "G")]
+    assert middle.key == "C"
