@@ -26,6 +26,19 @@ mid-score - and a hand-written parser meets those one file
 at a time, in the middle of doing something else. The
 library has met them already.
 
+One of those corners deserves naming, because it was missed
+for a long time: a score is printed once and played in the
+order its repeats, endings, D.C. and D.S. dictate. The
+import unfolds the score into playing order first (music21's
+expander, on the whole score at once) and reads everything -
+notes, words, chords, key changes - from that. Where the
+markings are something the expander cannot make sense of,
+the printed order is kept and the feedback says so, with the
+bar past which the numbers stop matching a performance. It
+was reading the printed order for months, and every beat
+position after the first repeat was wrong by the length of
+the repeated passage.
+
 It is kept thin, though. music21's own model of music -
 its Streams and Notes and Durations - stops at the edge of
 this module, and what leaves here is what leaves the MIDI
@@ -349,71 +362,6 @@ def _merge_ties(items):
     return merged
 
 
-def _word_ends(path, part_index):
-    """
-    Which syllables end a word, read from the file itself.
-
-    MusicXML can mark this properly - a syllable is begin,
-    middle, end or single - but files often mark every
-    syllable "single" and rely on a trailing space in the
-    text instead, which is how a printed score is typed.
-    music21 strips that space, so it is read here from the
-    XML directly.
-
-    Returns a list of booleans, or None when the file does
-    not say. None means every syllable is treated as its
-    own word, which is wrong but visibly wrong: the words
-    can be pasted in and corrected.
-    """
-
-    try:
-
-        if zipfile.is_zipfile(path):
-
-            with zipfile.ZipFile(path) as archive:
-
-                name = [
-                    item for item in archive.namelist()
-                    if item.endswith(".xml")
-                    and not item.startswith("META-INF")
-                ]
-
-                if not name:
-                    return None
-
-                xml = archive.read(name[0]).decode("utf-8", "ignore")
-
-        else:
-            xml = open(path, encoding="utf-8", errors="ignore").read()
-
-    except (OSError, zipfile.BadZipFile):
-        return None
-
-    bodies = re.findall(r"<part id=[^>]*>(.*?)</part>", xml, re.S)
-
-    if part_index >= len(bodies):
-        return None
-
-    texts = re.findall(
-        r"<lyric[^>]*>.*?<text[^>]*>(.*?)</text>",
-        bodies[part_index],
-        re.S
-    )
-
-    if not texts:
-        return None
-
-    # A trailing space says the word ended there. If no
-    # syllable has one, the file is not using the
-    # convention and nothing can be read from it.
-    ends = [text != text.rstrip() for text in texts]
-
-    if not any(ends):
-        return None
-
-    return ends
-
-
 def _rests_as_bars(length, beats_per_bar):
     """
     A long silence as bars of rest.
@@ -603,7 +551,21 @@ def _key_signatures(all_parts, part):
             signature.asKey("major").tonic.name.replace("-", "b")
         )
 
-    return sorted(by_beat.items())
+    # A signature restating the key already in force is not a
+    # change - a courtesy signature at a section start, or,
+    # once the score is unfolded, the signature at a D.S.
+    # target seen a second time - so consecutive repeats of
+    # the same key are dropped. _key_at reads the last entry
+    # at or before a beat, so this changes nothing it returns;
+    # it only keeps "the score changes key" honest.
+    signatures = []
+
+    for beat, name in sorted(by_beat.items()):
+        if signatures and signatures[-1][1] == name:
+            continue
+        signatures.append((beat, name))
+
+    return signatures
 
 
 def _key_at(beat, signatures, opening_key):
@@ -632,6 +594,277 @@ def _key_at(beat, signatures, opening_key):
     return key
 
 
+def _structure(score):
+    """
+    What the score says about its own shape, counted before
+    anything is unfolded: repeat barlines, ending brackets,
+    and every navigation mark (D.C., D.S., Fine, Coda, Segno
+    and their combinations).
+
+    Counted here rather than trusted to the expander, because
+    the expander has two ways of not doing what the marks say
+    - refusing outright, and quietly unfolding the repeats
+    while dropping a D.C. it could not place - and the import
+    feedback has to be able to name both. Returns a dict of
+    name -> count and the beat length of the longest part.
+    """
+
+    from music21 import bar, repeat, spanner
+
+    # Marks are printed on every staff, so one part is
+    # counted - the first - not the whole score, or a quartet
+    # reports four times the repeats it has. Whether every
+    # part really carries the same marks is not checked here;
+    # if they differ, the expander (which runs per part) can
+    # bring parts back at different lengths, and that shows
+    # up in the beat count, not in this tally.
+    counted = score.parts[0] if score.parts else score
+
+    flat = counted.flatten()
+
+    counts = {}
+
+    repeats = len(flat.getElementsByClass(bar.Repeat))
+    if repeats:
+        counts["repeat"] = repeats
+
+    endings = len(
+        counted.recurse().getElementsByClass(spanner.RepeatBracket)
+    )
+    if endings:
+        counts["ending"] = endings
+
+    # Navigation words are different: usually printed once,
+    # above the top staff or on whichever part the engraver
+    # chose, so they are looked for on every part. Only their
+    # presence matters downstream, not the tally.
+    for mark in score.flatten().getElementsByClass(
+        repeat.RepeatExpression
+    ):
+        name = mark.__class__.__name__
+        counts[name] = counts.get(name, 0) + 1
+
+    beats = max(
+        (float(part.duration.quarterLength) for part in score.parts),
+        default=float(score.duration.quarterLength),
+    )
+
+    return counts, beats
+
+
+# Human names for music21's navigation classes, for the
+# feedback sentence. Segno and Coda on their own are signs
+# to jump to, not instructions to jump, so they are not
+# named - a score with a D.S. always has a segno too, and
+# naming both says the same thing twice.
+NAVIGATION_NAMES = {
+    "DaCapo": "D.C.",
+    "DaCapoAlFine": "D.C. al Fine",
+    "DaCapoAlCoda": "D.C. al Coda",
+    "DalSegno": "D.S.",
+    "DalSegnoAlFine": "D.S. al Fine",
+    "DalSegnoAlCoda": "D.S. al Coda",
+    "AlSegno": "al Segno",
+    "Fine": None,
+    "Segno": None,
+    "Coda": None,
+}
+
+
+def _describe_structure(counts):
+    """
+    "1 repeat with two endings, D.S. al Fine" - the marks
+    that mean something to a player, in a phrase.
+    """
+
+    words = []
+
+    repeats = counts.get("repeat", 0)
+    endings = counts.get("ending", 0)
+
+    if repeats:
+        # A repeat is a pair of barlines; a lone backward
+        # repeat (back to the start) counts as one.
+        pairs = max(1, (repeats + 1) // 2)
+        words.append(
+            f"{pairs} repeat{'s' if pairs != 1 else ''}"
+            + (
+                f" with {endings} ending"
+                + ("s" if endings != 1 else "")
+                if endings else ""
+            )
+        )
+
+    for name, shown in NAVIGATION_NAMES.items():
+        if shown and counts.get(name):
+            words.append(shown)
+
+    return ", ".join(words)
+
+
+def _has_navigation(counts):
+    return any(
+        counts.get(name)
+        for name, shown in NAVIGATION_NAMES.items()
+        if shown
+    )
+
+
+def _first_marked_bar(score):
+    """
+    The bar number of the first repeat barline or navigation
+    mark - the point past which, if nothing was unfolded, the
+    bar numbers stop matching a performance.
+    """
+
+    from music21 import bar, repeat
+
+    earliest = None
+
+    for element in score.recurse().getElementsByClass(
+        (bar.Repeat, repeat.RepeatExpression)
+    ):
+        measure = element.getContextByClass("Measure")
+        if measure is None or measure.number is None:
+            continue
+        if earliest is None or measure.number < earliest:
+            earliest = measure.number
+
+    return earliest
+
+
+def _unfold(score):
+    """
+    The score as it is played, not as it is printed.
+
+    music21's expander unfolds repeats, endings, D.C. and D.S.
+    on the whole Score at once - the whole score, not each
+    part, so parts cannot come back different lengths through
+    disagreeing markup. Where the markup is something it
+    cannot make sense of (an unclosed ending bracket, two
+    D.C.s, an "al Coda" with no coda to go to) it raises, and
+    the printed order is kept instead - one time through, and
+    the feedback says so.
+
+    Returns (score, unfolded), where unfolded is True when the
+    expander ran and changed something, False when there was
+    nothing to unfold, and None when it refused.
+    """
+
+    from music21.repeat import ExpanderException
+
+    try:
+        expanded = score.expandRepeats()
+    except ExpanderException:
+        return score, None
+
+    if expanded is None:
+        return score, False
+
+    return expanded, True
+
+
+def _stamp_word_ends(score, path):
+    """
+    Where each syllable ends a word, read from the file's own
+    text and written onto the syllable itself before anything
+    is unfolded.
+
+    MusicXML can mark this properly - begin, middle, end,
+    single - but files often mark every syllable "single" and
+    rely on a trailing space in the text, which is how a
+    printed score is typed. music21 strips that space, so it
+    is read here from the XML directly and stamped on each
+    Lyric's editorial, where the expander's copy carries it
+    to every place the syllable is sung. Reading it by
+    position in the raw XML, as was done before, went wrong
+    as soon as a note was sung twice.
+
+    Silent where the file does not use the convention: a
+    lyric with no stamp is treated as ending its word, which
+    is wrong but visibly wrong.
+    """
+
+    try:
+
+        if zipfile.is_zipfile(path):
+
+            with zipfile.ZipFile(path) as archive:
+
+                names = [
+                    item for item in archive.namelist()
+                    if item.endswith(".xml")
+                    and not item.startswith("META-INF")
+                ]
+
+                if not names:
+                    return False
+
+                xml = archive.read(names[0]).decode("utf-8", "ignore")
+
+        else:
+            xml = open(path, encoding="utf-8", errors="ignore").read()
+
+    except (OSError, zipfile.BadZipFile):
+        return False
+
+    bodies = re.findall(r"<part id=[^>]*>(.*?)</part>", xml, re.S)
+
+    stamped = False
+
+    for body, part in zip(bodies, score.parts):
+
+        texts = re.findall(
+            r"<lyric[^>]*>.*?<text[^>]*>(.*?)</text>",
+            body,
+            re.S
+        )
+
+        ends = [text != text.rstrip() for text in texts]
+
+        if not any(ends):
+            continue
+
+        lyrics = [
+            lyric
+            for item in part.flatten().notes
+            for lyric in item.lyrics
+        ]
+
+        # The XML and the parsed score list the same
+        # syllables in the same order - checked on real
+        # files - but a file that defeats the regex is not
+        # worth guessing at.
+        if len(lyrics) != len(ends):
+            continue
+
+        for lyric, end in zip(lyrics, ends):
+            lyric.editorial.endsWord = end
+
+        stamped = True
+
+    return stamped
+
+
+def _chosen_lyric(item, verse):
+    """
+    The lyric sung on a note in the chosen verse - the one
+    _syllable reads its text from.
+    """
+
+    for lyric in item.lyrics:
+
+        if lyric.number and lyric.number != verse:
+            continue
+
+        if not (lyric.text or "").strip():
+            continue
+
+        return lyric
+
+    return None
+
+
 def import_musicxml(path, part_label=None, verse=1):
     """
     A score into the boxes.
@@ -643,6 +876,30 @@ def import_musicxml(path, part_label=None, verse=1):
     """
 
     score = _read(path)
+
+    # What the printed score says about its shape, and the
+    # word ends the file writes as trailing spaces - both
+    # read from the raw score, before it is unfolded, because
+    # both are printed once and played many times.
+    printed_marks, printed_beats = _structure(score)
+
+    _stamp_word_ends(score, path)
+
+    score, unfolded = _unfold(score)
+
+    left, played_beats = _structure(score)
+
+    # A D.C. or D.S. the expander honoured is consumed by the
+    # unfolding; one it could not place is left in the score
+    # untouched, with no error - checked on real files both
+    # ways. So whatever navigation is still there afterwards
+    # was dropped, and the feedback names it.
+    dropped = _has_navigation(left)
+
+    first_bar = (
+        _first_marked_bar(score)
+        if unfolded is None or dropped else None
+    )
 
     index = part_number_from(part_label)
 
@@ -703,7 +960,14 @@ def import_musicxml(path, part_label=None, verse=1):
         for lyric in note.lyrics
     )
 
-    ends_word = None if marked else _word_ends(path, index)
+    # Whether the file used trailing spaces at all: if no
+    # syllable in this part carries a stamp, nothing can be
+    # read from it and each syllable stands alone.
+    stamped = not marked and any(
+        getattr(lyric.editorial, "endsWord", None) is not None
+        for note in _sung(part.flatten().notes)
+        for lyric in note.lyrics
+    )
 
     verses = len({
         lyric.number
@@ -753,16 +1017,20 @@ def import_musicxml(path, part_label=None, verse=1):
 
             # Where the file marks nothing - every syllable
             # "single" - the trailing space in the printed
-            # text is the only hint of a word ending, and
-            # that is read from the XML itself because
-            # music21 strips it.
-            if (
-                not token.endswith("-")
-                and ends_word is not None
-                and sung < len(ends_word)
-                and not ends_word[sung]
-            ):
-                token += "-"
+            # text is the only hint of a word ending. It was
+            # stamped on the syllable itself before the score
+            # was unfolded, so a note sung twice reads the
+            # same both times.
+            if not token.endswith("-") and stamped:
+
+                lyric = _chosen_lyric(item, verse)
+
+                if (
+                    lyric is not None
+                    and getattr(lyric.editorial, "endsWord", None)
+                    is False
+                ):
+                    token += "-"
 
             syllables.append(token)
 
@@ -918,6 +1186,45 @@ def import_musicxml(path, part_label=None, verse=1):
         f"This sounds like {key} major."
     )
 
+    # What was done about repeats, in one of three shapes:
+    # nothing to say, unfolded, or refused. A score with no
+    # repeat marks gets no sentence at all.
+    where = f" after bar {first_bar}" if first_bar else ""
+
+    if unfolded is None:
+
+        feedback += (
+            f" The score has repeat markings"
+            f" ({_describe_structure(printed_marks)}) that could not"
+            f" be unfolded, so it was imported as printed,"
+            f" once through. Bar numbers{where} may not match"
+            f" a performance."
+        )
+
+    elif unfolded and played_beats != printed_beats:
+
+        feedback += (
+            f" Repeats unfolded ({_describe_structure(printed_marks)}):"
+            f" {printed_beats:g} beats printed,"
+            f" {played_beats:g} played."
+        )
+
+        if dropped:
+            feedback += (
+                f" The {_describe_structure(left)} could not"
+                f" be placed and was left as printed, so bar"
+                f" numbers{where} may not match a performance."
+            )
+
+    elif dropped:
+
+        feedback += (
+            f" The score has {_describe_structure(printed_marks)}"
+            f" that could not be unfolded, so it was imported"
+            f" as printed, once through. Bar numbers{where}"
+            f" may not match a performance."
+        )
+
     if len(key_signatures) > 1:
 
         change_beat, change_key = key_signatures[1]
@@ -939,7 +1246,7 @@ def import_musicxml(path, part_label=None, verse=1):
                 "as the score marks them."
             )
 
-        elif ends_word is not None:
+        elif stamped:
             feedback += (
                 " Lyrics were found, with the words joined "
                 "from where they end in the printed text."

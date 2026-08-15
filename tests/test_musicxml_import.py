@@ -18,7 +18,7 @@ import pytest
 
 FIXTURE = os.path.join(
     os.path.dirname(__file__), "fixtures", "musicxml",
-    "o-holy-night-satb__1_.mxl"
+    "o-holy-night-satb.mxl"
 )
 
 
@@ -106,6 +106,36 @@ def test_the_words_are_joined_into_words():
     assert "ly" in lyrics.split()
 
     assert "bright-" in lyrics.split()
+
+
+def test_word_ends_are_read_per_syllable_not_by_position():
+    """
+    The trailing-space reading was once a list indexed by
+    note count - and this part has 129 notes but 125
+    syllables (held notes carry no lyric), so from the first
+    held note on, every word end was read from the wrong
+    syllable: "di vine" arrived unjoined and "O night"
+    joined. Now the flag is stamped on each syllable itself.
+    These are the tokens that were wrong, checked against the
+    file's own text.
+    """
+
+    if not present():
+        pytest.skip("the score fixture is not present")
+
+    pitches, durations, lyrics, bpm, feedback, chart, poly, key = imported()
+
+    tokens = lyrics.split()
+
+    # "di" has no trailing space in the file: di-vine.
+    assert tokens.count("di-") == 6
+    assert "di" not in tokens
+
+    # "O " does: O night, never O-night.
+    assert "O-" not in tokens
+
+    # "voi" -> voi-ces, twice.
+    assert tokens.count("voi-") == 2
 
 
 def test_the_chart_is_exactly_as_long_as_the_music():
