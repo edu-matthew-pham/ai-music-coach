@@ -575,8 +575,8 @@ def test_the_parallel_third_fallback_respects_a_key_change():
     force at its own beat, not one key for the whole line,
     the same requirement make_harmony has and for the same
     reason (proven on the real Mulan file: a note at beat
-    217, after its own modulation, harmonised as C5 under
-    the old single-key bug and Db5 correctly - see
+    208.5, right at its own modulation, harmonised as C5
+    under the old single-key bug and Db5 correctly - see
     test_harmony_respects_a_real_key_change, which pins the
     same note on the real import).
     """

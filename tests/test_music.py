@@ -981,16 +981,20 @@ def test_harmony_respects_a_real_key_change():
     The other proven bug this whole feature exists to fix,
     alongside transpose: a wrong-key harmony is not just a
     wrong note NAME, it is a genuinely different note. Found
-    on the real Mulan file - a note at beat 217, after its
-    own key change (bar 53, G to Ab), harmonised as C5 under
-    the old single-key bug and Db5 correctly.
+    on the real Mulan file - a note at beat 208.5, right at
+    its own key change (bar 53, G to Ab), harmonised as C5
+    under the old single-key bug and Db5 correctly.
 
-    The beat and bar here are the score's played position,
-    once its repeat is unfolded (see test_musicxml_unfold.py)
-    - the note itself, and the two harmony notes either side
-    of the bug, are unchanged from where this test first found
-    them; only the position moved once the timeline was
-    corrected.
+    The beat here is the score's played position, once its
+    repeat is unfolded (see test_musicxml_unfold.py) and its
+    two voices are read apart rather than flattened together
+    (see test_the_bridges_two_voices_are_read_apart, same
+    file) - a second, separate fix landed after this test was
+    first written, which moved both the note's index and its
+    exact beat again. The note relationship the test checks
+    (a modulation changing real pitches, not just names) is
+    unchanged throughout; only its position in the sequence
+    has moved, twice now, as the reading got more correct.
     """
 
     from music import harmony_line
@@ -1032,8 +1036,8 @@ def test_harmony_respects_a_real_key_change():
         style="Parallel thirds"
     )
 
-    assert correct[259] == "Db5"
-    assert wrong[259] == "C5"
+    assert correct[248] == "Db5"
+    assert wrong[248] == "C5"
     assert correct != wrong
 
 

@@ -39,6 +39,20 @@ was reading the printed order for months, and every beat
 position after the first repeat was wrong by the length of
 the repeated passage.
 
+A second corner deserves the same naming: "several voices in
+one staff" is not always one line doubled for engraving - in
+a real file (Mulan's bridge) it was a second, differently-
+worded vocal line, the men's chorus answering "Be a man"
+under the main melody. Reading a part as one flattened
+stream, the way a part with no voices is read, mixed both
+lines' notes together in whatever order the flattening
+produced - wrong durations, and notes from the wrong line
+landing where the other line was actually holding one, for
+everything after the first such measure. Each voice is now
+read apart (music21's voicesToParts) and, where more than
+one voice genuinely carries a lyric, offered as its own part
+to choose - not silently merged, and not silently dropped.
+
 It is kept thin, though. music21's own model of music -
 its Streams and Notes and Durations - stops at the edge of
 this module, and what leaves here is what leaves the MIDI
@@ -339,6 +353,92 @@ def _sung(notes):
     ]
 
 
+def _voice_parts(part):
+    """
+    A part's own voices, each as its own single line.
+
+    A measure that splits into voices is real polyphony
+    sharing one staff - Mulan's bridge is the real case that
+    found this: the main melody continues in one voice while
+    the men's chorus answers "Be a man" in a second voice
+    underneath, both real, both sung. Reading the part as one
+    flattened stream, the way a part with no voices is read,
+    mixes both lines' notes and rests together in whatever
+    order the flattening produces - wrong durations, and
+    pitches from the wrong line landing where the other line
+    was actually holding a note. Every note after the first
+    such measure drifts, because the reading is a running
+    position built by summing consecutive lengths, and that
+    sum is wrong from the first mixed note on.
+
+    `voicesToParts()` is music21's own tool for this: each
+    voice becomes a genuine, independent part, correctly
+    padded with rests for every bar it stays silent, using
+    the score's own voice numbering - not anything read from
+    lyrics or guessed. Lyrics decide only which voices are
+    worth surfacing as something a person could choose to
+    sing, once each voice is already read correctly: a part
+    with no voice split anywhere is untouched, and a voice
+    split where only one voice ever carries a lyric - a
+    piano's two hands, say - collapses back to that one
+    voice, exactly as if there had been no split to choose
+    from at all.
+
+    Returns a list of (part, extra) pairs, `extra` being None
+    for a part needing no further description and a short
+    phrase ("second voice") where more than one voice is
+    genuinely offered.
+    """
+
+    if not any(
+        measure.getElementsByClass("Voice")
+        for measure in part.getElementsByClass("Measure")
+    ):
+        return [(part, None)]
+
+    voices = list(part.voicesToParts().parts)
+
+    lyric_voices = [
+        voice for voice in voices
+        if any(note.lyrics for note in _sung(voice.flatten().notes))
+    ]
+
+    if len(lyric_voices) <= 1:
+        return [(lyric_voices[0] if lyric_voices else voices[0], None)]
+
+    ordinals = ["first", "second", "third", "fourth", "fifth"]
+
+    return [
+        (
+            voice,
+            None if index == 0 else
+            f"{ordinals[index] if index < len(ordinals) else index + 1} voice"
+        )
+        for index, voice in enumerate(lyric_voices)
+    ]
+
+
+def _logical_parts(score):
+    """
+    Every part a person could choose to import, in the order
+    parts_in() describes them and import_musicxml selects
+    from - the same list read the same way in both places, so
+    a label parts_in() hands back always resolves to the same
+    music.
+
+    Ordinarily one entry per score part. A part with more
+    than one genuinely sung voice contributes one entry per
+    voice instead - see _voice_parts.
+    """
+
+    logical = []
+
+    for part in score.parts:
+        logical.extend(_voice_parts(part))
+
+    return logical
+
+
 def parts_in(path):
     """
     The parts of a score, named as the score names them.
@@ -352,7 +452,7 @@ def parts_in(path):
 
     described = []
 
-    for index, part in enumerate(score.parts):
+    for index, (part, extra) in enumerate(_logical_parts(score)):
 
         notes = _sung(part.flatten().notes)
 
@@ -362,6 +462,9 @@ def parts_in(path):
         sung = len([note for note in notes if note.lyric])
 
         name = part.partName or f"Part {index + 1}"
+
+        if extra:
+            name += f", {extra}"
 
         label = f"{index}  {name}, {len(notes)} notes"
 
@@ -599,7 +702,7 @@ def verses_in(path, part_label=None):
     score = _read(path)
 
     parts = [
-        part for part in score.parts
+        part for part, extra in _logical_parts(score)
         if _sung(part.flatten().notes)
     ]
 
@@ -1109,19 +1212,34 @@ def import_musicxml(path, part_label=None, verse=1):
 
     index = part_number_from(part_label)
 
+    # Two different lists, on purpose. Choosing which part to
+    # sing needs voices split apart - Mulan's bridge is real
+    # polyphony sharing one staff, and reading it as one part
+    # garbles it (see _voice_parts). Reading the chart and the
+    # polyphony behind it needs the opposite: every voice
+    # sounding together is exactly what a chord chart and a
+    # second opinion are made from, and both already read each
+    # note's own true offset rather than assuming one voice at
+    # a time, so splitting would only risk losing a chord
+    # symbol some file happens to print inside a Voice.
+    singing_parts = [
+        part for part, extra in _logical_parts(score)
+        if _sung(part.flatten().notes)
+    ]
+
     parts = [
         part for part in score.parts
         if _sung(part.flatten().notes)
     ]
 
-    if not parts:
+    if not singing_parts:
         raise ValueError(
             "This score has no notes in any part."
         )
 
-    index = min(index, len(parts) - 1)
+    index = min(index, len(singing_parts) - 1)
 
-    part = parts[index]
+    part = singing_parts[index]
 
     # The metre, as stated rather than inferred - and read
     # from the library rather than worked out from the

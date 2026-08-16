@@ -48,6 +48,13 @@ def test_a_dal_segno_al_fine_is_played_back_to_the_fine():
     played, and the second pass is the stretch from the segno
     to the Fine, sung again - the same syllables in the same
     order.
+
+    231, not 232: one measure (10) briefly splits into two
+    voices - a doubled note with no lyric, ordinary divisi,
+    not a second sung line - and the melody-reading loop used
+    to flatten it in as an extra note. Read apart, that note
+    is correctly not part of the sung line. Total beats (264)
+    are unaffected; only the note/syllable count moves.
     """
 
     pitches, durations, lyrics, bpm, feedback, chart, poly, key = (
@@ -60,12 +67,12 @@ def test_a_dal_segno_al_fine_is_played_back_to_the_fine():
     syllables = lyrics.split()
 
     # One syllable token per sung note, on both passes.
-    assert len(syllables) == 232
+    assert len(syllables) == 231
 
     # The second pass (66 notes) is a contiguous stretch of
     # the first, word for word - the segno to the Fine.
-    second = syllables[166:]
-    first = syllables[:166]
+    second = syllables[165:]
+    first = syllables[:165]
 
     assert any(
         first[start:start + len(second)] == second
@@ -141,6 +148,17 @@ def test_markup_the_expander_rejects_falls_back_to_the_printed_order():
     refuses; the import keeps the printed order, once through,
     and says so, naming the first bar past which the numbers
     stop matching a performance.
+
+    3628, not this quartet's printed 3747: Violin I genuinely
+    divides into two voices in 40 measures (real double-stops,
+    not a file error), and the melody-reading loop used to
+    flatten both together, inflating the total. Read apart -
+    see test_the_bridges_two_voices_are_read_apart, the same
+    fix, found on Mulan and general to every part - the total
+    drops to what one voice actually plays. This test cares
+    about the refusal shape, not this number; it is pinned so
+    a future change to voice-reading has to look at this file
+    too, not because 3628 means anything on its own.
     """
 
     pitches, durations, lyrics, bpm, feedback, chart, poly, key = (
@@ -152,8 +170,9 @@ def test_markup_the_expander_rejects_falls_back_to_the_printed_order():
     assert "imported as printed, once through" in feedback
     assert "after bar 265" in feedback
 
-    # Once through: the printed length.
-    assert beats(durations) == 3747.0
+    # Once through, one voice: the printed length of Violin I's
+    # own line, not the two voices' flattened-together total.
+    assert beats(durations) == 3628.0
 
 
 def test_a_broken_ending_bracket_is_a_refusal_not_a_crash():
@@ -204,7 +223,97 @@ def test_a_score_with_no_repeats_says_nothing_about_them():
     assert "once through" not in feedback
 
 
-# --- read path, on the same fixtures -----------------------------
+# --- two voices in one staff -------------------------------------
+
+
+def test_the_bridges_two_voices_are_read_apart():
+    """
+    Mulan's bridge (raw measures 31-34, played from beat
+    172.5 once the repeat is unfolded) is real polyphony in
+    one staff: the main line continues while the men's
+    chorus answers "Be a man" underneath, in a second voice.
+    Read as one flattened stream - the way a part with no
+    voices is read - the two lines' notes and rests interleave
+    into neither line: wrong durations, and notes from the
+    wrong line landing where the other line was holding one,
+    for everything after the first such measure.
+
+    parts_in() offers each singing voice as its own entry, in
+    the same list import_musicxml selects from; the main line
+    is read clean once split apart from what was under it.
+    """
+
+    from musicxml_import import parts_in, import_musicxml
+
+    labels = parts_in(fixture("mulan-ill-make-a-man-out-of-you.mxl"))
+
+    assert labels[0].startswith("0  Soprano,")
+    assert labels[1] == "1  Soprano, second voice, 22 notes, 16 with words"
+
+    pitches, durations, lyrics, bpm, feedback, chart, poly, key = (
+        imported("mulan-ill-make-a-man-out-of-you.mxl", labels[0])
+    )
+
+    beat = 0.0
+    at_beat = {}
+    for pitch, length in zip(pitches.split(), durations.split()):
+        at_beat[round(beat, 2)] = pitch
+        beat += float(Fraction(length))
+
+    # The main line through the bridge, at its played position -
+    # clean, not interleaved with the second voice underneath it.
+    assert at_beat[171.5] == "C5"
+    assert at_beat[172.5] == "B4"
+    assert at_beat[173.5] == "A4"
+    assert at_beat[174.5] == "G4"
+
+
+def test_the_second_voice_carries_its_own_real_words():
+    """
+    The chorus's "Be a man" is real, sung text - not decoration
+    to discard. It is marked in the file as verse 2 of the
+    second voice (verse 1 there is nearly all held notes,
+    underscore tokens, with one "Be a man!" of its own near the
+    end) - the same numbered-verse mechanism the app already
+    uses for a carol's several verses, reused here rather than
+    invented.
+    """
+
+    from musicxml_import import verses_in, import_musicxml
+
+    label = "1  Soprano, second voice, 22 notes, 16 with words"
+
+    assert verses_in(fixture("mulan-ill-make-a-man-out-of-you.mxl"), label) == [1, 2]
+
+    pitches, durations, lyrics, bpm, feedback, chart, poly, key = (
+        imported("mulan-ill-make-a-man-out-of-you.mxl", label, verse=2)
+    )
+
+    assert "Be a man" in lyrics
+    assert lyrics.count("Be a man") >= 3
+
+
+def test_an_unlyriced_second_voice_does_not_clutter_the_part_list():
+    """
+    Mulan's two piano parts also split into voices in several
+    measures - ordinary two-hand engraving, not a second sung
+    line. Neither hand carries a lyric, so parts_in() offers
+    each piano part once, not twice: a voice split is only
+    worth surfacing as a choice when there is a real second
+    thing to choose.
+    """
+
+    from musicxml_import import parts_in
+
+    labels = parts_in(fixture("mulan-ill-make-a-man-out-of-you.mxl"))
+
+    piano_labels = [label for label in labels if "Piano" in label]
+
+    assert len(piano_labels) == 2
+    assert not any("voice" in label for label in piano_labels)
+
+
+
 
 
 def test_a_key_change_is_read_at_its_beat_on_a_real_score():
