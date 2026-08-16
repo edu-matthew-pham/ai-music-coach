@@ -10,9 +10,9 @@
 	import Transport from "./Transport.svelte";
 	import PanelToggles from "./PanelToggles.svelte";
 	import ChordStrip from "./ChordStrip.svelte";
+	import PhraseList from "./PhraseList.svelte";
 	import MixerModal from "./MixerModal.svelte";
 	import NotesPanel from "./NotesPanel.svelte";
-	import PhraseList from "./PhraseList.svelte";
 	import LyricsPanel from "./LyricsPanel.svelte";
 	import InstrumentPanel from "./InstrumentPanel.svelte";
 
@@ -276,13 +276,16 @@
 
 		<!-- Reading order, top to bottom, is what the eye needs
 		     while playing, then what only matters between
-		     takes: transport and toggles in one row; the bar
-		     strip and phrase strip; the instrument diagrams;
-		     the words with the Mix button beside them; and the
-		     pitch-box view last. Notes is last on purpose - it
-		     is the one panel whose height genuinely changes
-		     while playing (more layers, a longer phrase), and
-		     at the bottom that growth pushes nothing. -->
+		     takes: transport, toggles, and the Mix button in
+		     one row; the bar strip and phrase strip; the
+		     instrument diagrams; then Lyrics and Notes sharing
+		     one row at the bottom, each getting a share of the
+		     same vertical space rather than either claiming a
+		     full-width row on its own. That row is last on
+		     purpose - Notes is the one panel whose height
+		     genuinely changes while playing (more layers, a
+		     longer phrase), and at the bottom that growth
+		     pushes nothing else on the page. -->
 		<div class="header-row">
 			<Transport
 				{layers}
@@ -298,6 +301,9 @@
 				hasNotes={notes.length > 0}
 				hasDiagrams={Object.keys(diagrams.structure ?? {}).length > 0}
 			/>
+			{#if panels.faders}
+				<MixerModal {layers} onLevelChanged={levelChanged} />
+			{/if}
 		</div>
 
 		{#if panels.strip}
@@ -312,21 +318,19 @@
 			<InstrumentPanel {diagrams} {timeline} {playhead} />
 		{/if}
 
-		{#if panels.lyrics || panels.faders}
-			<div class="lyrics-row">
+		{#if panels.lyrics || panels.notes}
+			<div class="lyrics-and-notes" class:narrow>
 				{#if panels.lyrics}
 					<div class="lyrics-cell">
 						<LyricsPanel {notes} {timeline} {phrases} {playhead} />
 					</div>
 				{/if}
-				{#if panels.faders}
-					<MixerModal {layers} onLevelChanged={levelChanged} />
+				{#if panels.notes}
+					<div class="notes-cell">
+						<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} />
+					</div>
 				{/if}
 			</div>
-		{/if}
-
-		{#if panels.notes}
-			<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} />
 		{/if}
 	</div>
 </Block>
@@ -363,12 +367,30 @@
 		   toggle in the top-right corner */
 		padding-right: 110px;
 	}
-	.lyrics-row {
+	.lyrics-and-notes {
 		display: flex;
-		align-items: stretch;
-		gap: 10px;
+		align-items: flex-start;
+		gap: 16px;
+	}
+	.lyrics-and-notes.narrow {
+		flex-direction: column;
 	}
 	.lyrics-cell {
+		/* 1/4 to 1/3 of the row, capped - Lyrics reads fine at
+		   that width and the rest goes to Notes, whose own
+		   content (pitch boxes) actually needs the room.
+		   min-width keeps it from getting squeezed illegibly
+		   thin if the row is narrow but hasn't crossed the
+		   narrow breakpoint yet. */
+		flex: 1 1 28%;
+		max-width: 360px;
+		min-width: 220px;
+	}
+	.lyrics-and-notes.narrow .lyrics-cell {
+		max-width: none;
+		min-width: 0;
+	}
+	.notes-cell {
 		flex: 1 1 0;
 		min-width: 0;
 	}

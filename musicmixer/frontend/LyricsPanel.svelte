@@ -1,7 +1,20 @@
 <script lang="ts">
+	import { flip } from "svelte/animate";
 	import type { MixerBar, MixerNote, MixerPhrase } from "./types";
 	import { lyricsShowChords, lyricsShowBars } from "./mixerPanels.svelte";
 
+	// A narrow, vertically-scrolling column - reading ahead,
+	// not navigation. PhraseList (restored as its own panel)
+	// is the click-to-jump control; this panel's only job is
+	// showing every line, current one in full (chords, bar
+	// ticks, word-by-word rhythm), the rest plain and left to
+	// wrap in whatever width it's given. Deliberately no
+	// click handler here - the same phrase clickable in two
+	// different places, one of them narrow and easy to miss,
+	// invites a mis-tap more than it adds anything PhraseList
+	// doesn't already do. Meant to sit beside NotesPanel,
+	// each taking a share of the same vertical space rather
+	// than Lyrics claiming a full-width row for one line.
 	interface Props {
 		notes: MixerNote[];
 		timeline: MixerBar[];
@@ -34,10 +47,18 @@
 		currentIndex >= 0 ? effectivePhrases[currentIndex] : null
 	);
 
-	const nextPhrase = $derived(
-		currentIndex >= 0 && currentIndex + 1 < effectivePhrases.length
-			? effectivePhrases[currentIndex + 1]
-			: null
+	// Sung lines simply stop being rendered, rather than
+	// staying in the list and being scrolled past - a real
+	// karaoke prompter, not a scrolling transcript. This is
+	// what makes the current line feel anchored: it's always
+	// the first item in visiblePhrases, so it always lands at
+	// the same spot at the top of the panel with no scrolling
+	// needed to bring it there. Everything below it shifts up
+	// to fill the gap (animate:flip, in the template) instead
+	// of the page jumping to chase a highlight further down a
+	// long list.
+	const visiblePhrases = $derived(
+		currentIndex >= 0 ? effectivePhrases.slice(currentIndex) : []
 	);
 
 	function wordsIn(phrase: MixerPhrase | null): MixerNote[] {
@@ -46,9 +67,6 @@
 			(note) => note.start >= phrase.start && note.start < phrase.end
 		);
 	}
-
-	const currentWords = $derived(wordsIn(currentPhrase));
-	const nextWords = $derived(wordsIn(nextPhrase));
 
 	// A word ending in a hyphen is mid-syllable, not a word
 	// boundary - "Bil-" then "ly" should read as "Bil-ly"
@@ -163,11 +181,23 @@
 		return map;
 	}
 
-	const currentSplit = $derived(splitLeadIn(allEvents(currentPhrase), currentWords));
-	const nextSplit = $derived(splitLeadIn(allEvents(nextPhrase), nextWords));
-
-	const currentEventsByWord = $derived(eventsByWord(currentWords, currentSplit.rest));
-	const nextEventsByWord = $derived(eventsByWord(nextWords, nextSplit.rest));
+	// Every line gets its own chord/bar events now, not just
+	// the current one - "coming up" chords are exactly the
+	// kind of thing worth reading ahead for, the same reason
+	// the instrument panel's own preview row exists. Kept as
+	// a plain function rather than a $derived map: called
+	// once per phrase inside the {#each} below via {@const},
+	// so nothing computes for a phrase that isn't being
+	// rendered.
+	function lineFor(phrase: MixerPhrase): {
+		words: MixerNote[];
+		split: { leadIn: RhythmEvent[]; rest: RhythmEvent[] };
+		eventsByWord: Map<number, RhythmEvent[]>;
+	} {
+		const phraseWords = wordsIn(phrase);
+		const split = splitLeadIn(allEvents(phrase), phraseWords);
+		return { words: phraseWords, split, eventsByWord: eventsByWord(phraseWords, split.rest) };
+	}
 </script>
 
 {#snippet wordSpan(note: MixerNote, i: number, eventsMap: Map<number, RhythmEvent[]>, showSung: boolean)}<span class="word-unit">{#if eventsMap.get(i)}<span class="chord-tags">{#each eventsMap.get(i) as event}{#if event.type === "bar"}<span class="bar-tick">|</span>{:else}<span class="chord-tag">{event.name}</span>{/if}{/each}</span>{/if}<span class="sentence-word" class:sung={showSung && note.start <= playhead}>{note.word}</span></span>{separatorAfter(note.word)}{/snippet}
@@ -184,18 +214,23 @@
 				Bars
 			</label>
 		</div>
-		{#if currentSplit.leadIn.length}
-			<p class="lead-in-line">{leadInText(currentSplit.leadIn)}</p>
-		{/if}
-		<p class="sentence current">{#each currentWords as note, i}{@render wordSpan(note, i, currentEventsByWord, true)}{/each}</p>
-		{#if nextWords.length}
-			{#if nextSplit.leadIn.length}
-				<p class="lead-in-line next">{leadInText(nextSplit.leadIn)}</p>
-			{/if}
-			<p class="sentence next">
-				{#each nextWords as note, i}{@render wordSpan(note, i, nextEventsByWord, false)}{/each}
-			</p>
-		{/if}
+
+		<div class="lyrics-list">
+			{#each visiblePhrases as phrase (phrase.start)}
+				{@const isCurrent = phrase === currentPhrase}
+				{@const line = lineFor(phrase)}
+				<div class="lyrics-line" class:current={isCurrent} animate:flip={{ duration: 220 }}>
+					{#if line.split.leadIn.length}
+						<p class="lead-in-line" class:plain={!isCurrent}>
+							{leadInText(line.split.leadIn)}
+						</p>
+					{/if}
+					<p class="sentence" class:current={isCurrent}>
+						{#each line.words as note, i}{@render wordSpan(note, i, line.eventsByWord, isCurrent)}{/each}
+					</p>
+				</div>
+			{/each}
+		</div>
 	</div>
 {:else}
 	<p class="lyrics-empty">No lyrics to show yet.</p>
@@ -204,6 +239,16 @@
 <style>
 	.lyrics-panel {
 		padding: 12px 4px;
+		/* 1/4 to 1/3 of whatever row it's placed in - Lyrics
+		   doesn't need more than that to be readable, and the
+		   point of this design is giving that extra width
+		   back to whatever it sits beside (NotesPanel) rather
+		   than Lyrics claiming a full-width row for one line.
+		   Actual width is set by the flex basis Index.svelte
+		   gives this panel's wrapper, not here - this is the
+		   internal scroll boundary once that width is decided. */
+		max-height: 70vh;
+		overflow-y: auto;
 	}
 
 	.lyrics-toggles {
@@ -228,6 +273,15 @@
 	.sentence {
 		font-size: 20px;
 		margin: 4px 0;
+	}
+	.sentence:not(.current) {
+		/* Smaller than the current line, but full-strength
+		   colour - no opacity fade. The current line already
+		   stands out on its own (bigger text, plus the sung
+		   words turning green as they're reached), so a faded
+		   "coming up" line was just harder to read for no
+		   real gain in emphasis. */
+		font-size: 15px;
 	}
 	.word-unit {
 		display: inline-flex;
@@ -260,13 +314,21 @@
 		opacity: 0.5;
 		margin: 4px 0 2px;
 	}
-	.lead-in-line.next {
+	.lead-in-line.plain {
 		font-size: 11px;
-		opacity: 0.3;
 	}
-	.sentence.next {
-		font-size: 16px;
-		opacity: 0.4;
+	.lyrics-list {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+	.lyrics-line {
+		/* No fixed width, no nowrap - the whole point of the
+		   column being narrow is that a long line WRAPS
+		   across several rows rather than being clipped or
+		   scrolled past sideways. */
+		margin: 0;
+		overflow-wrap: break-word;
 	}
 	.sentence-word {
 		color: var(--body-text-color-subdued);

@@ -94,16 +94,16 @@
 
 <style>
 	.mix-button {
+		/* Sized to sit inline in the header row alongside
+		   Transport and PanelToggles - it lived beside a
+		   full-height Lyrics panel before, which called for
+		   a squarer 52px button; now it is one control among
+		   several text-sized ones. */
 		font: inherit;
 		display: flex;
-		flex-direction: column;
 		align-items: center;
-		justify-content: center;
-		gap: 2px;
-		width: 52px;
-		height: 52px;
-		align-self: flex-start;
-		padding: 6px 4px;
+		gap: 4px;
+		padding: 5px 10px;
 		border: 1px solid var(--border-color-primary);
 		border-radius: 8px;
 		background: var(--background-fill-primary);
