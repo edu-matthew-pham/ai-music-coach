@@ -388,6 +388,24 @@ def make_note(pitch, beats, bpm=120, sample_rate=8000):
 
     A rest is silence of the same length, so a line of
     music keeps its shape whether or not it is sounding.
+
+    Plain sine, on purpose. A richer version (several
+    harmonics, a sustain envelope, tanh soft-clipping to
+    stay safe without a fixed divisor) was built and pulled
+    back out: real, and it did sound better, but it turned
+    out to cost about 4.5x the compute on its own, on top of
+    another ~5.5x from the sample-rate increase tried
+    alongside it - together a real, measured 25x slower
+    Generate Playback (0.9s to 22.5s on the whole Wellerman
+    fixture), which is too much to spend on this specific
+    lever. The cost lives in this being a plain per-sample
+    Python loop, not in the harmonic idea itself - a
+    numpy-vectorised version of the same richness would
+    likely have recovered most of that, unexplored so far.
+    Real sampled instrument audio is the better long-term
+    answer regardless (see the parked-proposal note); this
+    was the cheap synthesis-only attempt at closing the gap
+    before that, and it wasn't cheap enough.
     """
 
     sound = []
@@ -436,6 +454,18 @@ def make_melody(
 ):
     """
     Join a sequence of notes together to make a melody.
+
+    Padded or trimmed to the exact same total length every
+    other layer computes directly from the piece's whole
+    duration (make_accompaniment, add_metronome) - summing
+    each note's own separately-rounded length instead drifts
+    from that single calculation by up to a sample per note,
+    which stayed invisible at a coarser sample rate and
+    became a real mismatch between layers once it did not
+    (caught directly, not assumed: the Wellerman fixture's
+    Chords layer landed 152 samples ahead of Melody's own at
+    44100Hz, the two having always been computed two
+    different ways and only coincidentally agreeing before).
     """
 
     melody = []
@@ -449,6 +479,17 @@ def make_melody(
         )
 
         melody.extend(note_sound)
+
+    seconds_per_beat = 60 / bpm
+    total_samples = int(
+        sum(durations) * seconds_per_beat * sample_rate
+    )
+
+    if len(melody) < total_samples:
+        melody.extend([0.0] * (total_samples - len(melody)))
+
+    elif len(melody) > total_samples:
+        melody = melody[:total_samples]
 
     return sample_rate, melody
 
