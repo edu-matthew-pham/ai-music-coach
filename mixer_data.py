@@ -353,7 +353,10 @@ def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,
     reads from what is here.
     """
 
-    from music import selected_piece, harmony_line, bass_line
+    from music import (
+        selected_piece, harmony_line, bass_line, mark_unsung_holds,
+        UNSUNG_HOLD
+    )
     from notes import note_to_midi, is_rest
 
     piece = selected_piece(
@@ -363,17 +366,43 @@ def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,
 
     per_beat = 60.0 / float(bpm)
 
-    def walk(pitches, durations, colour, layer, words=None):
+    # A held note only reads as real singing if the run
+    # around it is short - a genuine melisma. A longer run
+    # is an unlyriced gap, almost always instrumental, and
+    # is marked "*" rather than "_" so harmony and bass (built
+    # for accompanying the sung line) can leave those spots
+    # out, and so a person can correct the guess by hand,
+    # same as any other lyric text.
+    marked_lyrics = mark_unsung_holds(piece.lyrics) if piece.lyrics else piece.lyrics
+    marked_words = marked_lyrics.split() if marked_lyrics else None
+
+    # Which sung notes are unconfirmed, by position among the
+    # sung notes only (rests never reach this list at all) -
+    # harmony_line and bass_line preserve rests at the same
+    # positions piece.pitches has them, so this same,
+    # position-matched list applies unchanged to their output
+    # too.
+    unsung = (
+        [word == UNSUNG_HOLD for word in marked_words]
+        if marked_words is not None else None
+    )
+
+    def walk(pitches, durations, colour, layer, words=None, skip=None):
 
         notes = []
         position = 0.0
-        word_at = 0
+        note_index = 0
 
         for pitch, length in zip(pitches, durations):
 
             length = float(length)
 
             if is_rest(pitch):
+                position += length
+                continue
+
+            if skip is not None and note_index < len(skip) and skip[note_index]:
+                note_index += 1
                 position += length
                 continue
 
@@ -385,20 +414,24 @@ def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,
                 "colour": colour
             }
 
-            if words is not None and word_at < len(words):
-                entry["word"] = words[word_at]
-                word_at += 1
+            if words is not None and note_index < len(words):
+                entry["word"] = words[note_index]
 
             notes.append(entry)
+            note_index += 1
             position += length
 
         return notes
 
     all_notes = []
 
+    # The Melody layer always shows every note - nothing is
+    # ever hidden from view or from editing. Only its word
+    # label changes, "*" instead of "_", which is the guess
+    # itself, sitting where it can be corrected.
     all_notes += walk(
         piece.pitches, piece.durations, LAYER_COLOURS["Melody"],
-        "Melody", words=piece.lyrics.split() if piece.lyrics else None
+        "Melody", words=marked_words
     )
 
     for name, steps in (("Harmony above", 2), ("Harmony below", -2)):
@@ -408,8 +441,14 @@ def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,
             steps=steps, style=harmony_style, chart_text=piece.chart
         )
 
+        # harmony_line still computes a note for every
+        # position, unsung ones included - full information,
+        # nothing hidden from the calculation itself. Only
+        # the unsung positions are left out of what actually
+        # reaches the mixer.
         all_notes += walk(
-            harmony, piece.durations, LAYER_COLOURS[name], name
+            harmony, piece.durations, LAYER_COLOURS[name], name,
+            skip=unsung
         )
 
     if piece.chart and piece.chart.strip():
@@ -417,7 +456,8 @@ def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,
         bass = bass_line(piece.pitches, piece.durations, piece.chart)
 
         all_notes += walk(
-            bass, piece.durations, LAYER_COLOURS["Bass"], "Bass"
+            bass, piece.durations, LAYER_COLOURS["Bass"], "Bass",
+            skip=unsung
         )
 
     return all_notes

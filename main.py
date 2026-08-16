@@ -337,65 +337,24 @@ with gr.Blocks(
                         visible=False
                     )
 
-                with gr.Row():
-
-                    key_input = gr.Dropdown(
-                        key_choices(),
-                        value="C",
-                        label="Key",
-                        allow_custom_value=True,
-                        info="A key signature belongs to a major key "
-                             "and its relative minor equally. Notes "
-                             "outside it are harmonised at the "
-                             "nearest scale note. A piece that "
-                             "genuinely changes key partway through "
-                             "shows as \"G, Ab from beat 156\" - "
-                             "typed by hand, or filled in "
-                             "automatically on import."
-                    )
-
-                    bpm_input = gr.Number(
-                        value=120,
-                        label="BPM"
-                    )
+                key_input = gr.Dropdown(
+                    key_choices(),
+                    value="C",
+                    label="Key",
+                    allow_custom_value=True,
+                    info="A key signature belongs to a major key "
+                         "and its relative minor equally. Notes "
+                         "outside it are harmonised at the "
+                         "nearest scale note. A piece that "
+                         "genuinely changes key partway through "
+                         "shows as \"G, Ab from beat 156\" - "
+                         "typed by hand, or filled in "
+                         "automatically on import."
+                )
 
                 detect_key_button = gr.Button(
                     "Detect key"
                 )
-
-                # Transposing sits beside the key because it is
-                # the other half of the same question: the key
-                # box says how the music is written, this says
-                # how high it sits. Changing the key respells;
-                # transposing moves the sound.
-                with gr.Row():
-
-                    transpose_target = gr.Dropdown(
-                        key_choices(),
-                        value="C",
-                        label="Transpose to",
-                        allow_custom_value=True,
-                        info="Moves the notes, the key and the "
-                             "chords together, by the shortest "
-                             "way round."
-                    )
-
-                    transpose_button = gr.Button(
-                        "Transpose",
-                        size="sm"
-                    )
-
-                    octave_down_button = gr.Button(
-                        "Octave down",
-                        size="sm"
-                    )
-
-                    octave_up_button = gr.Button(
-                        "Octave up",
-                        size="sm"
-                    )
-
-                transpose_feedback = gr.Markdown()
 
                 key_report = gr.Textbox(
                     label="Key",
@@ -455,6 +414,53 @@ with gr.Blocks(
         with gr.Column(elem_id="playback"):
 
             gr.Markdown("## Playback")
+
+            # Tempo and transpose both change what actually
+            # sounds, not just how the music is written - the
+            # key box respells without touching the sound
+            # (DESIGN.md invariant 4), but these two do the
+            # opposite. Playback is built once, when the button
+            # below is pressed, from whatever is in these boxes
+            # at that moment - changing either afterwards has no
+            # effect until Generate Playback runs again. They
+            # used to sit up in Arrange, beside the boxes they
+            # edit; moved down here so that relationship is
+            # visible rather than assumed.
+            with gr.Row():
+
+                bpm_input = gr.Number(
+                    value=120,
+                    label="BPM"
+                )
+
+                transpose_target = gr.Dropdown(
+                    key_choices(),
+                    value="C",
+                    label="Transpose to",
+                    allow_custom_value=True,
+                    info="Moves the notes, the key and the "
+                         "chords together, by the shortest "
+                         "way round."
+                )
+
+            with gr.Row():
+
+                transpose_button = gr.Button(
+                    "Transpose",
+                    size="sm"
+                )
+
+                octave_down_button = gr.Button(
+                    "Octave down",
+                    size="sm"
+                )
+
+                octave_up_button = gr.Button(
+                    "Octave up",
+                    size="sm"
+                )
+
+            transpose_feedback = gr.Markdown()
 
             gr.Markdown(
                 "The parts sent separately and mixed in "

@@ -445,6 +445,111 @@ def read_lyrics(lyric_text, note_count):
     return syllables
 
 
+# The same marker read_lyrics/lyric_line_breaks already use
+# for a held note - matched here by value rather than a
+# shared import, the same way PHRASE_REST is defined
+# separately in midi_import.py and musicxml_import.py rather
+# than centralised for one literal.
+HELD_SYLLABLE = "_"
+
+# What an unconfirmed hold is marked as - visually distinct
+# from both "_" (held, confirmed) and "-" (word continues),
+# and not a character that would plausibly appear in real
+# sung lyric text.
+UNSUNG_HOLD = "*"
+
+# A held note ("_") only reads as real singing if the run of
+# them around it is short - a genuine melisma, checked
+# against every real example this app has been tested
+# against, never ran past 2 held notes in a row. A run past
+# this is something else: an instrumental passage with no
+# singing at all, which also shows up as a string of held
+# notes, since every non-rest note needs some token.
+# Deliberately generous - set with margin above the real
+# ceiling, not tuned to a razor's edge, because the only
+# failure mode of guessing too high is still treating a few
+# instrumental notes as sung, same as today's baseline
+# before this existed. Guessing too low would wrongly mark
+# real singing as not sung, which this stays well clear of.
+MAX_MELISMA_RUN = 3
+
+
+def mark_unsung_holds(lyric_text, max_run=MAX_MELISMA_RUN):
+    """
+    Tell a real held note apart from an unlyriced gap.
+
+    "_" already means two different things: a syllable
+    genuinely held from the word before it, and a note with
+    no lyric signal at all - most often an instrumental
+    passage, which gets the same token because every sung
+    note needs one. A run of "_" longer than a real melisma
+    ever runs is marked "*" instead - still no word, but now
+    saying plainly that nothing here is confirmed sung.
+
+    This is a guess, not a fact the file states, and it is
+    demoted the same way every other guess in this app is:
+    written into the lyrics box where a keystroke corrects
+    it, swapping "*" back to "_" or the reverse. Nothing
+    downstream re-derives this after the box is edited - the
+    box is what it says, same as lyric text always is.
+
+    A run is judged as a whole, not truncated - nine
+    consecutive held notes are marked "*" together, not the
+    first three kept and the rest dropped. There is no
+    principled place to cut a long run in half, and judging
+    the whole run at once never wrongly excludes real
+    singing part-way through an unusually long but genuine
+    melisma.
+
+    Line breaks (phrases) do not interrupt a run - a held
+    stretch that happens to straddle a phrase boundary is
+    still one run, counted on the notes alone.
+
+    Only "_" tokens are ever touched. A real word, and the
+    line structure itself, come back unchanged.
+    """
+
+    if not lyric_text:
+        return lyric_text
+
+    lines = lyric_text.split("\n")
+
+    tokens = []
+    owning_line = []
+
+    for line_index, line in enumerate(lines):
+        for token in line.split():
+            tokens.append(token)
+            owning_line.append(line_index)
+
+    marked = list(tokens)
+
+    run_start = None
+
+    for position in range(len(tokens) + 1):
+
+        held = position < len(tokens) and tokens[position] == HELD_SYLLABLE
+
+        if held and run_start is None:
+            run_start = position
+
+        elif not held and run_start is not None:
+
+            if position - run_start > max_run:
+
+                for held_position in range(run_start, position):
+                    marked[held_position] = UNSUNG_HOLD
+
+            run_start = None
+
+    rebuilt_lines = [[] for _ in lines]
+
+    for token, line_index in zip(marked, owning_line):
+        rebuilt_lines[line_index].append(token)
+
+    return "\n".join(" ".join(line) for line in rebuilt_lines)
+
+
 def read_music(pitch_text, duration_text):
     """
     Turn textbox input into Python lists.
