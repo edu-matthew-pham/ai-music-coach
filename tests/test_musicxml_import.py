@@ -720,3 +720,131 @@ def test_mulan_no_longer_splits_a_sentence_at_every_short_breath():
         and line.rstrip().endswith("sons")
         for line in lines
     )
+
+
+# The time-based leniency filter on top of the words-first
+# rule: a bare capital opening a very short phrase (real
+# singing seconds, not bars or notes - see
+# _drop_short_lyric_breaks for why) is folded back into
+# whatever came before it instead of standing alone. A
+# break backed by a real full stop is never touched here,
+# whatever its length.
+
+def test_a_lone_capitalised_word_folds_into_the_previous_phrase():
+    """
+    Direct regression pin for the real bug: "Huns." on its
+    own used to survive as a whole phrase because it starts
+    with a capital, even though it plainly belongs with the
+    line before it.
+    """
+
+    from musicxml_import import _drop_short_lyric_breaks
+
+    syllables = [
+        "Let's", "de- feat", "the", "Huns.",
+        "Did", "they", "come."
+    ]
+
+    # Beats per note: each note lasts one beat, bpm 114 (the
+    # real tempo Mulan imports at) - "Huns." alone is one
+    # beat, well under the one-second floor at that tempo.
+    sung_spans = [(i, 1.0) for i in range(len(syllables))]
+
+    breaks = {3, 4}  # opens "Huns." and opens "Did they come."
+
+    kept = _drop_short_lyric_breaks(breaks, syllables, sung_spans, 114)
+
+    assert kept == {4}
+
+
+def test_a_full_stop_backed_break_is_never_dropped_however_short():
+    """
+    The strong signal is never second-guessed by length - a
+    real short sentence ("Sur- vive.") must survive even at
+    a tempo that makes it last under a second.
+    """
+
+    from musicxml_import import _drop_short_lyric_breaks
+
+    syllables = ["You", "must", "not", "fail.", "Sur- vive."]
+
+    sung_spans = [(i, 1.0) for i in range(len(syllables))]
+
+    breaks = {4}  # opens "Sur- vive.", following a full stop
+
+    # A fast tempo where one beat is well under the floor.
+    kept = _drop_short_lyric_breaks(breaks, syllables, sung_spans, 600)
+
+    assert kept == {4}
+
+
+def test_a_short_capital_break_at_a_generous_tempo_is_kept():
+    """
+    The filter is about real singing time, not the words
+    alone - the same short capitalised phrase that gets
+    folded at a fast tempo must survive at a slow one, since
+    it then genuinely takes long enough to be worth keeping
+    as its own line.
+    """
+
+    from musicxml_import import _drop_short_lyric_breaks
+
+    syllables = ["Let's", "de- feat", "the", "Huns."]
+
+    sung_spans = [(i, 1.0) for i in range(len(syllables))]
+
+    breaks = {3}
+
+    # A very slow tempo: one beat alone clears the floor.
+    kept = _drop_short_lyric_breaks(breaks, syllables, sung_spans, 30)
+
+    assert kept == {3}
+
+
+def test_mulan_huns_now_reads_as_one_line_with_what_precedes_it():
+    """
+    Real fixture regression: "Huns." used to be its own
+    one-word line. It now reads with the sentence it
+    belongs to.
+    """
+
+    path = os.path.join(
+        os.path.dirname(__file__), "fixtures", "musicxml",
+        "mulan-ill-make-a-man-out-of-you.mxl"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the Mulan fixture is absent")
+
+    from musicxml_import import import_musicxml
+
+    pitches, durations, lyrics, bpm, feedback, chart, poly, key = (
+        import_musicxml(path, "0")
+    )
+
+    lines = lyrics.split("\n")
+
+    assert "Huns." not in lines
+    assert any(line.endswith("Huns.") for line in lines)
+
+
+def test_o_holy_night_still_keeps_its_own_real_short_lines():
+    """
+    Real fixture regression, the other direction: the filter
+    must not fold genuine short phrases just because they
+    are short - "Christ was born" and "Sa- viour's birth"
+    are real, complete lines in this hymn and must survive
+    exactly as before.
+    """
+
+    if not present():
+        pytest.skip("the O Holy Night fixture is absent")
+
+    pitches, durations, lyrics, bpm, feedback, chart, poly, key = (
+        imported("1")
+    )
+
+    lines = lyrics.split("\n")
+
+    assert "Christ was born" in lines
+    assert "Sa- viour's birth" in lines

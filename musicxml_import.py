@@ -185,6 +185,94 @@ def _lyric_phrase_breaks(syllables):
 
     return breaks
 
+
+# How long, in real singing seconds, a bare-capital break
+# needs to hold up before it's trusted on its own.
+#
+# Seconds, not bars or notes: both of those were tried
+# first and both failed on this app's own real fixtures,
+# for the same underlying reason - a slow hymn's real
+# phrases and a fast song's real phrases occupy different
+# numbers of bars and notes for the same actual singing
+# time, so a threshold in either unit that suits one tempo
+# wrongly eats real short phrases at another. Measured
+# directly in seconds, O Holy Night's genuine short lines
+# ("Christ was born" 3.4s, "Sa- viour's birth" 2.6s, "See
+# right through me." 1.3s, "Sur- vive." 1.6s) sit clearly
+# above Mulan's and O Holy Night's own real false positives
+# ("Huns." 0.8s, "O" 0.9s, "Ho- ly" 0.9s) - a real gap, not
+# a razor's edge, checked against both files at once.
+#
+# Only applied to a bare-capital break. A break the words
+# themselves close with a full stop is never second-guessed
+# by length - that is the strong signal, and this filter
+# exists only to catch the weak one leaning on it too hard.
+MINIMUM_LYRIC_PHRASE_SECONDS = 1.0
+
+
+def _previous_real_word(syllables, before):
+    """
+    The nearest real syllable before a position, skipping
+    the held-note marker - a break can land right after a
+    melisma, and the word that matters for punctuation is
+    whichever one was actually spoken, not the notes
+    silently continuing it.
+    """
+
+    for position in range(before - 1, -1, -1):
+
+        if syllables[position] not in (None, "", "_"):
+            return syllables[position]
+
+    return None
+
+
+def _drop_short_lyric_breaks(breaks, syllables, sung_spans, bpm):
+    """
+    Don't trust a bare-capital break that would open a very
+    short phrase, measured in real singing time.
+
+    Errs toward merging on purpose: a phrase folded in that
+    should have stood alone costs one Enter to split back
+    apart, at the exact point wanted. A phrase cut too
+    early costs finding and removing the right line break
+    among several short ones - editing is meant to be about
+    placing the splits that are wanted, not undoing ones
+    that weren't.
+    """
+
+    if not breaks or not sung_spans or not bpm:
+        return breaks
+
+    ordered = sorted(breaks)
+    kept = set()
+
+    for position, start in enumerate(ordered):
+
+        previous_word = _previous_real_word(syllables, start)
+
+        # Strong evidence - a real full stop - is never
+        # second-guessed by how long the phrase runs.
+        if previous_word is not None and _ends_sentence(previous_word):
+            kept.add(start)
+            continue
+
+        end = (
+            ordered[position + 1] if position + 1 < len(ordered)
+            else len(sung_spans)
+        )
+
+        phrase_start = sung_spans[start][0]
+        last_beat, last_length = sung_spans[end - 1]
+        phrase_beats = last_beat + last_length - phrase_start
+
+        seconds = phrase_beats / bpm * 60
+
+        if seconds >= MINIMUM_LYRIC_PHRASE_SECONDS:
+            kept.add(start)
+
+    return kept
+
 # How long a rest may be before it is written as bars of
 # rest instead. Invariant 9: a singer counting through an
 # instrumental counts bars.
@@ -1098,6 +1186,7 @@ def import_musicxml(path, part_label=None, verse=1):
     durations = []
     pitch_beats = []
     syllables = []
+    sung_spans = []
 
     sung = 0
     position = 0.0
@@ -1125,6 +1214,7 @@ def import_musicxml(path, part_label=None, verse=1):
         pitches.append(number)
         durations.append(length)
         pitch_beats.append(position)
+        sung_spans.append((position, float(length)))
         position += float(length)
 
         word = _syllable(item, verse)
@@ -1292,6 +1382,16 @@ def import_musicxml(path, part_label=None, verse=1):
                 continue
 
             spoken += 1
+
+    else:
+
+        # Only the words' own weaker signal (a bare capital,
+        # with no full stop backing it) gets second-guessed
+        # here - see _drop_short_lyric_breaks for why seconds
+        # rather than bars or notes.
+        breaks = _drop_short_lyric_breaks(
+            breaks, syllables, sung_spans, bpm
+        )
 
     if breaks:
 
