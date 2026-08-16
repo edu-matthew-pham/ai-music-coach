@@ -53,15 +53,11 @@ LABEL_COLOUR = "#555555"
 STRING_TUNINGS = {
     "Guitar": ["E2", "A2", "D3", "G3", "B3", "E4"],
 
-    # Standard re-entrant tuning: the G string is not the
-    # lowest pitch (it sits between C and E), so this list is
-    # not pitch-ordered the way the guitar's is - it is
-    # physical string order instead, chosen so the shared
-    # drawing code's reversed() places G at the top and A at
-    # the bottom, the standard way a ukulele chart is drawn.
-    # Nothing downstream needs the list to be pitch-sorted;
-    # the drawing only ever uses list order for placement.
-    "Ukulele": ["A4", "E4", "C4", "G4"],
+    # Re-entrant tuning, stored string-1-first the same way
+    # guitar's list is - so both instruments' reversed()-based
+    # row layout puts string 1 on top and the highest string
+    # number on bottom, one consistent rule instead of two.
+    "Ukulele": ["G4", "C4", "E4", "A4"],
 }
 
 # The violin's strings, lowest first, and where each hand
@@ -1776,16 +1772,10 @@ def guitar_shape_frets_higher(root, quality):
 
 
 # Standard ukulele chord shapes, fret per string in tuning
-# order (matching STRING_TUNINGS["Ukulele"]: A, E, C, G) -
-# not the G/C/E/A order a chart displays them in, which is
-# the reverse. Getting this backwards would silently swap
-# which string each fret lands on, since the drawing code
-# below indexes this list the same way it indexes guitar's -
-# by tuning order, not display order - and ukulele's tuning
-# list is deliberately not in display order to begin with
-# (chosen so the shared reversed()-based layout puts G at
-# the top and A at the bottom, the standard way a ukulele
-# chart is drawn).
+# order (matching STRING_TUNINGS["Ukulele"]: G, C, E, A) -
+# now the same order the reversed()-based drawing code puts
+# on the chart too (string 1 on top, string 4 on bottom),
+# the same convention guitar's own table already follows.
 #
 # Ukulele is not a transposed guitar - a different tuning
 # means genuinely different shapes, not the same fingering
@@ -1805,20 +1795,20 @@ def guitar_shape_frets_higher(root, quality):
 # standard practice, not just correct, matters here, and
 # that confidence runs out at the accidentals.
 UKULELE_SHAPES = {
-    ("C", ""): [3, 0, 0, 0],
-    ("D", ""): [0, 2, 2, 2],
-    ("E", ""): [2, 4, 4, 4],
-    ("F", ""): [0, 1, 0, 2],
-    ("G", ""): [2, 3, 2, 0],
-    ("A", ""): [0, 0, 1, 2],
-    ("B", ""): [2, 2, 3, 4],
-    ("C", "m"): [3, 3, 3, 0],
-    ("D", "m"): [0, 1, 2, 2],
-    ("E", "m"): [2, 3, 4, 0],
-    ("F", "m"): [3, 1, 0, 1],
-    ("G", "m"): [1, 3, 2, 0],
-    ("A", "m"): [0, 0, 0, 2],
-    ("B", "m"): [2, 2, 2, 4],
+    ("C", ""): [0, 0, 0, 3],
+    ("D", ""): [2, 2, 2, 0],
+    ("E", ""): [4, 4, 4, 2],
+    ("F", ""): [2, 0, 1, 0],
+    ("G", ""): [0, 2, 3, 2],
+    ("A", ""): [2, 1, 0, 0],
+    ("B", ""): [4, 3, 2, 2],
+    ("C", "m"): [0, 3, 3, 3],
+    ("D", "m"): [2, 2, 1, 0],
+    ("E", "m"): [0, 4, 3, 2],
+    ("F", "m"): [1, 0, 1, 3],
+    ("G", "m"): [0, 2, 3, 1],
+    ("A", "m"): [2, 0, 0, 0],
+    ("B", "m"): [4, 2, 2, 2],
     # The five accidental roots, added after Bb was reported
     # missing and it turned out the right fix wasn't a
     # computed fallback (see BUILDNOTES.md) but real
@@ -1832,45 +1822,37 @@ UKULELE_SHAPES = {
     # a muted string, which this table's plain fret-per-string
     # format has no way to express. Given a genuine choice
     # here, a fully-fretted, chord-tone-correct shape
-    # ([4,4,4,6], the B-minor closed shape slid up two frets)
+    # ([6,4,4,4], the B-minor closed shape slid up two frets)
     # was kept instead of quietly quoting a shape this format
     # can't actually represent. Muted-string support would be
     # a real change to the finger-assignment and drawing code,
     # not a table edit - flagged, not built here.
-    ("Db", ""): [4, 1, 1, 1],
-    ("Db", "m"): [4, 4, 4, 6],
-    ("Eb", ""): [1, 3, 3, 3],
-    ("Eb", "m"): [1, 2, 3, 3],
-    ("Gb", ""): [1, 2, 1, 3],
-    ("Gb", "m"): [0, 2, 1, 2],
-    ("Ab", ""): [3, 4, 3, 5],
-    ("Ab", "m"): [2, 4, 3, 4],
-    ("Bb", ""): [1, 1, 2, 3],
-    ("Bb", "m"): [1, 1, 1, 3],
+    ("Db", ""): [1, 1, 1, 4],
+    ("Db", "m"): [6, 4, 4, 4],
+    ("Eb", ""): [3, 3, 3, 1],
+    ("Eb", "m"): [3, 3, 2, 1],
+    ("Gb", ""): [3, 1, 2, 1],
+    ("Gb", "m"): [2, 1, 2, 0],
+    ("Ab", ""): [5, 3, 4, 3],
+    ("Ab", "m"): [4, 3, 4, 2],
+    ("Bb", ""): [3, 2, 1, 1],
+    ("Bb", "m"): [3, 1, 1, 1],
 }
 
 
-# B and Bm are ukulele's only fully closed shapes in
-# UKULELE_SHAPES - no open strings - which means they can be
-# slid by a constant number of frets to land on any other
-# root, the same idea as a guitar barre, just with no actual
-# barre finger needed since ukulele only has four strings.
-# Used below for the "higher position" (second hand shape)
-# feature only - every root's own PRIMARY shape is now a real,
-# hand-verified fingering in UKULELE_SHAPES above, not a
-# computed slide of this anchor. An earlier version of this
-# file used the same slide to fill in the primary table's
-# gaps (Db, Eb, Gb, Ab, Bb); real reference fingerings turned
-# out to be lower and more idiomatic than what the slide
-# produced (Gb, for one, has a genuine 1-2-1-3 shape at frets
-# 1-3, not the slide's fret 9-11 barre) - see BUILDNOTES.md.
-_UKULELE_CLOSED_ANCHOR = {"": [2, 2, 3, 4], "m": [2, 2, 2, 4]}
+# Open pitch class of each ukulele string, in the same tuning
+# order as UKULELE_SHAPES itself - used only to verify a
+# shifted higher-position shape actually plays the chord it
+# claims to, the same way every primary shape was checked.
+_UKULELE_OPEN_PITCH_CLASSES = [
+    NOTE_SEMITONES[note[:-1]] % 12 for note in STRING_TUNINGS["Ukulele"]
+]
 
 
 def ukulele_shape_frets(root, quality):
     """
     The standard shape for one chord on ukulele: (fret,
-    finger) per string in tuning order (A, E, C, G) - None
+    finger) per string in tuning order (G, C, E, A) - None
     for a quality this table does not cover. Every root of
     every quality this app supports (major, minor) now has a
     real, hand-verified entry.
@@ -1911,49 +1893,116 @@ def ukulele_shape_frets(root, quality):
     return result, barre_fret
 
 
-# Only the roots whose shifted shape lands within ukulele's
-# own 10-fret full range, and excluding B/Bm itself (shift 0
-# - that root IS the anchor shape already, nothing "higher"
-# to show). G and A need frets 12 and 14, past where a
-# soprano neck is comfortably playable at all - not a
-# limitation to raise the fret count for, since there is no
-# realistic melody position up there for the chord shape to
-# serve. C and Cm are kept despite the higher shape's lowest
-# fret landing on the primary shape's own fret - overlap is
-# not a defect here, it is exactly what the dual-colour mark
-# exists to show honestly.
-_UKULELE_HIGHER_ROOTS = {"C", "D", "E", "F"}
+# Every closed shape in UKULELE_SHAPES (no open strings) is
+# usable as an anchor for a second position, not just B/Bm -
+# several of the accidental roots turned out to be closed
+# shapes too once real fingerings replaced the earlier guess.
+# Built from the table itself so a future shape addition
+# automatically becomes available as an anchor, rather than
+# needing to be listed here by hand.
+_UKULELE_CLOSED_SHAPES = {
+    (root, quality): frets
+    for (root, quality), frets in UKULELE_SHAPES.items()
+    if all(fret > 0 for fret in frets)
+}
+
+# How far up a soprano neck a shifted closed shape is worth
+# reaching at all - past this, no realistic melody position
+# exists up there for the chord shape to serve. Shared so a
+# candidate is never even considered past this point, not
+# just filtered out after the fact.
+_UKULELE_HIGHER_FRET_CEILING = 10
+
+# Same "genuinely two different hand shapes, never adjacent
+# or redundant" rule guitar's own E-shape/A-shape gap already
+# holds itself to - guitar's gap is checked at least 3 frets
+# across all 48 root/quality combinations, and the same
+# number is used here rather than a smaller one invented for
+# ukulele specifically. Some chords end up with no second
+# position at all as a result (Ab major; B, Db, Gb, G, Ab
+# minor) - accepted the same way guitar accepts it, rather
+# than loosening the rule until every root gets one.
+_UKULELE_HIGHER_MIN_GAP = 3
 
 
 def ukulele_shape_frets_higher(root, quality):
     """
-    The second hand position for one ukulele chord: the B or
-    Bm closed shape, shifted up the neck to this root. None
-    for any root/quality this app has not verified fits the
-    instrument's real playable range (see
-    _UKULELE_HIGHER_ROOTS) or for a quality with no closed
-    anchor shape to shift.
+    A genuine second hand position for one ukulele chord: the
+    closed shape (from _UKULELE_CLOSED_SHAPES) that, once slid
+    to this root, lands lowest on the neck while still
+    clearing _UKULELE_HIGHER_MIN_GAP frets above the primary
+    shape's own highest fret and staying within
+    _UKULELE_HIGHER_FRET_CEILING - the same "whichever position
+    is lower" rule guitar_shape_frets already uses choosing
+    between its E-shape and A-shape template, generalised to
+    however many closed anchors happen to exist rather than
+    just the original two (B and Bm).
+
+    None where nothing reaches with a genuine gap - not every
+    chord gets a second position, the same as guitar. Verified
+    against chord_semitones for every candidate actually
+    returned, not assumed correct from the shift arithmetic
+    alone.
     """
 
-    if root not in _UKULELE_HIGHER_ROOTS:
+    primary = UKULELE_SHAPES.get((root, quality))
+
+    if primary is None:
         return None
 
-    if quality not in _UKULELE_CLOSED_ANCHOR:
+    from chords import chord_semitones
+
+    target_tones = set(pitch % 12 for pitch in chord_semitones(root + quality))
+    primary_max = max(primary)
+    best = None
+
+    for (anchor_root, anchor_quality), shape in _UKULELE_CLOSED_SHAPES.items():
+
+        if anchor_quality != quality:
+            continue
+        if (anchor_root, anchor_quality) == (root, quality):
+            continue
+
+        base_shift = (NOTE_SEMITONES[root] - NOTE_SEMITONES[anchor_root]) % 12
+
+        for shift in (base_shift, base_shift - 12):
+            frets = [fret + shift for fret in shape]
+
+            if min(frets) < 0 or max(frets) > _UKULELE_HIGHER_FRET_CEILING:
+                continue
+            if min(frets) - primary_max < _UKULELE_HIGHER_MIN_GAP:
+                continue
+            if best is not None and max(frets) >= max(best):
+                continue
+
+            actual = {
+                (open_pc + fret) % 12
+                for open_pc, fret in zip(_UKULELE_OPEN_PITCH_CLASSES, frets)
+            }
+            if actual != target_tones:
+                continue
+
+            best = frets
+
+    if best is None:
         return None
 
-    shift = (NOTE_SEMITONES[root] - NOTE_SEMITONES["B"]) % 12
-    frets = [fret + shift for fret in _UKULELE_CLOSED_ANCHOR[quality]]
-
+    fretted = [fret for fret in best if fret > 0]
     barre_fret = next(
-        (fret for fret in frets if frets.count(fret) > 1), None
+        (fret for fret in fretted if fretted.count(fret) > 1), None
     )
 
-    result = [
-        (fret, 1) if fret == barre_fret else (fret, None)
-        for fret in frets
-    ]
+    result = []
+    for fret in best:
+        if fret == 0:
+            result.append((0, None))
+        elif fret == barre_fret:
+            result.append((fret, 1))
+        else:
+            result.append((fret, None))
 
     return result, barre_fret
+
 
 
 def piano_shape_for(root, quality):

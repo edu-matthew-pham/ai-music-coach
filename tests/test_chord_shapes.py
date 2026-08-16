@@ -434,10 +434,10 @@ def test_a_violin_shape_uses_the_shared_shape_colour():
 # it plays - real evidence the fingering is correct, not
 # just documentation of what was typed in.
 UKULELE_KNOWN_SHAPES = {
-    ("C", ""): [3, 0, 0, 0],
-    ("D", ""): [0, 2, 2, 2],
-    ("G", ""): [2, 3, 2, 0],
-    ("A", "m"): [0, 0, 0, 2],
+    ("C", ""): [0, 0, 0, 3],
+    ("D", ""): [2, 2, 2, 0],
+    ("G", ""): [0, 2, 3, 2],
+    ("A", "m"): [2, 0, 0, 0],
 }
 
 
@@ -520,19 +520,21 @@ def test_a_ukulele_barre_is_finger_one_and_nothing_else_is_guessed():
             assert finger is None
 
 
-def test_ukulele_has_no_shape_for_an_accidental_root_or_odd_quality():
+def test_ukulele_has_no_shape_for_an_odd_quality_or_unlisted_spelling():
     """
-    Only the seven natural-note roots are covered, and only
-    major and minor - a gap here is more honest than a
-    fingering for a chord this table was never checked
-    against.
+    Every root/quality this app supports (major, minor) now
+    has a real shape, across both natural and accidental
+    roots - but the table is still a plain string lookup, not
+    an enharmonic one: only the spelling actually stored
+    ("Gb", not "F#") resolves, and a quality outside major/
+    minor was never covered at all.
     """
 
     from instrument_diagrams import ukulele_shape_frets
 
     assert ukulele_shape_frets("F#", "") is None
     assert ukulele_shape_frets("C", "maj7") is None
-    assert ukulele_shape_frets("Bb", "m") is None
+    assert ukulele_shape_frets("Bb", "m") is not None
 
 
 def test_a_ukulele_shape_stacks_on_the_same_structure():
@@ -595,10 +597,12 @@ def test_guitars_compact_fret_range_fits_every_shape():
 
 def test_ukuleles_own_range_is_smaller_than_guitars():
     """
-    Ukulele's shapes never pass fret 4, and its short scale
-    means a player is less likely to go far up the neck at
-    all - both its options are smaller than guitar's, not
-    guitar's own numbers reused out of habit.
+    Even with every accidental root added, ukulele's shapes
+    never pass fret 6 (Db minor, the one shape that had to
+    stand in for a real fingering needing a muted string) -
+    still comfortably smaller than guitar's own range, and
+    its short scale means a player is less likely to go far
+    up the neck at all regardless.
     """
 
     from instrument_diagrams import (
@@ -613,7 +617,7 @@ def test_ukuleles_own_range_is_smaller_than_guitars():
             if fret is not None:
                 max_fret = max(max_fret, fret)
 
-    assert max_fret == 4
+    assert max_fret == 6
 
     assert _frets_shown_for("Ukulele, 6 frets") == 6
     assert _frets_shown_for("Ukulele, 10 frets") == 10
@@ -621,61 +625,82 @@ def test_ukuleles_own_range_is_smaller_than_guitars():
     assert _frets_shown_for("Guitar, 13 frets") == 13
 
 
-def test_ukuleles_higher_position_covers_the_shifted_closed_shape():
+def test_ukuleles_higher_position_covers_every_root_it_claims_to():
     """
-    C, D, E and F (major and minor) shift the B/Bm closed
-    shape up the neck and land within ukulele's real 10-fret
-    range - checked against chord_semitones for the actual
-    tones and root, not just that a fret number exists.
+    Every root/quality ukulele_shape_frets_higher returns a
+    shape for lands within the instrument's real 10-fret
+    range, at least 3 frets above its own primary shape's
+    highest fret, and plays the chord it's named for - checked
+    against chord_semitones for the actual tones and root, not
+    just that a fret number exists. 17 of the 24 root/quality
+    combinations have one; the other 7 are covered by
+    test_ukuleles_higher_position_needs_a_genuine_gap.
     """
 
     from instrument_diagrams import (
-        ukulele_shape_frets_higher, NOTE_SEMITONES
+        ukulele_shape_frets, ukulele_shape_frets_higher, NOTE_SEMITONES
     )
     from chords import chord_semitones
-    import re
+
+    tuning = ["G4", "C4", "E4", "A4"]
 
     def semitone_for(note_name):
-        match = re.match(r"([A-G][#b]?)(\d)", note_name)
-        octave = int(match.group(2))
-        return NOTE_SEMITONES[match.group(1)] + 12 * (octave + 1)
+        letter = note_name[:-1]
+        octave = int(note_name[-1])
+        return NOTE_SEMITONES[letter] + 12 * (octave + 1)
 
-    tuning = ["A4", "E4", "C4", "G4"]
+    covered = 0
 
-    for root in ["C", "D", "E", "F"]:
+    for root in ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]:
         for quality in ["", "m"]:
 
             shaped = ukulele_shape_frets_higher(root, quality)
+            if shaped is None:
+                continue
+
+            covered += 1
+
             frets, _barre = shaped
 
             sounded = {
                 (semitone_for(open_note) + fret) % 12
-                for open_note, (fret, _finger)
-                in zip(tuning, frets)
+                for open_note, (fret, _finger) in zip(tuning, frets)
             }
             expected = {
-                semitone % 12
-                for semitone in chord_semitones(root + quality)
+                semitone % 12 for semitone in chord_semitones(root + quality)
             }
 
             assert sounded == expected
             assert (NOTE_SEMITONES[root] % 12) in sounded
             assert max(fret for fret, _ in frets) <= 10
 
+            primary, _barre = ukulele_shape_frets(root, quality)
+            primary_max = max(fret for fret, _ in primary)
+            assert min(fret for fret, _ in frets) - primary_max >= 3
 
-def test_ukuleles_higher_position_excludes_roots_out_of_range():
+    assert covered == 17
+
+
+def test_ukuleles_higher_position_needs_a_genuine_gap():
     """
-    G and A need frets 12 and 14 - past a soprano's
-    comfortably playable range - and B/Bm is the anchor shape
-    itself, with no shift to be "higher" than. None of the
-    three offer a higher position.
+    Not every chord gets a second position - the same
+    min-3-fret-gap rule guitar's own E-shape/A-shape choice
+    already holds itself to means some roots have nothing
+    that clears it within the instrument's real range. B and
+    Bm are two of the closed anchors themselves, so nothing
+    can shift onto them from elsewhere and still clear the
+    gap; the rest are cases where every candidate lands too
+    close to the primary shape to count as a genuinely
+    different hand position.
     """
 
     from instrument_diagrams import ukulele_shape_frets_higher
 
-    for root in ["G", "A", "B"]:
-        for quality in ["", "m"]:
-            assert ukulele_shape_frets_higher(root, quality) is None
+    for root, quality in [
+        ("B", ""), ("B", "m"), ("Ab", ""), ("Ab", "m"),
+        ("Db", "m"), ("Gb", "m"), ("G", "m"),
+    ]:
+        assert ukulele_shape_frets_higher(root, quality) is None
 
 
 def test_the_compact_view_never_draws_a_second_position():
@@ -727,23 +752,35 @@ def test_the_full_view_draws_both_positions():
     assert HIGHER_SHAPE_COLOUR in ukulele_full
 
 
-def test_a_shared_fret_draws_a_split_mark_not_two_dots():
+def test_a_shared_fret_would_draw_a_split_mark_not_two_dots():
     """
-    Ukulele C is the case the design docs specifically called
-    out: the higher position's lowest fret (3) coincides with
-    the primary shape's own fret (3) on the A string. This
-    should draw one split-coloured mark there, not two
-    overlapping single-colour dots.
+    The split-mark drawing logic (_split_fret_dot) is real and
+    load-bearing, but no ukulele chord can reach it anymore:
+    the min-3-fret-gap rule ukulele_shape_frets_higher now
+    holds itself to (see
+    test_ukuleles_higher_position_covers_the_shifted_closed_shape)
+    guarantees every fret in a higher position sits above
+    every fret in the primary shape, so no single string can
+    ever land on the same fret in both. That's a genuine
+    change from before this session - ukulele's own C major
+    used to be the documented example of an overlapping case,
+    kept deliberately; the gap rule that fixed several
+    too-close "second positions" removed that overlap too, as
+    a side effect of the same fix, not a separate choice.
+
+    Real coverage of the split mark itself now lives with
+    violin's Scale layer instead, which is structurally
+    different (a note is checked per pitch-class reachability
+    from each position, not per fret-per-string) and does
+    still guarantee overlap for every key - see
+    test_violin_both_positions_scale_shows_every_key_with_overlap
+    in test_instrument_diagrams.py.
     """
 
-    from instrument_diagrams import fretted_chord_shape_overlay
+    from instrument_diagrams import _split_fret_dot
 
-    svg = fretted_chord_shape_overlay(
-        "C", "C", instrument="Ukulele", frets_shown=10
-    )
+    svg = _split_fret_dot(100, 50, "#2e7d32", "#00838f")
 
-    # A split mark is drawn as two <path> arcs plus a plain
-    # ring <circle>; a same-string, same-fret coincidence
-    # with no split logic would instead draw two full
-    # <circle fill=...> dots stacked on the same spot.
     assert "<path" in svg
+    assert "#2e7d32" in svg
+    assert "#00838f" in svg
