@@ -1,18 +1,13 @@
 <script lang="ts">
-	import {
-		panels,
-		instrumentsBesideMixer,
-		sideBySideLayout
-	} from "./mixerPanels.svelte";
+	import { panels } from "./mixerPanels.svelte";
 
 	interface Props {
 		hasTimeline: boolean;
 		hasNotes: boolean;
 		hasDiagrams: boolean;
-		narrow?: boolean;
 	}
 
-	let { hasTimeline, hasNotes, hasDiagrams, narrow = false }: Props = $props();
+	let { hasTimeline, hasNotes, hasDiagrams }: Props = $props();
 </script>
 
 <div class="panel-toggles">
@@ -45,31 +40,14 @@
 			<input type="checkbox" bind:checked={panels.instruments} />
 			Instruments
 		</label>
-		<label class="panel-toggle">
-			<input type="checkbox" bind:checked={instrumentsBesideMixer.value} />
-			Beside mixer
-		</label>
-		{#if instrumentsBesideMixer.value}
-			<label class="panel-toggle" class:disabled={narrow}>
-				<input
-					type="checkbox"
-					checked={sideBySideLayout.value === "shrink"}
-					disabled={narrow}
-					onchange={(event) =>
-						(sideBySideLayout.value = event.currentTarget.checked
-							? "shrink"
-							: "wrap")}
-				/>
-				Shrink to fit
-			</label>
-		{/if}
 	{/if}
 </div>
 <style>
 	.panel-toggles {
 		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
 		gap: 14px;
-		margin-bottom: 8px;
 	}
 	.panel-toggle {
 		font-size: 12px;
@@ -78,10 +56,6 @@
 		align-items: center;
 		gap: 4px;
 		cursor: pointer;
-	}
-	.panel-toggle.disabled {
-		opacity: 0.5;
-		cursor: default;
 	}
 	.panel-toggle input[type="checkbox"] {
 		appearance: auto;

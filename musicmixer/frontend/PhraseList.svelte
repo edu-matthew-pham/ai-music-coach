@@ -29,6 +29,25 @@
 		phrases.find((phrase) => playhead >= phrase.start && playhead < phrase.end)
 	);
 
+	// One scrolling row rather than a wrapped block: the
+	// list is navigation, and two or three wrapped lines of
+	// it pushed everything below down the page for the sake
+	// of phrases that are not playing. Same follow-scroll
+	// ChordStrip already does for bars, keyed by index since
+	// phrases carry no id of their own.
+	let phraseElements: Record<number, HTMLElement> = {};
+
+	$effect(() => {
+		const index = currentPhrase ? phrases.indexOf(currentPhrase) : -1;
+		if (index >= 0 && phraseElements[index]) {
+			phraseElements[index].scrollIntoView({
+				behavior: "smooth",
+				inline: "center",
+				block: "nearest"
+			});
+		}
+	});
+
 	// A row of buttons wraps onto several lines on a phone,
 	// which reads as clutter rather than a list. The native
 	// picker below the width breakpoint gives the same choice
@@ -55,10 +74,11 @@
 		</select>
 	{:else}
 		<div class="phrase-list">
-			{#each phrases as phrase}
+			{#each phrases as phrase, index}
 				<button
 					type="button"
 					class="phrase"
+					bind:this={phraseElements[index]}
 					class:playing={currentPhrase === phrase}
 					class:looped={engine.loopFrom !== null &&
 						engine.loopTo !== null &&
@@ -82,9 +102,11 @@
 <style>
 	.phrase-list {
 		display: flex;
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
+		overflow-x: auto;
 		gap: 4px;
 		margin: 4px 0 8px;
+		padding-bottom: 2px;
 	}
 	.phrase {
 		font: inherit;

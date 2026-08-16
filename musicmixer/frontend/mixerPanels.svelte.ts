@@ -191,25 +191,43 @@ export const diagramLayers = $state({
 	chordShape: true
 });
 
-// Whether the instrument panel shows a dimmed preview of
-// the upcoming chord below the current one - the same idea
-// as the Notes panel's next-phrase preview, for seeing a
-// change coming before it arrives rather than reacting to
-// it after the fact.
-export const previewNextChord = $state({ value: false });
+// How many upcoming chords the instrument panel shows in a
+// row beneath each instrument's current chord - drawn
+// smaller than the current one, full opacity, chord name
+// under each. Replaces an earlier single "next chord"
+// preview that duplicated the whole diagram at full size
+// under a fade: a faded full-size copy read as broken, not
+// as a preview, and cost as much height as the real thing.
+// 0 turns the row off. Default 2: enough warning to move a
+// hand, without the row growing wider than the diagram
+// above it on the compact instruments.
+export const previewChordCount = $state<{ value: 0 | 1 | 2 | 3 }>({ value: 2 });
 
-// Whether the Instruments panel sits beside the Mixer
-// panel (a row) rather than stacked below it (the default,
-// same as every other panel). Only meaningful once both
-// are showing at once - a layout choice, not a visibility
-// one, so it lives separately from panels above.
-export const instrumentsBesideMixer = $state({ value: false });
+// Per-family display scale for the instrument diagrams,
+// a multiplier on the panel's base height (see
+// InstrumentPanel's BASE_HEIGHT). The panel already draws
+// every diagram at one fixed height and lets width follow
+// each instrument's own aspect ratio - this is that one
+// number, per instrument, in the player's hands: a guitar
+// read from a couch across a room can be dialled up without
+// the piano beside it moving. Keyed by family the same way
+// diagramInstruments is; ensureInstrumentScale seeds each
+// family at 1 the first time InstrumentPanel sees it.
+export const diagramScale: Record<string, number> = $state({});
 
-// How the side-by-side row behaves when the two panels
-// don't both fit: drop the Instruments panel to its own
-// line below ("wrap"), or let both panels compress to fit
-// on one line ("shrink"). Only read when
-// instrumentsBesideMixer is on.
-export const sideBySideLayout = $state<{ value: "wrap" | "shrink" }>({
-	value: "wrap"
-});
+export function ensureInstrumentScale(family: string): void {
+	if (!(family in diagramScale)) {
+		diagramScale[family] = 1;
+	}
+}
+
+// Whether the fader panel is open. It is a modal now, not
+// a panel in the page flow: levels get set between takes,
+// not watched during one, so it costs no layout space
+// while closed and opening it moves nothing underneath -
+// an in-flow panel expanding was exactly what pushed the
+// instrument diagrams around. panels.faders (above) says
+// whether the Mix button exists at all; this says whether
+// the sheet it opens is showing. Module-scoped so a remount
+// mid-edit does not slam it shut.
+export const mixerOpen = $state({ value: false });

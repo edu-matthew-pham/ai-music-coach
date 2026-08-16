@@ -226,14 +226,167 @@ class TestToggles:
         page.get_by_label("Chart").check()
         expect(bar(page, 1)).to_be_visible()
 
-    def test_mixer_toggle_hides_and_shows_the_faders(self, page: Page, mixer_url: str):
+    def test_mixer_is_a_sheet_that_opens_from_the_mix_button(
+        self, page: Page, mixer_url: str
+    ):
+        """
+        The faders live in a sheet over the page, closed by
+        default, opened from the Mix button beside the
+        lyrics. Located by the dialog role and the fader's
+        own label rather than "the first range input" - the
+        earlier version of this test did that, and the first
+        range input on the page is Transport's Volume
+        slider, not a fader, so it was checking the wrong
+        control.
+        """
         build_mixer(page, mixer_url)
 
-        melody_fader = page.locator("input[type=range]").first
-        expect(melody_fader).to_be_visible()
+        sheet = page.get_by_role("dialog", name="Mixer")
+        expect(sheet).to_have_count(0)
+
+        page.get_by_role("button", name="Open the mixer").click()
+        expect(sheet).to_be_visible()
+        expect(sheet.get_by_text("Melody", exact=True)).to_be_visible()
+        expect(sheet.locator("input[type=range]")).to_have_count(6)
+
+        page.keyboard.press("Escape")
+        expect(sheet).to_have_count(0)
+
+        page.get_by_role("button", name="Open the mixer").click()
+        expect(sheet).to_be_visible()
+        page.get_by_role("button", name="Close mixer").click()
+        expect(sheet).to_have_count(0)
+
+    def test_mixer_toggle_hides_and_shows_the_mix_button(
+        self, page: Page, mixer_url: str
+    ):
+        build_mixer(page, mixer_url)
+
+        mix_button = page.get_by_role("button", name="Open the mixer")
+        expect(mix_button).to_be_visible()
 
         page.get_by_label("Mixer", exact=True).uncheck()
-        expect(melody_fader).not_to_be_visible()
+        expect(mix_button).to_have_count(0)
 
         page.get_by_label("Mixer", exact=True).check()
-        expect(melody_fader).to_be_visible()
+        expect(mix_button).to_be_visible()
+
+
+class TestInstrumentPreview:
+    def test_preview_row_shows_the_chosen_number_of_upcoming_chords(
+        self, page: Page, mixer_url: str
+    ):
+        """
+        Two upcoming chords by default, drawn under the current
+        one, each named; the count control changes how many;
+        off removes the row entirely. Piano is on by default
+        so its row is the one checked.
+        """
+        build_mixer(page, mixer_url)
+        bar(page, 1).click()
+
+        row = page.locator('[data-preview-row="Piano"]')
+        expect(row).to_be_visible()
+        expect(row.locator(".preview-chord")).to_have_count(2)
+        expect(row.locator(".preview-name").first).not_to_have_text("")
+
+        page.get_by_role("radiogroup", name="Chords to preview").get_by_label(
+            "3", exact=True
+        ).check()
+        expect(row.locator(".preview-chord")).to_have_count(3)
+
+        page.get_by_role("radiogroup", name="Chords to preview").get_by_label(
+            "off", exact=True
+        ).check()
+        expect(row).to_have_count(0)
+
+    def test_preview_row_matches_the_main_diagrams_width(
+        self, page: Page, mixer_url: str
+    ):
+        # The row totals the main diagram's own measured
+        # width rather than a fixed fraction of it - at 2
+        # upcoming chords each preview is roughly half that
+        # width (minus the gap between them), not a constant
+        # ratio picked independent of how many are showing.
+        build_mixer(page, mixer_url)
+        bar(page, 1).click()
+
+        current = page.locator(".instrument-card").first.locator(
+            ".diagram-stack"
+        ).first
+        row = page.locator('[data-preview-row="Piano"]')
+
+        current_w = current.bounding_box()["width"]
+        row_w = row.bounding_box()["width"]
+        assert abs(row_w - current_w) < 4, (current_w, row_w)
+
+    def test_one_preview_matches_the_main_diagram_full_size(
+        self, page: Page, mixer_url: str
+    ):
+        # At 1 upcoming chord the single preview should be
+        # the same size as the main diagram, not a smaller
+        # copy - reviving the original full-size "Next chord"
+        # idea deliberately, now without the opacity that made
+        # it read as broken.
+        build_mixer(page, mixer_url)
+        bar(page, 1).click()
+        page.get_by_role("radiogroup", name="Chords to preview").get_by_label(
+            "1", exact=True
+        ).check()
+
+        current = page.locator(".instrument-card").first.locator(
+            ".diagram-stack"
+        ).first
+        preview = page.locator('[data-preview-row="Piano"] .diagram-stack').first
+
+        current_box = current.bounding_box()
+        preview_box = preview.bounding_box()
+        assert abs(current_box["width"] - preview_box["width"]) < 2
+        assert abs(current_box["height"] - preview_box["height"]) < 2
+
+    def test_scale_buttons_resize_one_instrument_only(
+        self, page: Page, mixer_url: str
+    ):
+        # Discrete +/- buttons, not a range slider - easier to
+        # hit from a couch or with a remote than dragging a
+        # thumb precisely. 10% per click, so five clicks is a
+        # clearly-visible 1.5x rather than a token nudge.
+        build_mixer(page, mixer_url)
+        bar(page, 1).click()
+
+        piano = page.locator(".instrument-card").filter(has_text="Piano").locator("svg").first
+        guitar = page.locator(".instrument-card").filter(has_text="Guitar").locator("svg").first
+        piano_before = piano.bounding_box()["height"]
+        guitar_before = guitar.bounding_box()["height"]
+
+        enlarge_piano = page.get_by_label("Enlarge Piano")
+        for _ in range(5):
+            enlarge_piano.click()
+
+        assert piano.bounding_box()["height"] > piano_before * 1.4
+        assert abs(guitar.bounding_box()["height"] - guitar_before) < 1
+
+    def test_scale_reset_button_returns_to_100_percent(
+        self, page: Page, mixer_url: str
+    ):
+        build_mixer(page, mixer_url)
+        bar(page, 1).click()
+
+        piano = page.locator(".instrument-card").filter(has_text="Piano").locator("svg").first
+        piano_before = piano.bounding_box()["height"]
+        reset_button = page.get_by_label("Reset Piano size to 100%")
+
+        # Not clickable at the default - there is nothing to
+        # reset yet, and a live control that silently does
+        # nothing when pressed is worse than one that is
+        # visibly disabled until it means something.
+        expect(reset_button).to_be_disabled()
+
+        page.get_by_label("Enlarge Piano").click()
+        page.get_by_label("Enlarge Piano").click()
+        expect(reset_button).to_be_enabled()
+        assert piano.bounding_box()["height"] > piano_before * 1.1
+
+        reset_button.click()
+        expect(reset_button).to_be_disabled()
+        assert abs(piano.bounding_box()["height"] - piano_before) < 1

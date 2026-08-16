@@ -6,11 +6,11 @@
 	import { Block } from "@gradio/atoms";
 	import { onDestroy, onMount } from "svelte";
 	import { engine } from "./mixerEngine.svelte";
-	import { panels, instrumentsBesideMixer, sideBySideLayout } from "./mixerPanels.svelte";
+	import { panels } from "./mixerPanels.svelte";
 	import Transport from "./Transport.svelte";
 	import PanelToggles from "./PanelToggles.svelte";
 	import ChordStrip from "./ChordStrip.svelte";
-	import FaderPanel from "./FaderPanel.svelte";
+	import MixerModal from "./MixerModal.svelte";
 	import NotesPanel from "./NotesPanel.svelte";
 	import PhraseList from "./PhraseList.svelte";
 	import LyricsPanel from "./LyricsPanel.svelte";
@@ -19,7 +19,7 @@
 	// This file is deliberately thin: it wires Gradio's value
 	// in and out, and holds the handful of actions that touch
 	// both the engine and Python's copy of the value. Every
-	// panel - Transport, PanelToggles, ChordStrip, FaderPanel
+	// panel - Transport, PanelToggles, ChordStrip, MixerModal
 	// - reads the shared engine/panels state directly rather
 	// than being handed a slice of it, and calls back up here
 	// only for the few actions that need to report to Python.
@@ -53,7 +53,7 @@
 
 	// The component's own width, not the screen's - the
 	// mixer can be narrow on a wide desktop (a small window,
-	// "Beside mixer" splitting the space) just as easily as
+	// a Gradio column sharing the row) just as easily as
 	// on a phone, and it should respond to the room it is
 	// actually given either way. One breakpoint, tuned by
 	// looking at the real layout rather than argued about
@@ -274,22 +274,31 @@
 			{fullscreenActive ? "\u2715 Exit full screen" : "\u26f6 Full screen"}
 		</button>
 
-		<Transport
-			{layers}
-			{playhead}
-			bind:follow
-			hasTimeline={timeline.length > 0}
-			onClearSelection={clearSelection}
-			onToggleRepeat={toggleRepeat}
-			onMasterVolumeChanged={masterVolumeChanged}
-		/>
-
-		<PanelToggles
-			hasTimeline={timeline.length > 0}
-			hasNotes={notes.length > 0}
-			hasDiagrams={Object.keys(diagrams.structure ?? {}).length > 0}
-			{narrow}
-		/>
+		<!-- Reading order, top to bottom, is what the eye needs
+		     while playing, then what only matters between
+		     takes: transport and toggles in one row; the bar
+		     strip and phrase strip; the instrument diagrams;
+		     the words with the Mix button beside them; and the
+		     pitch-box view last. Notes is last on purpose - it
+		     is the one panel whose height genuinely changes
+		     while playing (more layers, a longer phrase), and
+		     at the bottom that growth pushes nothing. -->
+		<div class="header-row">
+			<Transport
+				{layers}
+				{playhead}
+				bind:follow
+				hasTimeline={timeline.length > 0}
+				onClearSelection={clearSelection}
+				onToggleRepeat={toggleRepeat}
+				onMasterVolumeChanged={masterVolumeChanged}
+			/>
+			<PanelToggles
+				hasTimeline={timeline.length > 0}
+				hasNotes={notes.length > 0}
+				hasDiagrams={Object.keys(diagrams.structure ?? {}).length > 0}
+			/>
+		</div>
 
 		{#if panels.strip}
 			<ChordStrip {timeline} {playhead} {follow} onSelectBar={selectBar} />
@@ -299,32 +308,25 @@
 			<PhraseList {phrases} {playhead} onSelectPhrase={selectPhrase} {narrow} />
 		{/if}
 
-		{#if panels.notes}
-			<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} />
+		{#if panels.instruments}
+			<InstrumentPanel {diagrams} {timeline} {playhead} />
 		{/if}
 
-		{#if panels.lyrics}
-			<LyricsPanel {notes} {timeline} {phrases} {playhead} />
-		{/if}
-
-		{#if panels.faders || panels.instruments}
-			<div
-				class="mixer-and-instruments"
-				class:beside={instrumentsBesideMixer.value && panels.faders && panels.instruments}
-				class:shrink={sideBySideLayout.value === "shrink" && !narrow}
-			>
-				{#if panels.faders}
-					<div class="mixer-and-instruments-item">
-						<FaderPanel {layers} onLevelChanged={levelChanged} />
+		{#if panels.lyrics || panels.faders}
+			<div class="lyrics-row">
+				{#if panels.lyrics}
+					<div class="lyrics-cell">
+						<LyricsPanel {notes} {timeline} {phrases} {playhead} />
 					</div>
 				{/if}
-
-				{#if panels.instruments}
-					<div class="mixer-and-instruments-item">
-						<InstrumentPanel {diagrams} {timeline} {playhead} />
-					</div>
+				{#if panels.faders}
+					<MixerModal {layers} onLevelChanged={levelChanged} />
 				{/if}
 			</div>
+		{/if}
+
+		{#if panels.notes}
+			<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} />
 		{/if}
 	</div>
 </Block>
@@ -351,24 +353,22 @@
 	.fullscreen-toggle:hover {
 		background: var(--background-fill-secondary, #f5f5f5);
 	}
-	.mixer-and-instruments {
+	.header-row {
 		display: flex;
-		flex-direction: column;
-	}
-	.mixer-and-instruments.beside {
-		flex-direction: row;
 		flex-wrap: wrap;
-		gap: 16px;
-		align-items: flex-start;
+		align-items: center;
+		gap: 8px 18px;
+		margin-bottom: 6px;
+		/* leaves room for the absolute-positioned full-screen
+		   toggle in the top-right corner */
+		padding-right: 110px;
 	}
-	.mixer-and-instruments.beside .mixer-and-instruments-item {
-		flex: 1 1 320px;
-		min-width: 280px;
+	.lyrics-row {
+		display: flex;
+		align-items: stretch;
+		gap: 10px;
 	}
-	.mixer-and-instruments.beside.shrink {
-		flex-wrap: nowrap;
-	}
-	.mixer-and-instruments.beside.shrink .mixer-and-instruments-item {
+	.lyrics-cell {
 		flex: 1 1 0;
 		min-width: 0;
 	}
