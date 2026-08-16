@@ -30,15 +30,18 @@ from instrument_diagrams import (
 )
 
 
-# Levels a part starts at, matching what the sliders used
-# to default to: the tune audible, a click under it, the
-# rest waiting to be brought in.
+# Levels a part starts at. The song in its own, pure form -
+# melody, bass, and chords all audible - with only the
+# harmony parts silent until brought in deliberately; a
+# practice click sits under all of it. Harmonies default off
+# because they're the thing being learned, not because the
+# rest of the song should open thin.
 OPENING_LEVELS = {
     "Melody": 1.0,
     "Harmony above": 0.0,
     "Harmony below": 0.0,
-    "Bass": 0.0,
-    "Chords": 0.0,
+    "Bass": 1.0,
+    "Chords": 1.0,
     "Metronome": 0.5
 }
 

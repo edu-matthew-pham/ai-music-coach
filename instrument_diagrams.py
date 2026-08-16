@@ -1819,14 +1819,61 @@ UKULELE_SHAPES = {
     ("G", "m"): [1, 3, 2, 0],
     ("A", "m"): [0, 0, 0, 2],
     ("B", "m"): [2, 2, 2, 4],
+    # The five accidental roots, added after Bb was reported
+    # missing and it turned out the right fix wasn't a
+    # computed fallback (see BUILDNOTES.md) but real
+    # fingerings, hand-verified against chord_semitones the
+    # same way as the seven above. Sourced against
+    # ukulele-chords.com's own diagrams and cross-checked
+    # note-for-note, not just trusted from the page.
+    #
+    # Db minor is the one exception: its own real chart shape
+    # ("1,1,0,x" - the A string deliberately not played) needs
+    # a muted string, which this table's plain fret-per-string
+    # format has no way to express. Given a genuine choice
+    # here, a fully-fretted, chord-tone-correct shape
+    # ([4,4,4,6], the B-minor closed shape slid up two frets)
+    # was kept instead of quietly quoting a shape this format
+    # can't actually represent. Muted-string support would be
+    # a real change to the finger-assignment and drawing code,
+    # not a table edit - flagged, not built here.
+    ("Db", ""): [4, 1, 1, 1],
+    ("Db", "m"): [4, 4, 4, 6],
+    ("Eb", ""): [1, 3, 3, 3],
+    ("Eb", "m"): [1, 2, 3, 3],
+    ("Gb", ""): [1, 2, 1, 3],
+    ("Gb", "m"): [0, 2, 1, 2],
+    ("Ab", ""): [3, 4, 3, 5],
+    ("Ab", "m"): [2, 4, 3, 4],
+    ("Bb", ""): [1, 1, 2, 3],
+    ("Bb", "m"): [1, 1, 1, 3],
 }
+
+
+# B and Bm are ukulele's only fully closed shapes in
+# UKULELE_SHAPES - no open strings - which means they can be
+# slid by a constant number of frets to land on any other
+# root, the same idea as a guitar barre, just with no actual
+# barre finger needed since ukulele only has four strings.
+# Used below for the "higher position" (second hand shape)
+# feature only - every root's own PRIMARY shape is now a real,
+# hand-verified fingering in UKULELE_SHAPES above, not a
+# computed slide of this anchor. An earlier version of this
+# file used the same slide to fill in the primary table's
+# gaps (Db, Eb, Gb, Ab, Bb); real reference fingerings turned
+# out to be lower and more idiomatic than what the slide
+# produced (Gb, for one, has a genuine 1-2-1-3 shape at frets
+# 1-3, not the slide's fret 9-11 barre) - see BUILDNOTES.md.
+_UKULELE_CLOSED_ANCHOR = {"": [2, 2, 3, 4], "m": [2, 2, 2, 4]}
 
 
 def ukulele_shape_frets(root, quality):
     """
     The standard shape for one chord on ukulele: (fret,
     finger) per string in tuning order (A, E, C, G) - None
-    for a quality or root this table does not cover.
+    for a quality this table does not cover. Every root of
+    every quality this app supports (major, minor) now has a
+    real, hand-verified entry.
 
     Finger numbers are only given where they are genuinely
     certain: open (no finger needed) and barre (two or more
@@ -1863,16 +1910,6 @@ def ukulele_shape_frets(root, quality):
 
     return result, barre_fret
 
-
-# The B and Bm shapes are ukulele's only fully closed shapes
-# in UKULELE_SHAPES - no open strings - which means they can
-# be slid by a constant number of frets to land on any other
-# root, the same idea as a guitar barre, just with no actual
-# barre finger needed since ukulele only has four strings.
-# Verified against chord_semitones for every shift below: the
-# shifted shape produces exactly the right chord tones with
-# the root present, for every root it is offered for.
-_UKULELE_CLOSED_ANCHOR = {"": [2, 2, 3, 4], "m": [2, 2, 2, 4]}
 
 # Only the roots whose shifted shape lands within ukulele's
 # own 10-fret full range, and excluding B/Bm itself (shift 0

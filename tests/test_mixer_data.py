@@ -290,14 +290,18 @@ def test_diagrams_build_a_scale_overlay_per_distinct_key():
 
 def test_the_faders_start_where_the_sliders_did():
     """
-    The tune audible, a click under it, the rest waiting.
-    Opening onto a full six part mix would be a shock.
+    The song in its own pure form - melody, bass, chords -
+    with a click under it and only the harmonies silent,
+    since those are what's being practised, not the rest of
+    the song.
     """
 
     assert OPENING_LEVELS["Melody"] == 1.0
+    assert OPENING_LEVELS["Bass"] == 1.0
+    assert OPENING_LEVELS["Chords"] == 1.0
     assert OPENING_LEVELS["Metronome"] > 0
 
-    for name in ("Harmony above", "Harmony below", "Bass", "Chords"):
+    for name in ("Harmony above", "Harmony below"):
         assert OPENING_LEVELS[name] == 0.0
 
 
