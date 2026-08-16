@@ -101,7 +101,7 @@
 	}
 	.phrase {
 		font: inherit;
-		font-size: 11px;
+		font-size: calc(11px * var(--read-scale, 1));
 		padding: 4px 8px;
 		border: 1px solid var(--border-color-primary);
 		border-radius: 12px;

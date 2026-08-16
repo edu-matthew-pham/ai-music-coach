@@ -635,8 +635,13 @@ def _fretboard_structure_parts(instrument="Guitar", frets_shown=FRETS_SHOWN):
             f'stroke="{LINE_COLOUR}" stroke-width="1"/>'
         )
 
+        # left - 16, not the - 12 the violin's own label uses:
+        # an open string's hollow ring (fretted_chord_shape_
+        # overlay) sits centred on the nut with radius 9, so
+        # its left edge reaches left - 9; the label needs to
+        # end before that or the two touch.
         parts.append(
-            f'<text x="{left - 12}" y="{y + 4}" '
+            f'<text x="{left - 16}" y="{y + 4}" '
             f'text-anchor="end" font-size="12" '
             f'font-family="sans-serif" fill="{LABEL_COLOUR}">'
             f'{_escape(open_string)}</text>'
@@ -921,14 +926,18 @@ def _violin_scale_parts(key, position="First position"):
             )
 
             parts.append(
-                f'<circle cx="{x}" cy="{y}" r="12" '
+                f'<circle cx="{x}" cy="{y}" r="15" '
                 f'fill="{colour}" stroke="#ffffff" '
                 f'stroke-width="1.5"/>'
             )
 
+            # 12 -> 15, same reasoning as the fretted and
+            # piano dots above - kept in step with them
+            # rather than left as the one instrument still
+            # at the old size.
             parts.append(
-                f'<text x="{x}" y="{y + 4}" '
-                f'text-anchor="middle" font-size="12" '
+                f'<text x="{x}" y="{y + 5}" '
+                f'text-anchor="middle" font-size="15" '
                 f'font-family="sans-serif" fill="#ffffff">'
                 f'{finger}</text>'
             )
@@ -1110,6 +1119,13 @@ RIGHT_HAND_COLOUR = SHAPE_COLOUR
 # this one - not a third colour, which would throw away the
 # information of which two positions are overlapping.
 HIGHER_SHAPE_COLOUR = "#00838f"
+
+# A muted string's mark, at the nut - deliberately not one
+# of the palette above: red is a genuinely different signal
+# from "play this note in this colour", closer to a stop
+# sign than a note. Reserved for this one meaning so it
+# stays that way; nothing else in the shape layer uses it.
+MUTED_COLOUR = "#c62828"
 
 
 def piano_chord_overlay(key, chord_semitone_set, octaves=None):
@@ -2151,7 +2167,7 @@ def piano_chord_shape_overlay(key, chord_name, octaves=None):
 
             x = white_index * white_width + white_width / 2
             y = white_height - 28
-            radius = 14
+            radius = 17
 
         else:
 
@@ -2167,13 +2183,22 @@ def piano_chord_shape_overlay(key, chord_name, octaves=None):
 
             x = (white_index + 1) * white_width
             y = black_height - 22
-            radius = 12
+            radius = 15
 
+        # Radius and font-size bumped together from their
+        # original 14/12 and 11 - same reasoning as
+        # _fret_dot's own bump: legible at full size wasn't
+        # the bar, legible after being shrunk for the
+        # "coming up" preview row was, and piano's own
+        # drawing-to-screen ratio (a tall, narrow viewBox
+        # scaled to a wide, short on-screen box) already
+        # started its text smaller than guitar or ukulele's
+        # before any preview shrinking even happened.
         parts.append(
             f'<circle cx="{x}" cy="{y}" r="{radius}" '
             f'fill="{colour}"/>'
-            f'<text x="{x}" y="{y + 4}" text-anchor="middle" '
-            f'font-size="11" font-family="sans-serif" '
+            f'<text x="{x}" y="{y + 5}" text-anchor="middle" '
+            f'font-size="15" font-family="sans-serif" '
             f'fill="#ffffff">{finger}</text>'
         )
 
@@ -2200,16 +2225,25 @@ def _fret_dot(x, y, fret, finger, colour):
     before the dual-position work, just pulled out so both
     the single- and dual-position drawing paths share one
     definition of what a mark looks like.
+
+    Radius and font-size bumped together (11 -> 14) from
+    their original values: the finger number is the thing a
+    player is actually reading at a glance, and the previous
+    size held up fine at full size on a laptop but became
+    illegible once shrunk for the instrument panel's "coming
+    up" preview row - a diagram at a third of its normal
+    width shrinks its embedded SVG text by the same third,
+    and 11-unit text had no headroom left to lose.
     """
 
     label = finger if finger is not None else "\u2022"
 
     return (
-        f'<circle cx="{x}" cy="{y}" r="11" '
+        f'<circle cx="{x}" cy="{y}" r="14" '
         f'fill="{colour}" '
         f'stroke="#ffffff" stroke-width="1.5"/>'
-        f'<text x="{x}" y="{y + 4}" '
-        f'text-anchor="middle" font-size="11" '
+        f'<text x="{x}" y="{y + 5}" '
+        f'text-anchor="middle" font-size="14" '
         f'font-family="sans-serif" fill="#ffffff">'
         f'{label}</text>'
     )
@@ -2342,18 +2376,49 @@ def fretted_chord_shape_overlay(key, chord_name, instrument="Guitar",
             higher_fret, higher_finger = higher_frets[string_index]
 
         if fret is None:
+            # Muted: the string itself goes faint. Drawn as
+            # a near-white line over the structure layer's
+            # own dark string line, so the string visibly
+            # "switches off" rather than carrying a letter to
+            # decode - a player looks at a shape and sees
+            # which strings are alive, the same way they'd
+            # see it on their own instrument. Replaces the
+            # earlier margin "X", which was correct notation
+            # but notation all the same: something to know,
+            # not something to see.
+            #
+            # Moved from a faded line along the whole string
+            # to a mark AT the nut - the same spot and size
+            # class as the open ring below, so "don't play
+            # this string" reads as one definite mark in the
+            # same place a player already looks for a string's
+            # status, not a change of state spread the entire
+            # length of the neck that's easy to miss at a
+            # glance. Red rather than the shape's own purple:
+            # this is a stop signal, not a note.
             parts.append(
-                f'<text x="{left - 26}" y="{y + 4}" '
-                f'text-anchor="middle" font-size="12" '
-                f'font-weight="700" font-family="sans-serif" '
-                f'fill="{SHAPE_COLOUR}">X</text>'
+                f'<line x1="{left - 6}" y1="{y - 6}" '
+                f'x2="{left + 6}" y2="{y + 6}" '
+                f'stroke="{MUTED_COLOUR}" stroke-width="2.5" '
+                f'stroke-linecap="round"/>'
+                f'<line x1="{left - 6}" y1="{y + 6}" '
+                f'x2="{left + 6}" y2="{y - 6}" '
+                f'stroke="{MUTED_COLOUR}" stroke-width="2.5" '
+                f'stroke-linecap="round"/>'
             )
         elif fret == 0:
+            # Open: a hollow ring on the string, centred on
+            # the nut - the nut is the fret-0 boundary, so
+            # this is exactly where a "fret 0" dot would sit,
+            # outlined instead of filled. "A note sounds
+            # here, no finger needed" in one mark, in the
+            # same visual language as the fretted dots beside
+            # it, rather than a margin "O" that read as a
+            # footnote to the shape.
             parts.append(
-                f'<text x="{left - 26}" y="{y + 4}" '
-                f'text-anchor="middle" font-size="12" '
-                f'font-weight="700" font-family="sans-serif" '
-                f'fill="{SHAPE_COLOUR}">O</text>'
+                f'<circle cx="{left}" cy="{y}" r="9" '
+                f'fill="none" stroke="{SHAPE_COLOUR}" '
+                f'stroke-width="2.5"/>'
             )
         else:
             x = left + fret * fret_width - fret_width / 2
@@ -2595,11 +2660,11 @@ def violin_chord_shape_overlay(key, chord_name, position="First position"):
         label = name_for(semitone, key)
 
         parts.append(
-            f'<circle cx="{x}" cy="{y}" r="12" '
+            f'<circle cx="{x}" cy="{y}" r="15" '
             f'fill="{SHAPE_COLOUR}" stroke="#ffffff" '
             f'stroke-width="1.5"/>'
-            f'<text x="{x}" y="{y + 4}" text-anchor="middle" '
-            f'font-size="10" font-family="sans-serif" '
+            f'<text x="{x}" y="{y + 5}" text-anchor="middle" '
+            f'font-size="15" font-family="sans-serif" '
             f'fill="#ffffff">{_escape(label)}</text>'
         )
 

@@ -315,11 +315,46 @@ def test_piano_covers_every_quality_a_triad_voicing_can_represent():
         assert shape_overlay_for("C", "Piano", "C" + quality) is not None
 
 
-def test_a_muted_string_is_marked_x_not_silently_skipped():
+def test_a_muted_string_is_visibly_marked_not_silently_skipped():
+    """
+    C major on guitar mutes its low E string. That string
+    has to show up as visibly different in the shape layer -
+    a player reading the shape needs to know not to strum it,
+    and a string that just has no dot on it looks identical
+    to an open one. Was a margin "X" (standard chart
+    notation), then a faded line the full length of the
+    string; now a red X mark at the nut, the same spot and
+    size class as the open-string ring, so "don't play this"
+    is one definite mark in the place a player already looks,
+    not a change of state spread the whole neck. Whatever the
+    exact mark, the invariant holds: a muted string is
+    marked, not dropped.
+    """
 
     shape = shape_overlay_for("C", "Guitar", "C")
 
-    assert ">X</text>" in shape
+    from instrument_diagrams import MUTED_COLOUR
+
+    assert shape.count(f'stroke="{MUTED_COLOUR}"') == 2
+    assert ">X</text>" not in shape
+
+
+def test_an_open_string_is_a_hollow_ring_at_the_nut():
+    """
+    D minor on guitar plays its D string open. That's a note
+    that sounds with no finger down - drawn as a hollow ring
+    on the string right at the nut, the same place and size
+    class as a fretted dot, outlined instead of filled. Same
+    visual language as the fretted marks beside it rather
+    than a margin "O": one kind of mark for "a note sounds
+    here", filled or not depending on whether a finger is
+    involved.
+    """
+
+    shape = shape_overlay_for("C", "Guitar", "Dm")
+
+    assert 'fill="none" stroke="#6a1b9a"' in shape
+    assert ">O</text>" not in shape
 
 
 def test_the_shape_layer_never_shares_a_colour_with_chord_notes():

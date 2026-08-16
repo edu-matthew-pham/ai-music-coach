@@ -271,7 +271,7 @@
 		height: 12px;
 	}
 	.sentence {
-		font-size: 20px;
+		font-size: calc(20px * var(--read-scale, 1));
 		margin: 4px 0;
 	}
 	.sentence:not(.current) {
@@ -281,7 +281,7 @@
 		   words turning green as they're reached), so a faded
 		   "coming up" line was just harder to read for no
 		   real gain in emphasis. */
-		font-size: 15px;
+		font-size: calc(15px * var(--read-scale, 1));
 	}
 	.word-unit {
 		display: inline-flex;
@@ -296,18 +296,18 @@
 		margin-bottom: 1px;
 	}
 	.chord-tag {
-		font-size: 12px;
+		font-size: calc(12px * var(--read-scale, 1));
 		font-weight: 700;
 		color: #607d8b;
 	}
 	.bar-tick {
-		font-size: 12px;
+		font-size: calc(12px * var(--read-scale, 1));
 		font-weight: 700;
 		color: var(--body-text-color-subdued);
 		opacity: 0.65;
 	}
 	.lead-in-line {
-		font-size: 13px;
+		font-size: calc(13px * var(--read-scale, 1));
 		font-weight: 700;
 		letter-spacing: 0.15em;
 		color: var(--body-text-color-subdued);
@@ -315,7 +315,7 @@
 		margin: 4px 0 2px;
 	}
 	.lead-in-line.plain {
-		font-size: 11px;
+		font-size: calc(11px * var(--read-scale, 1));
 	}
 	.lyrics-list {
 		display: flex;

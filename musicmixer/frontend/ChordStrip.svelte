@@ -139,7 +139,7 @@
 	   first pass, not verified against a real render yet. */
 	.bar .beats {
 		position: relative;
-		height: 28px;
+		height: calc(28px * var(--read-scale, 1));
 		margin-top: 4px;
 		border-bottom: 1px solid var(--border-color-primary);
 	}
@@ -155,7 +155,7 @@
 		top: 0;
 		transform: translateX(-2px);
 		font-weight: 700;
-		font-size: 13px;
+		font-size: calc(13px * var(--read-scale, 1));
 		white-space: nowrap;
 	}
 	/* A chord already sounding when the bar opens, rather
@@ -167,7 +167,7 @@
 		opacity: 0.5;
 	}
 	.bar .words {
-		font-size: 11px;
+		font-size: calc(11px * var(--read-scale, 1));
 		color: var(--body-text-color-subdued);
 		margin-top: 2px;
 		white-space: nowrap;

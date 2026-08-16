@@ -24,16 +24,17 @@
 // Phrases is its own toggle, split out from Notes: jumping
 // to a phrase is navigation, useful with or without the
 // pitch-box view showing, so it should not be tied to that
-// view's own toggle. Defaults are chosen so a freshly built
-// mixer already looks like a working practice view - chart,
-// phrases, words, faders, the live chord diagram - with the
-// pitch-box display (Notes) as the one opt-in extra, since
-// that one is the most likely to be unfamiliar at a glance.
+// view's own toggle. Notes now defaults on: it shares a row
+// with Lyrics (see Index.svelte's lyrics-and-notes), and an
+// empty 70%-wide gap where Notes would be is a worse default
+// than the panel itself - the "opt-in extra" reasoning that
+// justified starting it off no longer applies once Lyrics
+// alone can't fill that space on its own.
 export const panels: Record<string, boolean> = $state({
 	strip: true,
 	faders: true,
 	phrases: true,
-	notes: false,
+	notes: true,
 	lyrics: true,
 	instruments: true
 });
@@ -231,3 +232,28 @@ export function ensureInstrumentScale(family: string): void {
 // the sheet it opens is showing. Module-scoped so a remount
 // mid-edit does not slam it shut.
 export const mixerOpen = $state({ value: false });
+
+// A global text-size control for the things actually read
+// from across a room during a jam - the chart strip's chord
+// and word labels, the phrase buttons, and the Lyrics panel -
+// as opposed to close-up UI chrome (toggles, sliders, panel
+// headers) that's read from arm's length while setting
+// something up and doesn't need the same treatment. One
+// shared knob rather than per-panel ones (unlike the
+// instrument diagrams' per-family scale): those three places
+// are read together, in the same glance, while singing -
+// having them drift out of step with each other would be
+// worse than not being adjustable at all. Same discrete +/-
+// pattern as the instrument scale, for the same reason: a
+// slider needs pointer precision a remote or a couch-distance
+// tap doesn't reliably give.
+export const readScale = $state({ value: 1 });
+
+export const READ_SCALE_MIN = 0.8;
+export const READ_SCALE_MAX = 1.8;
+export const READ_SCALE_STEP = 0.1;
+
+export function setReadScale(next: number): void {
+	const clamped = Math.min(READ_SCALE_MAX, Math.max(READ_SCALE_MIN, next));
+	readScale.value = Math.round(clamped * 10) / 10;
+}

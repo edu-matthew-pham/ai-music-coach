@@ -6,7 +6,7 @@
 	import { Block } from "@gradio/atoms";
 	import { onDestroy, onMount } from "svelte";
 	import { engine } from "./mixerEngine.svelte";
-	import { panels } from "./mixerPanels.svelte";
+	import { panels, readScale, setReadScale, READ_SCALE_MIN, READ_SCALE_MAX, READ_SCALE_STEP } from "./mixerPanels.svelte";
 	import Transport from "./Transport.svelte";
 	import PanelToggles from "./PanelToggles.svelte";
 	import ChordStrip from "./ChordStrip.svelte";
@@ -263,7 +263,7 @@
 	allow_overflow={true}
 	padding={true}
 >
-	<div class="mixer" bind:clientWidth={containerWidth}>
+	<div class="mixer" style="--read-scale: {readScale.value}" bind:clientWidth={containerWidth}>
 		<button
 			type="button"
 			class="fullscreen-toggle"
@@ -301,6 +301,35 @@
 				hasNotes={notes.length > 0}
 				hasDiagrams={Object.keys(diagrams.structure ?? {}).length > 0}
 			/>
+			<div class="text-scale-control" role="group" aria-label="Text size">
+				<button
+					type="button"
+					class="text-scale-button"
+					disabled={readScale.value <= READ_SCALE_MIN}
+					aria-label="Smaller text"
+					onclick={() => setReadScale(readScale.value - READ_SCALE_STEP)}
+				>
+					&minus;
+				</button>
+				<button
+					type="button"
+					class="text-scale-value"
+					disabled={readScale.value === 1}
+					aria-label="Reset text size to 100%"
+					onclick={() => setReadScale(1)}
+				>
+					{Math.round(readScale.value * 100)}%
+				</button>
+				<button
+					type="button"
+					class="text-scale-button"
+					disabled={readScale.value >= READ_SCALE_MAX}
+					aria-label="Bigger text"
+					onclick={() => setReadScale(readScale.value + READ_SCALE_STEP)}
+				>
+					&plus;
+				</button>
+			</div>
 			{#if panels.faders}
 				<MixerModal {layers} onLevelChanged={levelChanged} />
 			{/if}
@@ -376,22 +405,65 @@
 		flex-direction: column;
 	}
 	.lyrics-cell {
-		/* 1/4 to 1/3 of the row, capped - Lyrics reads fine at
-		   that width and the rest goes to Notes, whose own
-		   content (pitch boxes) actually needs the room.
-		   min-width keeps it from getting squeezed illegibly
-		   thin if the row is narrow but hasn't crossed the
-		   narrow breakpoint yet. */
-		flex: 1 1 28%;
-		max-width: 360px;
+		/* flex-grow of 3 against notes-cell's 7 - what actually
+		   sets a stable 30/70 split of leftover row space is
+		   the GROW ratio, not the flex-basis percentages
+		   (basis only sets each item's resting size before any
+		   space gets divided up). Equal grow values (both 1)
+		   is what silently pulled this to ~50/50 before, no
+		   matter what the basis said. */
+		flex: 3 1 220px;
 		min-width: 220px;
 	}
 	.lyrics-and-notes.narrow .lyrics-cell {
-		max-width: none;
 		min-width: 0;
 	}
 	.notes-cell {
-		flex: 1 1 0;
+		flex: 7 1 260px;
+		min-width: 260px;
+	}
+	.lyrics-and-notes.narrow .notes-cell {
 		min-width: 0;
+	}
+	.text-scale-control {
+		display: flex;
+		align-items: stretch;
+		gap: 2px;
+	}
+	.text-scale-button {
+		font: inherit;
+		font-size: 13px;
+		width: 26px;
+		padding: 0;
+		border: 1px solid var(--border-color-primary);
+		border-radius: 6px;
+		background: var(--background-fill-primary);
+		color: var(--body-text-color-subdued);
+		cursor: pointer;
+	}
+	.text-scale-button:hover:not(:disabled) {
+		background: var(--background-fill-secondary, #f5f5f5);
+	}
+	.text-scale-button:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+	.text-scale-value {
+		font: inherit;
+		width: 42px;
+		padding: 0 4px;
+		border: 1px solid var(--border-color-primary);
+		border-radius: 6px;
+		background: var(--background-fill-primary);
+		font-size: 10px;
+		color: var(--body-text-color-subdued);
+		text-align: center;
+		cursor: pointer;
+	}
+	.text-scale-value:hover:not(:disabled) {
+		background: var(--background-fill-secondary, #f5f5f5);
+	}
+	.text-scale-value:disabled {
+		cursor: default;
 	}
 </style>
