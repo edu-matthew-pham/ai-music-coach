@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { engine } from "./mixerEngine.svelte";
 	import { mic } from "./micPitch.svelte";
-	import { noteLayers, showNextPreview, previewSideBySide, notesShowLabels, showLiveTrace, notesOctaveShift } from "./mixerPanels.svelte";
+	import { noteLayers, showNextPreview, previewSideBySide, notesShowLabels, showLiveTrace, notesOctaveShift, notesShowChords } from "./mixerPanels.svelte";
 	import type { MixerNote, MixerBar, MixerPhrase } from "./types";
 
 	// A static page per phrase, hard-cut to the next rather
@@ -21,6 +21,19 @@
 	let { notes, timeline, phrases, playhead, narrow = false }: Props = $props();
 
 	const ROW_HEIGHT = 14;
+
+	// A thin strip above the note boxes, present only when
+	// chords are showing at all - so a page with the toggle
+	// off draws exactly as it always has, byte-for-byte.
+	const CHORD_ROW_HEIGHT = 16;
+
+	// A chord's real position within its bar, in seconds -
+	// the same beat_in_bar/bar.beats fraction ChordStrip
+	// already uses for the same purpose, just converted to
+	// this panel's own time axis instead of a CSS percentage.
+	function chordTime(bar: MixerBar, chord: MixerBar["chords"][number]): number {
+		return bar.start + (chord.beat_in_bar / bar.beats) * (bar.end - bar.start);
+	}
 
 	const effectivePhrases = $derived.by((): MixerPhrase[] => {
 		if (phrases.length) return phrases;
@@ -80,6 +93,7 @@
 		width: number;
 		height: number;
 		pxPerSecond: number;
+		chordOffset: number;
 	}
 
 	function computePage(phrase: MixerPhrase | null, width: number): Page | null {
@@ -116,7 +130,8 @@
 			highest += 1;
 		}
 
-		const height = (highest - lowest + 1) * ROW_HEIGHT;
+		const chordOffset = notesShowChords.value ? CHORD_ROW_HEIGHT : 0;
+		const height = (highest - lowest + 1) * ROW_HEIGHT + chordOffset;
 		const span = phrase.end - phrase.start;
 		const pxPerSecond = span > 0 ? width / span : 60;
 
@@ -127,7 +142,8 @@
 			pitchRange: { lowest, highest },
 			width,
 			height,
-			pxPerSecond
+			pxPerSecond,
+			chordOffset
 		};
 	}
 
@@ -157,7 +173,7 @@
 	});
 
 	function y(page: Page, midi: number): number {
-		return (page.pitchRange.highest - midi) * ROW_HEIGHT;
+		return (page.pitchRange.highest - midi) * ROW_HEIGHT + page.chordOffset;
 	}
 
 	function x(page: Page, time: number): number {
@@ -178,7 +194,7 @@
 			page.pitchRange.highest + 0.5,
 			Math.max(page.pitchRange.lowest - 0.5, midi)
 		);
-		return (page.pitchRange.highest - clamped) * ROW_HEIGHT + ROW_HEIGHT / 2;
+		return (page.pitchRange.highest - clamped) * ROW_HEIGHT + ROW_HEIGHT / 2 + page.chordOffset;
 	}
 
 	// The sung line, cut to this page's phrase, broken into
@@ -242,6 +258,21 @@
 				y2={page.height}
 			/>
 		{/each}
+
+		{#if notesShowChords.value}
+			{#each page.bars as bar}
+				{#each bar.chords as chord}
+					<text
+						class="chord-name"
+						class:carried={chord.carried}
+						x={x(page, chordTime(bar, chord))}
+						y={CHORD_ROW_HEIGHT - 4}
+					>
+						{chord.name}
+					</text>
+				{/each}
+			{/each}
+		{/if}
 
 		{#each page.notes as note}
 			<g>
@@ -332,6 +363,10 @@
 	<label class="layer-toggle">
 		<input type="checkbox" bind:checked={notesShowLabels.value} />
 		Word labels
+	</label>
+	<label class="layer-toggle">
+		<input type="checkbox" bind:checked={notesShowChords.value} />
+		Chords
 	</label>
 	{#if mic.state === "on" || mic.trace.length}
 		<label class="layer-toggle">
@@ -453,6 +488,17 @@
 		text-anchor: middle;
 		dominant-baseline: middle;
 		pointer-events: none;
+	}
+	.chord-name {
+		font-size: 11px;
+		font-weight: 700;
+		text-anchor: start;
+		fill: var(--body-text-color);
+		pointer-events: none;
+	}
+	.chord-name.carried {
+		font-weight: 400;
+		opacity: 0.5;
 	}
 	.note-word {
 		font-size: 9px;

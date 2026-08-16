@@ -304,7 +304,7 @@
 		{/if}
 
 		{#if panels.lyrics}
-			<LyricsPanel {notes} {phrases} {playhead} />
+			<LyricsPanel {notes} {timeline} {phrases} {playhead} />
 		{/if}
 
 		{#if panels.faders || panels.instruments}

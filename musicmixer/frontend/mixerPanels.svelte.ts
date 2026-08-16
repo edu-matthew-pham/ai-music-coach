@@ -93,6 +93,26 @@ export const showLiveTrace = $state({ value: true });
 // leave the same 12-row gap, just relocated.
 export const notesOctaveShift = $state<{ value: -1 | 0 | 1 }>({ value: 0 });
 
+// Whether the Notes panel draws chord names, timing-aware,
+// above the note boxes - and whether the Lyrics panel draws
+// them above the syllable each one actually lands on. Two
+// separate toggles, not one shared switch: someone reading
+// notes and someone reading lyrics-only want this
+// independently, the same reasoning as notesShowLabels
+// above. Both default on since a chord appearing at its
+// real timing (not eyeballed like a printed tab) is the
+// point of building this on top of real bar/beat data.
+export const notesShowChords = $state({ value: true });
+export const lyricsShowChords = $state({ value: true });
+
+// "|" at every bar boundary in the Lyrics panel, whether or
+// not a chord happens to start there - "| G" and "|" alone
+// are both valid, per-bar landmarks rather than a rhythm
+// trace. Fine-grained timing (individual beats, the sung
+// line) is the Notes panel's job already; this stays coarse
+// on purpose rather than duplicating it.
+export const lyricsShowBars = $state({ value: true });
+
 // Which instrument names exist is Python's to say, not this
 // file's: instrument_diagrams.py's INSTRUMENTS list is the
 // one home for that, sent every time as the keys of
