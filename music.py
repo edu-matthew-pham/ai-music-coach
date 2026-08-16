@@ -2624,15 +2624,18 @@ def load_wellerman():
       exactly the existing melody's note count, line for
       line (9, 11, 8, 7) - strong evidence the existing
       rhythm is the tune's actual rhythm, not just a
-      plausible one. Verse three's real words match the
-      identical pattern, so verse three reuses verse one's
-      melody and chart outright, new words under the same
-      tune.
-    - Verse two's real words do not match: five syllables
-      short of verse one's count, all in the verse-specific
-      lines before the chorus. Rather than force different
-      words onto a rhythm they do not fit, verse two's
-      melody for those lines is the file's own real notes -
+      plausible one.
+    - Verses two and three's real words do not match:
+      verse two five syllables short of verse one's count,
+      verse three three short, both entirely in the
+      verse-specific lines before the chorus. (Verse three
+      was once forced onto verse one's rhythm anyway, by
+      dragging each line's pickup word onto the end of the
+      line before and padding with holds - the token count
+      came out right and every word landed one note late.)
+      Rather than force different words onto a rhythm they
+      do not fit, each verse's melody for those lines is
+      the file's own real notes -
       transposed the same whole step as everything else,
       plus one octave (this file's part sits a register
       lower throughout; checked against its own range as a
@@ -2701,12 +2704,35 @@ def load_wellerman():
         "1 1 1 1 1 4",
     ])
 
-    pitches = " ".join([verse, chorus, verse_two, chorus, verse, chorus])
+    # Verse three's own real notes too - the same file, the
+    # same transposition as verse one (its C3 is our D4). No
+    # pickup: 'Fore lands on the downbeat, "the boat" is an
+    # eighth and a dotted quarter, and "had" is already on
+    # the third - none of which verse one's rhythm can hold.
+    verse_three = " ".join([
+        "R R R R",
+        "D4 D4 D4 F4 A4 A4 A4 A4 A4",
+        "Bb4 G4 G4 Bb4 D5 A4 A4 A4 D4",
+        "D4 D4 D4 D4 F4 A4 A4 A4 A4",
+        "G4 G4 F4 E4 D4",
+    ])
+
+    verse_three_durations = " ".join([
+        "1 1 1 1",
+        "1 1/2 3/2 1 1 1 1 1/2 1/2",
+        "1 1 1 1 1 1 1 1/2 1/2",
+        "1 1/2 1/2 1 1 1 1 1 1",
+        "1 1 1 1 4",
+    ])
+
+    pitches = " ".join([
+        verse, chorus, verse_two, chorus, verse_three, chorus,
+    ])
 
     durations = " ".join([
         verse_durations, chorus_durations,
         verse_two_durations, chorus_durations,
-        verse_durations, chorus_durations,
+        verse_three_durations, chorus_durations,
     ])
 
     lyrics = "\n".join([
@@ -2726,10 +2752,10 @@ def load_wellerman():
         "To bring us sug- ar and tea and rum",
         "One day when the tongu- ing is done",
         "We'll take our leave and go",
-        "'Fore the boat had hit the wa- ter the",
-        "whale's _ tail came up and caught her. All hands to",
-        "the side, har- pooned and fought her, When",
-        "she dived down low _ _ _",
+        "'Fore the boat had hit the wa- ter",
+        "the whale's _ tail came up and caught her.",
+        "All hands to the side, har- pooned and fought her,",
+        "When she dived down low",
         "Soon may the Wel- ler- man come",
         "To bring us sug- ar and tea and rum",
         "One day when the tongu- ing is done",
