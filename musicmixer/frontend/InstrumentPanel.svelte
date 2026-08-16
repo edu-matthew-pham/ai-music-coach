@@ -340,6 +340,8 @@
 		cursor: pointer;
 	}
 	.variant-option input[type="radio"] {
+		appearance: auto;
+		accent-color: #607d8b;
 		width: 10px;
 		height: 10px;
 		margin: 0;
