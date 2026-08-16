@@ -67,6 +67,124 @@ ROUNDING = 64
 # A rest this long or longer is taken to end a phrase.
 PHRASE_REST = 1
 
+# A syllable ending with one of these reads as the close
+# of a sentence, the same way a line of print does.
+SENTENCE_END = (".", "!", "?")
+
+
+def _ends_sentence(word):
+    """
+    Whether a syllable's own text closes a sentence.
+
+    Checked on the syllable itself - a closing word like
+    "bye." is where the score actually prints the mark,
+    trailing quotes and brackets aside.
+    """
+
+    return word.rstrip("'\")]").endswith(SENTENCE_END)
+
+
+def _lyrics_read_as_prose(syllables):
+    """
+    Whether these lyrics use capitals and full stops the
+    way ordinary prose does, rather than one flat case.
+
+    Some engraved scores print every syllable in capitals
+    - a typesetting convention, not a phrase marker.
+    Reading "starts with a capital" against a score like
+    that would fire on every single syllable and produce
+    nonsense, so the words only count as usable evidence
+    once the score is confirmed to use lower case at all.
+    """
+
+    words = [
+        syllable for syllable in syllables
+        if syllable not in (None, "", "_")
+        and any(letter.isalpha() for letter in syllable)
+    ]
+
+    if not words:
+        return False
+
+    if not any(
+        any(letter.islower() for letter in word)
+        for word in words
+    ):
+        return False
+
+    return (
+        any(word[0].isupper() for word in words)
+        or any(_ends_sentence(word) for word in words)
+    )
+
+
+def _is_bare_pronoun_i(word):
+    """
+    Whether this token is the pronoun "I" on its own, or
+    one of its contractions.
+
+    English capitalises this one word regardless of where
+    it falls in a sentence, so its capital says nothing
+    about a phrase beginning here the way every other
+    capital does - checked directly against a real fixture
+    (Mulan), where every wrong break the words-first rule
+    produced traced to this one word.
+    """
+
+    core = word.rstrip("'\")]").rstrip("-")
+
+    return core in ("I", "I'll", "I'm", "I've", "I'd")
+
+
+def _lyric_phrase_breaks(syllables):
+    """
+    Where a phrase begins, read from the words themselves.
+
+    A line of a song is usually printed the way a sentence
+    is - a capital letter opens it, a full stop or a
+    question mark closes it - and that is stronger
+    evidence of where a phrase ends than a rest, which only
+    says a singer paused there, not that the line did.
+    Where the words carry that signal it is used as the
+    phrasing; where they do not (no lyrics, or a score
+    printed in one running case with no punctuation) this
+    returns None, and the caller falls back to rests alone.
+
+    Returns break positions in the same units as the
+    rest-based rule: a count of spoken (non-rest) notes,
+    which is also a direct index into `syllables`.
+    """
+
+    if not _lyrics_read_as_prose(syllables):
+        return None
+
+    breaks = set()
+    last_word = None
+
+    for position, syllable in enumerate(syllables):
+
+        if syllable in (None, "", "_"):
+            continue
+
+        if position > 0:
+
+            starts_capital = (
+                syllable[0].isupper()
+                and not _is_bare_pronoun_i(syllable)
+            )
+
+            follows_full_stop = (
+                last_word is not None
+                and _ends_sentence(last_word)
+            )
+
+            if starts_capital or follows_full_stop:
+                breaks.add(position)
+
+        last_word = syllable
+
+    return breaks
+
 # How long a rest may be before it is written as bars of
 # rest instead. Invariant 9: a singer counting through an
 # instrumental counts bars.
@@ -1130,33 +1248,50 @@ def import_musicxml(path, part_label=None, verse=1):
     # and is demoted the same way: Enter and Backspace fix
     # it in a keystroke.
     #
-    # One rule, deliberately: a rest of a beat or more ends
-    # a phrase. A rule-based splitter with several kinds of
-    # evidence was built for the MIDI path, tuned, and
-    # reverted - every threshold that fixed one file broke
-    # another. So this is not tuned. It will be wrong on
-    # some scores, and the wrongness costs a keystroke.
+    # The words themselves are the primary evidence, when
+    # they carry it: a line of print usually opens with a
+    # capital and closes with a full stop, and that says
+    # where a phrase falls more reliably than a rest does -
+    # a rest only says a singer paused, not that the line
+    # ended, which is why a run of short breaths inside one
+    # sentence (a real score in this app's own fixtures)
+    # used to be cut into three lines instead of one, and a
+    # long unbroken sentence with rests only at its very end
+    # (another real fixture) used to arrive as one crowded
+    # line holding several sentences at once.
     #
-    # Pasting the words is the better answer where they are
-    # to hand: a lyric sheet's line breaks are a human's
-    # idea of where the phrases fall, and the paste applies
-    # them.
+    # A rule-based splitter combining several kinds of
+    # evidence by score was tried once, for the MIDI path,
+    # tuned, and reverted - every threshold that fixed one
+    # file broke another. This does not repeat that: the
+    # words are used alone, only where they are confirmed
+    # usable, and the rest-rule below is the fallback for
+    # everything else, not a second vote combined with it.
     lyric_text = " ".join(syllables)
 
-    breaks = set()
+    breaks = _lyric_phrase_breaks(syllables)
 
-    spoken = 0
+    if breaks is None:
 
-    for is_rest, length, item in merged:
+        # One rule, deliberately, same as before: a rest of
+        # a beat or more ends a phrase. Used only when the
+        # words themselves gave no usable signal - no
+        # lyrics, or a score printed in one running case
+        # with no punctuation.
+        breaks = set()
 
-        if is_rest:
+        spoken = 0
 
-            if length >= PHRASE_REST and spoken:
-                breaks.add(spoken)
+        for is_rest, length, item in merged:
 
-            continue
+            if is_rest:
 
-        spoken += 1
+                if length >= PHRASE_REST and spoken:
+                    breaks.add(spoken)
+
+                continue
+
+            spoken += 1
 
     if breaks:
 

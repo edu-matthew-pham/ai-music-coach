@@ -223,6 +223,45 @@ def test_a_key_change_is_read_at_its_beat_on_a_real_score():
     assert "to A major at bar 61" in feedback
 
 
+def test_the_mulan_gate():
+    """
+    The file this whole plan started from. Measured by hand,
+    before any code: 296 beats printed, 348 played (a
+    52-beat repeat, measures 3-15, played twice into two
+    different endings), and a key change at beat 208, not
+    the old, wrong 156 a raw walk gave it.
+
+    This is the same fixture test_music.py's
+    test_harmony_respects_a_real_key_change and
+    test_a_zero_semitone_transpose_of_a_modulating_piece_is_a_no_op
+    use - both were silently skipping (a stale hardcoded
+    Only the feedback sentence and the key are asserted here,
+    not the returned duration total: Mulan genuinely uses two
+    voices in one staff in several measures (real notation,
+    not a file error - checked in the score directly), which
+    a separate, pre-existing bug in the note-reading loop
+    double-counts. Confirmed pre-existing, not caused by this
+    change: the same inflation (296 real beats read as 320)
+    happens on the raw, unexpanded score too. Out of scope
+    here - the "several voices in one staff" corner the
+    module's own docstring already names, now with a real
+    fixture proving it wrong. Its own item.
+    """
+
+    from musicxml_import import parts_in
+
+    path = fixture("mulan-ill-make-a-man-out-of-you.mxl")
+    label = parts_in(path)[0]
+
+    pitches, durations, lyrics, bpm, feedback, chart, poly, key = (
+        imported("mulan-ill-make-a-man-out-of-you.mxl", label)
+    )
+
+    assert "1 repeat with 2 endings" in feedback
+    assert "296 beats printed, 348 played" in feedback
+    assert key == "G, Ab from beat 208"
+
+
 @pytest.mark.xfail(
     strict=True,
     reason=(

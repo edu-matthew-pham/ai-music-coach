@@ -535,3 +535,188 @@ def test_a_transposing_parts_signature_is_never_borrowed(tmp_path):
     assert "Eb4" not in words
 
     assert "changes key" not in feedback
+
+# Phrasing from the lyrics themselves, not just rests.
+#
+# The real fixtures below are the actual regression check:
+# both already showed the old rest-only rule failing in
+# opposite directions before this existed - O Holy Night
+# arrived as a few crowded lines holding several sentences
+# each, Mulan arrived cut mid-sentence at every short
+# breath. The unit tests around them pin the two false
+# positives found by running against that real data (a
+# mid-sentence proper noun, and the pronoun "I"), not
+# invented cases.
+
+def test_lyrics_are_read_as_prose_when_they_carry_the_signal():
+    from musicxml_import import _lyrics_read_as_prose
+
+    assert _lyrics_read_as_prose(
+        ["There", "once", "was", "a", "ship."]
+    )
+
+    # A capital alone is enough, with no punctuation at all.
+    assert _lyrics_read_as_prose(["Amazing", "grace"])
+
+
+def test_all_caps_lyrics_carry_no_case_signal():
+    """
+    Real fixture, not hypothetical: d_FR1924.mid (A Thousand
+    Years) is engraved in running capitals. Reading "starts
+    with a capital" against a file like that would fire on
+    every syllable and produce nonsense, so a score has to
+    be confirmed to use lower case at all before its
+    capitals mean anything.
+    """
+
+    from musicxml_import import _lyrics_read_as_prose
+
+    assert not _lyrics_read_as_prose(
+        ["HEART", "BEATS", "FAST", "CO", "LORS"]
+    )
+
+
+def test_lyrics_with_no_case_or_punctuation_carry_no_signal():
+    from musicxml_import import _lyrics_read_as_prose
+
+    assert not _lyrics_read_as_prose(
+        ["twin", "kle", "twin", "kle", "lit", "tle", "star"]
+    )
+
+
+def test_phrase_breaks_open_on_a_capital_and_close_on_a_full_stop():
+    from musicxml_import import _lyric_phrase_breaks
+
+    syllables = [
+        "There", "once", "was", "a", "ship.",
+        "It", "sailed", "the", "sea", "for", "days."
+    ]
+
+    assert _lyric_phrase_breaks(syllables) == {5}
+
+
+def test_a_mid_sentence_proper_noun_is_a_known_false_positive():
+    """
+    Not a bug to fix here, but a documented limitation: a
+    capitalised proper noun mid-sentence reads identically
+    to a real phrase start, because the rule only ever looks
+    at the letter itself. Real fixtures hit this too (Mulan's
+    "Huns", O Holy Night's "Christ") and it costs one
+    Backspace to correct, same as any other guess under
+    invariant 6 - this test exists so a future change to the
+    capital-letter rule doesn't accidentally "fix" this one
+    case while breaking the general rule that makes it
+    correct everywhere else.
+    """
+
+    from musicxml_import import _lyric_phrase_breaks
+
+    syllables = [
+        "We", "sailed", "with", "Marcus", "at", "the", "helm."
+    ]
+
+    assert _lyric_phrase_breaks(syllables) == {3}
+
+
+def test_the_pronoun_i_never_opens_a_phrase_on_its_own():
+    """
+    Regression pin for the real bug this produced on Mulan:
+    "Did they send me daughters when I asked for sons" came
+    out as two lines, split right before "I", because "I"
+    is always capitalised regardless of where it falls in
+    the sentence.
+    """
+
+    from musicxml_import import _lyric_phrase_breaks
+
+    syllables = [
+        "Did", "they", "send", "me", "daugh-", "ters", "when",
+        "I", "asked", "for", "sons."
+    ]
+
+    assert _lyric_phrase_breaks(syllables) == set()
+
+    # "I" still closes a phrase and opens the next one
+    # normally when a real sentence boundary actually falls
+    # there - only its own capital is special-cased, not
+    # the word as a whole.
+    syllables_with_boundary = [
+        "You", "knew", "me.", "I", "asked", "for", "sons."
+    ]
+
+    assert _lyric_phrase_breaks(syllables_with_boundary) == {3}
+
+
+def test_lyric_phrase_breaks_returns_none_without_usable_signal():
+    """
+    The caller's own fallback to the rest-based rule depends
+    on this being None, not an empty set, when the words
+    give no usable evidence - an empty set would mean "no
+    breaks found", which is a different, wrong answer from
+    "these words can't be trusted to say".
+    """
+
+    from musicxml_import import _lyric_phrase_breaks
+
+    assert _lyric_phrase_breaks(
+        ["HEART", "BEATS", "FAST"]
+    ) is None
+
+    assert _lyric_phrase_breaks([]) is None
+
+
+def test_o_holy_night_no_longer_crowds_several_sentences_onto_one_line():
+    """
+    Real fixture regression: before this, the printed
+    score's own rests were too sparse to end a phrase where
+    a sentence actually did, and "A thrill of hope... Fall
+    on your knees... O night divine..." arrived as one
+    single line holding four sentences.
+    """
+
+    if not present():
+        pytest.skip("the O Holy Night fixture is absent")
+
+    pitches, durations, lyrics, bpm, feedback, chart, poly, key = (
+        imported("1")
+    )
+
+    lines = lyrics.split("\n")
+
+    assert len(lines) > 4
+
+    # Each sentence closes where it prints a full stop or
+    # an exclamation mark - "Night!" is its own short line,
+    # not folded into the next sentence.
+    assert "Night!" in lines
+
+
+def test_mulan_no_longer_splits_a_sentence_at_every_short_breath():
+    """
+    Real fixture regression: before this, a short breath
+    between "when" and "I" (a real rest, but mid-sentence)
+    cut "Did they send me daughters when I asked for sons"
+    into three separate lines.
+    """
+
+    path = os.path.join(
+        os.path.dirname(__file__), "fixtures", "musicxml",
+        "mulan-ill-make-a-man-out-of-you.mxl"
+    )
+
+    if not os.path.exists(path):
+        pytest.skip("the Mulan fixture is absent")
+
+    from musicxml_import import import_musicxml
+
+    pitches, durations, lyrics, bpm, feedback, chart, poly, key = (
+        import_musicxml(path, "0")
+    )
+
+    lines = lyrics.split("\n")
+
+    assert any(
+        line.startswith("Did they send me daugh- ters when")
+        and line.rstrip().endswith("sons")
+        for line in lines
+    )

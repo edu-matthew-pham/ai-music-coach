@@ -867,8 +867,8 @@ def test_a_zero_semitone_transpose_of_a_modulating_piece_is_a_no_op():
     from music import transpose_music
     from musicxml_import import import_musicxml, parts_in
 
-    path = (
-        "/mnt/user-data/uploads/"
+    path = os.path.join(
+        os.path.dirname(__file__), "fixtures", "musicxml",
         "mulan-ill-make-a-man-out-of-you.mxl"
     )
 
@@ -981,17 +981,24 @@ def test_harmony_respects_a_real_key_change():
     The other proven bug this whole feature exists to fix,
     alongside transpose: a wrong-key harmony is not just a
     wrong note NAME, it is a genuinely different note. Found
-    on the real Mulan file - a note at beat 164.5, after its
-    own key change (bar 40, G to Ab), harmonised as C5 under
+    on the real Mulan file - a note at beat 217, after its
+    own key change (bar 53, G to Ab), harmonised as C5 under
     the old single-key bug and Db5 correctly.
+
+    The beat and bar here are the score's played position,
+    once its repeat is unfolded (see test_musicxml_unfold.py)
+    - the note itself, and the two harmony notes either side
+    of the bug, are unchanged from where this test first found
+    them; only the position moved once the timeline was
+    corrected.
     """
 
     from music import harmony_line
     from musicxml_import import import_musicxml, parts_in
     from fractions import Fraction
 
-    path = (
-        "/mnt/user-data/uploads/"
+    path = os.path.join(
+        os.path.dirname(__file__), "fixtures", "musicxml",
         "mulan-ill-make-a-man-out-of-you.mxl"
     )
 
@@ -1025,8 +1032,8 @@ def test_harmony_respects_a_real_key_change():
         style="Parallel thirds"
     )
 
-    assert correct[197] == "Db5"
-    assert wrong[197] == "C5"
+    assert correct[259] == "Db5"
+    assert wrong[259] == "C5"
     assert correct != wrong
 
 
