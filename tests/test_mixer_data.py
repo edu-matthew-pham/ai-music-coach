@@ -400,15 +400,24 @@ def test_mixer_data_has_the_shape_the_component_expects():
         == chart_chord_names
     )
 
-    # "Both positions" has no second shape of its own to add -
-    # a double stop is only ever a first-position shape - so
-    # it resolves to first position for the shape layer and
-    # shows that same shape, matching "Violin, first
-    # position" exactly rather than sitting empty.
-    assert (
-        value["diagrams"]["shapes"]["Violin, both positions"]
-        == value["diagrams"]["shapes"]["Violin, first position"]
-    )
+    # "Both positions" now has a genuine second shape - a
+    # real double stop in third position, not first
+    # position's shape reused - so it draws both, differing
+    # from "Violin, first position" wherever the chart has a
+    # chord at all, using the same SHAPE_COLOUR/
+    # HIGHER_SHAPE_COLOUR split guitar and ukulele's own
+    # higher positions already use.
+    from instrument_diagrams import SHAPE_COLOUR, HIGHER_SHAPE_COLOUR
+
+    both_shapes = value["diagrams"]["shapes"]["Violin, both positions"]
+    first_shapes = value["diagrams"]["shapes"]["Violin, first position"]
+
+    assert set(both_shapes.keys()) == chart_chord_names
+
+    for chord_name in chart_chord_names:
+        assert both_shapes[chord_name] != first_shapes[chord_name]
+        assert SHAPE_COLOUR in both_shapes[chord_name]
+        assert HIGHER_SHAPE_COLOUR in both_shapes[chord_name]
 
     # Structure and scale must be different pictures, not
     # the same one under two names - the bug that shipped

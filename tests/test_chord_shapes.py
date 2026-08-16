@@ -227,24 +227,64 @@ def test_a_shape_overlay_stacks_on_the_same_structure():
         assert structure_box == shape_box
 
 
-def test_violin_both_positions_still_shows_the_one_shape_it_has():
+def test_violin_both_positions_now_shows_two_genuine_shapes():
     """
-    A double stop is only ever a first-position shape - there
-    is no second, higher-position variant to combine it with
-    the way guitar and ukulele's barre shapes combine. So
-    "Violin, both positions" resolves to first position for
-    the shape layer specifically and shows that same shape,
-    rather than hiding it - consistent with guitar and
-    ukulele's own "always show the standard shape when one
-    exists" rule, not a special case.
+    A double stop now has a real second, higher-position
+    variant (violin_shape_strings_higher, searched within
+    third position's own frame) - a genuine second hand
+    shape, not first position's shape re-shown, the same way
+    guitar and ukulele's barre shapes combine two real
+    positions. "Violin, both positions" draws both, using
+    SHAPE_COLOUR and HIGHER_SHAPE_COLOUR the same way the
+    fretted instruments already do.
     """
+
+    from instrument_diagrams import SHAPE_COLOUR, HIGHER_SHAPE_COLOUR
 
     first = shape_overlay_for("C", "Violin, first position", "C")
     both = shape_overlay_for("C", "Violin, both positions", "C")
 
     assert first is not None
     assert both is not None
-    assert first == both
+    assert first != both
+    assert SHAPE_COLOUR in both
+    assert HIGHER_SHAPE_COLOUR in both
+
+
+def test_violin_higher_position_covers_every_chord_with_a_real_third():
+    """
+    Every one of the app's 24 root/quality combinations finds
+    a genuine double stop within third position's own frame,
+    and every one uses a real third rather than falling back
+    to a fifth - checked against actual chord tones, not just
+    that a fret number exists.
+    """
+
+    from instrument_diagrams import (
+        violin_shape_strings_higher, VIOLIN_STRINGS, NOTE_SEMITONES,
+        _note_at
+    )
+    from chords import CHORD_QUALITIES
+
+    for root in ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"]:
+        for quality in ["", "m"]:
+
+            shaped = violin_shape_strings_higher(root, quality)
+            assert shaped is not None, f"{root}{quality} has no higher position"
+
+            low_i, low_f, high_i, high_f = shaped
+
+            sounded = {
+                _note_at(VIOLIN_STRINGS[low_i], low_f) % 12,
+                _note_at(VIOLIN_STRINGS[high_i], high_f) % 12,
+            }
+
+            root_st = NOTE_SEMITONES[root] % 12
+            third_interval = CHORD_QUALITIES[quality][1]
+            third_st = (root_st + third_interval) % 12
+
+            assert root_st in sounded, f"{root}{quality} is missing its own root"
+            assert third_st in sounded, f"{root}{quality} fell back to a fifth"
 
 
 def test_an_unsupported_quality_falls_back_to_nothing_not_an_error():

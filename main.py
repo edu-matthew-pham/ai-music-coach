@@ -760,14 +760,38 @@ with gr.Blocks(
         import_feedback
     ]
 
+    # The same boxes open_mixer_button reads when pressed by
+    # hand - shared so every way of landing new music in the
+    # boxes (upload, track switch, either built-in example)
+    # can trigger the same rebuild via .then(), rather than
+    # leaving the mixer showing whatever it last had, or
+    # nothing, until Generate Playback is pressed separately.
+    mixer_inputs = [
+        pitch_input,
+        duration_input,
+        key_input,
+        bpm_input,
+        chart_input,
+        harmony_style_input,
+        lyric_input
+    ]
+
     example_button.click(
         fn=load_example("Twinkle Twinkle", load_twinkle),
         outputs=example_outputs
+    ).then(
+        fn=guard(build_mixer),
+        inputs=mixer_inputs,
+        outputs=mixer_output
     )
 
     wellerman_button.click(
         fn=load_example("the Wellerman", load_wellerman),
         outputs=example_outputs
+    ).then(
+        fn=guard(build_mixer),
+        inputs=mixer_inputs,
+        outputs=mixer_output
     )
 
     # An imported file brings no chords, so the chart is
@@ -869,12 +893,20 @@ with gr.Blocks(
         fn=guard(import_and_show),
         inputs=midi_upload,
         outputs=music_outputs + [phrase_input, track_input]
+    ).then(
+        fn=guard(build_mixer),
+        inputs=mixer_inputs,
+        outputs=mixer_output
     )
 
     track_input.change(
         fn=guard(import_track),
         inputs=[midi_upload, track_input],
         outputs=music_outputs + [phrase_input]
+    ).then(
+        fn=guard(build_mixer),
+        inputs=mixer_inputs,
+        outputs=mixer_output
     )
 
     # Choosing a phrase changes nothing in the boxes. It
@@ -886,15 +918,7 @@ with gr.Blocks(
 
     open_mixer_button.click(
         fn=guard(build_mixer),
-        inputs=[
-            pitch_input,
-            duration_input,
-            key_input,
-            bpm_input,
-            chart_input,
-            harmony_style_input,
-            lyric_input
-        ],
+        inputs=mixer_inputs,
         outputs=mixer_output
     )
 
