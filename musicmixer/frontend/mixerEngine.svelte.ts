@@ -17,6 +17,17 @@
 // this engine and shows the true position; it does not reset
 // to zero and it does not orphan the sound.
 
+// 0.7 measurably undercut what MuseScore's own playback
+// sounds like at the same notes, before any layer even
+// combines with another - checked directly, not felt: with
+// only Melody playing (today's own default view), nothing
+// is near the limiter's -6dB threshold yet, so this number
+// alone was the dominant reason for the gap. The limiter
+// stays as the real safety net for when several layers do
+// sum toward clipping; this just stops it starting from an
+// unnecessary cut.
+const MASTER_VOLUME_DEFAULT = 0.95;
+
 export interface MixerLayerData {
 	name: string;
 	level: number;
@@ -112,7 +123,7 @@ class MixerEngine {
 				(window as any).webkitAudioContext)();
 
 			const master = this.context.createGain();
-			master.gain.value = 0.7;
+			master.gain.value = this.masterVolume;
 
 			// Several layers summed can clip; a limiter turns
 			// that into a smooth reduction instead of a crackle.
@@ -353,6 +364,26 @@ class MixerEngine {
 		this.levels[name] = value;
 		if (this.gains[name] && this.context) {
 			this.gains[name].gain.setTargetAtTime(
+				value,
+				this.context.currentTime,
+				0.01
+			);
+		}
+	}
+
+	// Separate from per-layer levels on purpose: this is
+	// overall loudness, not one layer's balance against the
+	// others, and it has to work even before any layer has
+	// been decoded - ensureContext() always creates the
+	// master gain node up front, so this is safe to call at
+	// any time, session-wide, the same way setLevel's own
+	// ramp avoids an audible jump if it moves while playing.
+	masterVolume: number = MASTER_VOLUME_DEFAULT;
+
+	setMasterVolume(value: number): void {
+		this.masterVolume = value;
+		if (this.master && this.context) {
+			this.master.gain.setTargetAtTime(
 				value,
 				this.context.currentTime,
 				0.01

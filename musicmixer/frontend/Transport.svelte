@@ -19,6 +19,7 @@
 		hasTimeline: boolean;
 		onClearSelection: () => void;
 		onToggleRepeat: () => void;
+		onMasterVolumeChanged: () => void;
 	}
 
 	let {
@@ -27,7 +28,8 @@
 		follow = $bindable(),
 		hasTimeline,
 		onClearSelection,
-		onToggleRepeat
+		onToggleRepeat,
+		onMasterVolumeChanged
 	}: Props = $props();
 </script>
 
@@ -35,6 +37,20 @@
 	<button onclick={() => engine.play(layers)}>Play</button>
 	<button onclick={() => engine.stop()}>Stop</button>
 	<button onclick={onClearSelection}>Clear selection</button>
+	<label class="volume">
+		Volume
+		<input
+			type="range"
+			min="0"
+			max="1"
+			step="0.05"
+			bind:value={engine.masterVolume}
+			oninput={onMasterVolumeChanged}
+		/>
+		<span class="value">
+			{Math.round(engine.masterVolume * 100)}%
+		</span>
+	</label>
 	{#if engine.loopFrom !== null && engine.loopTo !== null}
 		<label class="repeat">
 			<input
@@ -117,5 +133,20 @@
 		accent-color: #2e7d32;
 		width: 15px;
 		height: 15px;
+	}
+	.volume {
+		font-size: 13px;
+		display: flex;
+		align-items: center;
+		gap: 4px;
+	}
+	.volume input[type="range"] {
+		width: 90px;
+	}
+	.volume .value {
+		width: 34px;
+		font-size: 12px;
+		color: var(--body-text-color-subdued);
+		text-align: right;
 	}
 </style>

@@ -192,6 +192,11 @@
 		gradio.dispatch("input");
 	}
 
+	function masterVolumeChanged(): void {
+		engine.setMasterVolume(engine.masterVolume);
+		gradio.dispatch("input");
+	}
+
 	// Full screen covers the whole viewport by making
 	// Gradio's own wrapper element position: fixed (the CSS
 	// rule lives in main.py's global stylesheet, since a
@@ -276,6 +281,7 @@
 			hasTimeline={timeline.length > 0}
 			onClearSelection={clearSelection}
 			onToggleRepeat={toggleRepeat}
+			onMasterVolumeChanged={masterVolumeChanged}
 		/>
 
 		<PanelToggles
