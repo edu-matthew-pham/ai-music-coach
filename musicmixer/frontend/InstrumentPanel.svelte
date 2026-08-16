@@ -180,7 +180,19 @@
 	{#each families as family}
 		<span class="instrument-with-variant">
 			<label class="instrument-toggle">
-				<input type="checkbox" bind:checked={diagramInstruments[family]} />
+				<!-- checked= + onchange, not bind:checked - the same
+				     reason the variant radios below already work
+				     and this didn't: Svelte 5's bind writes the
+				     DOM's default (unchecked -> false) back into
+				     undefined state at mount, before the $effect
+				     calling ensureInstrumentToggle runs, so its
+				     "not yet set" guard saw false and kept it. -->
+				<input
+					type="checkbox"
+					checked={diagramInstruments[family] ?? false}
+					onchange={(event) =>
+						(diagramInstruments[family] = (event.currentTarget as HTMLInputElement).checked)}
+				/>
 				{family}
 			</label>
 			{#if (familyVariants.get(family)?.length ?? 0) > 1}

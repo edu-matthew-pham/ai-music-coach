@@ -13,6 +13,25 @@
 		engine.levels[name] = engine.levels[name] > 0 ? 0 : opening;
 		onLevelChanged(name);
 	}
+	// Not bind:value - Svelte 5's bind writes the DOM's own
+	// default back into state when the state is undefined
+	// (bindings/input.js: `if (get() == null) set(...)`), and
+	// a fresh range input's default is its midpoint. Since
+	// engine.levels starts empty and Index seeds it in a
+	// $effect (after mount), every fader was silently landing
+	// on 0.5 before the opening levels could be applied, and
+	// the "only if not yet set" guard then correctly left the
+	// 0.5 alone. Reading the value with a fallback and
+	// writing on input keeps the same behaviour with no
+	// write-back path.
+	function levelOf(layer: MixerLayerData): number {
+		return engine.levels[layer.name] ?? layer.level;
+	}
+
+	function setFromInput(name: string, event: Event): void {
+		engine.levels[name] = Number((event.currentTarget as HTMLInputElement).value);
+		onLevelChanged(name);
+	}
 </script>
 
 <div class="faders">
@@ -29,11 +48,11 @@
 				min="0"
 				max="1"
 				step="0.05"
-				bind:value={engine.levels[layer.name]}
-				oninput={() => onLevelChanged(layer.name)}
+				value={levelOf(layer)}
+				oninput={(event) => setFromInput(layer.name, event)}
 			/>
 			<span class="value">
-				{Math.round((engine.levels[layer.name] ?? 0) * 100)}%
+				{Math.round(levelOf(layer) * 100)}%
 			</span>
 		</div>
 	{/each}
