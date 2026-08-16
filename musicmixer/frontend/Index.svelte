@@ -6,7 +6,18 @@
 	import { Block } from "@gradio/atoms";
 	import { onDestroy, onMount } from "svelte";
 	import { engine } from "./mixerEngine.svelte";
-	import { panels, readScale, setReadScale, READ_SCALE_MIN, READ_SCALE_MAX, READ_SCALE_STEP } from "./mixerPanels.svelte";
+	import {
+		panels,
+		readScale,
+		setReadScale,
+		READ_SCALE_MIN,
+		READ_SCALE_MAX,
+		READ_SCALE_STEP,
+		viewPreset,
+		applyPreset,
+		showNextPreview,
+		previewSideBySide
+	} from "./mixerPanels.svelte";
 	import Transport from "./Transport.svelte";
 	import PanelToggles from "./PanelToggles.svelte";
 	import ChordStrip from "./ChordStrip.svelte";
@@ -62,6 +73,37 @@
 	let containerWidth = $state(0);
 	const narrow = $derived(
 		containerWidth > 0 && containerWidth < NARROW_BREAKPOINT
+	);
+
+	// LyricsPanel's one mode prop, decided here and nowhere
+	// else - the view preset takes priority (it's an explicit
+	// choice), otherwise it's derived from whether Notes is
+	// showing at all. Replaces separately computed solo/
+	// tabView booleans, which let the same state be implied
+	// two different places and drift out of sync.
+	const lyricsMode = $derived.by((): "paired" | "windowed" | "tab" | "singstar" => {
+		if (viewPreset.value === "tab") return "tab";
+		if (viewPreset.value === "singstar") return "singstar";
+		return panels.notes ? "paired" : "windowed";
+	});
+
+	// SingStar's stacked layout gets margins on a wide screen
+	// or TV by default - full edge-to-edge width doesn't
+	// actually help two centred, glance-down panels, it just
+	// stretches the gap between them. The one exception is
+	// Notes' own "side by side" preview (the current phrase's
+	// pitch boxes next to the upcoming phrase's, side by side
+	// rather than stacked) - that genuinely wants the width
+	// back, so margins step aside for it specifically rather
+	// than fighting it. Mirrors NotesPanel's own condition for
+	// entering that layout (showNextPreview && previewSideBySide
+	// && !narrow) - if NotesPanel wouldn't actually go wide,
+	// margins here shouldn't back off for nothing.
+	const singstarWide = $derived(
+		viewPreset.value === "singstar" &&
+			showNextPreview.value &&
+			previewSideBySide.value &&
+			!narrow
 	);
 
 	// A loop is seconds into a particular song. Carried over
@@ -330,6 +372,24 @@
 					&plus;
 				</button>
 			</div>
+			<div class="preset-buttons" role="group" aria-label="View">
+				<button
+					type="button"
+					class="preset-button"
+					aria-pressed={viewPreset.value === "tab"}
+					onclick={() => applyPreset("tab")}
+				>
+					{viewPreset.value === "tab" ? "Exit tab view" : "Tab view"}
+				</button>
+				<button
+					type="button"
+					class="preset-button"
+					aria-pressed={viewPreset.value === "singstar"}
+					onclick={() => applyPreset("singstar")}
+				>
+					{viewPreset.value === "singstar" ? "Exit SingStar view" : "SingStar view"}
+				</button>
+			</div>
 			{#if panels.faders}
 				<MixerModal {layers} onLevelChanged={levelChanged} />
 			{/if}
@@ -348,18 +408,40 @@
 		{/if}
 
 		{#if panels.lyrics || panels.notes}
-			<div class="lyrics-and-notes" class:narrow>
-				{#if panels.lyrics}
-					<div class="lyrics-cell">
-						<LyricsPanel {notes} {timeline} {phrases} {playhead} />
-					</div>
-				{/if}
-				{#if panels.notes}
-					<div class="notes-cell">
-						<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} />
-					</div>
-				{/if}
-			</div>
+			{#if viewPreset.value === "singstar"}
+				<!-- Notes above, a compact Lyrics strip below -
+				     stacked, not side by side. Lyrics gets
+				     mode="singstar": exactly current + next,
+				     chords included - a glance-down reference
+				     for an instrument while the pitch view
+				     carries the singing, not a second thing
+				     competing for the eye. -->
+				<div class="lyrics-and-notes singstar" class:wide={singstarWide}>
+					{#if panels.notes}
+						<div class="notes-cell">
+							<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} />
+						</div>
+					{/if}
+					{#if panels.lyrics}
+						<div class="lyrics-cell">
+							<LyricsPanel {notes} {timeline} {phrases} {playhead} mode={lyricsMode} />
+						</div>
+					{/if}
+				</div>
+			{:else}
+				<div class="lyrics-and-notes" class:narrow>
+					{#if panels.lyrics}
+						<div class="lyrics-cell">
+							<LyricsPanel {notes} {timeline} {phrases} {playhead} mode={lyricsMode} />
+						</div>
+					{/if}
+					{#if panels.notes}
+						<div class="notes-cell">
+							<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} />
+						</div>
+					{/if}
+				</div>
+			{/if}
 		{/if}
 	</div>
 </Block>
@@ -403,6 +485,45 @@
 	}
 	.lyrics-and-notes.narrow {
 		flex-direction: column;
+	}
+	.lyrics-and-notes.singstar {
+		/* Stacked, not side by side - Notes first (the thing
+		   actually being sung to), a compact Lyrics strip
+		   below it. align-items: stretch so each cell takes
+		   the full width rather than sizing to its own
+		   content, the way flex-start (the default above)
+		   would leave Lyrics only as wide as its text.
+		   Margined and centred by default - on a wide monitor
+		   or a TV, letting two already-centred panels stretch
+		   edge to edge doesn't add anything, it just widens the
+		   gap between short lines of text. 1200px keeps both
+		   panels a comfortable reading width regardless of how
+		   wide the actual screen is. */
+		flex-direction: column;
+		align-items: stretch;
+		gap: 12px;
+		max-width: 1200px;
+		margin: 0 auto;
+	}
+	.lyrics-and-notes.singstar.wide {
+		/* Notes' own "side by side" preview genuinely wants
+		   the width back (two phrases' worth of pitch boxes
+		   next to each other) - margins step aside for it
+		   rather than squeezing it into the same 1200px cap
+		   everything else defaults to. */
+		max-width: none;
+		margin: 0;
+	}
+	.lyrics-and-notes.singstar .lyrics-cell,
+	.lyrics-and-notes.singstar .notes-cell {
+		/* The 3:7 grow ratio and fixed bases below are what
+		   split a shared ROW's leftover width - along a
+		   column axis that's a different axis (height, not
+		   width) and would just be noise here. Reset to
+		   "take your own natural height, don't fight your
+		   neighbour for space" instead. */
+		flex: 0 1 auto;
+		min-width: 0;
 	}
 	.lyrics-cell {
 		/* flex-grow of 3 against notes-cell's 7 - what actually
@@ -465,5 +586,27 @@
 	}
 	.text-scale-value:disabled {
 		cursor: default;
+	}
+	.preset-buttons {
+		display: flex;
+		gap: 6px;
+	}
+	.preset-button {
+		font: inherit;
+		font-size: 12px;
+		padding: 5px 10px;
+		border: 1px solid var(--border-color-primary);
+		border-radius: 8px;
+		background: var(--background-fill-primary);
+		color: var(--body-text-color-subdued);
+		cursor: pointer;
+	}
+	.preset-button:hover {
+		background: var(--background-fill-secondary, #f5f5f5);
+	}
+	.preset-button[aria-pressed="true"] {
+		border-color: #2e7d32;
+		background: #e8f5e9;
+		color: #2e7d32;
 	}
 </style>

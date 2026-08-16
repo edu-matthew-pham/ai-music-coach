@@ -1,7 +1,20 @@
 <script lang="ts">
 	import { engine } from "./mixerEngine.svelte";
 	import { mic } from "./micPitch.svelte";
-	import { noteLayers, showNextPreview, previewSideBySide, notesShowLabels, showLiveTrace, notesOctaveShift, notesShowChords } from "./mixerPanels.svelte";
+	import {
+		noteLayers,
+		showNextPreview,
+		previewSideBySide,
+		notesShowLabels,
+		showLiveTrace,
+		notesOctaveShift,
+		notesShowChords,
+		notesScale,
+		setNotesScale,
+		PANEL_SCALE_MIN,
+		PANEL_SCALE_MAX,
+		PANEL_SCALE_STEP
+	} from "./mixerPanels.svelte";
 	import type { MixerNote, MixerBar, MixerPhrase } from "./types";
 
 	// A static page per phrase, hard-cut to the next rather
@@ -339,70 +352,101 @@
 	</svg>
 {/snippet}
 
-<div class="notes-toggles">
-	{#each Object.keys(noteLayers) as name}
+<div class="notes-panel" style="--notes-scale: {notesScale.value}">
+	<div class="notes-toggles">
+		{#each Object.keys(noteLayers) as name}
+			<label class="layer-toggle">
+				<input type="checkbox" bind:checked={noteLayers[name]} />
+				{name}
+			</label>
+		{/each}
+		<label class="layer-toggle preview-toggle">
+			<input type="checkbox" bind:checked={showNextPreview.value} />
+			Preview next phrase
+		</label>
+		{#if showNextPreview.value}
+			<label class="layer-toggle" class:disabled={narrow}>
+				<input
+					type="checkbox"
+					bind:checked={previewSideBySide.value}
+					disabled={narrow}
+				/>
+				Side by side
+			</label>
+		{/if}
 		<label class="layer-toggle">
-			<input type="checkbox" bind:checked={noteLayers[name]} />
-			{name}
+			<input type="checkbox" bind:checked={notesShowLabels.value} />
+			Word labels
 		</label>
-	{/each}
-	<label class="layer-toggle preview-toggle">
-		<input type="checkbox" bind:checked={showNextPreview.value} />
-		Preview next phrase
-	</label>
-	{#if showNextPreview.value}
-		<label class="layer-toggle" class:disabled={narrow}>
-			<input
-				type="checkbox"
-				bind:checked={previewSideBySide.value}
-				disabled={narrow}
-			/>
-			Side by side
-		</label>
-	{/if}
-	<label class="layer-toggle">
-		<input type="checkbox" bind:checked={notesShowLabels.value} />
-		Word labels
-	</label>
-	<label class="layer-toggle">
-		<input type="checkbox" bind:checked={notesShowChords.value} />
-		Chords
-	</label>
-	{#if mic.state === "on" || mic.trace.length}
 		<label class="layer-toggle">
-			<input type="checkbox" bind:checked={showLiveTrace.value} />
-			Live pitch
+			<input type="checkbox" bind:checked={notesShowChords.value} />
+			Chords
 		</label>
-	{/if}
-	<div class="octave-shift" role="group" aria-label="Notes octave">
-		<span class="octave-shift-label">Notes:</span>
-		{#each [[-1, "Down"], [0, "As written"], [1, "Up"]] as [value, label] (value)}
+		{#if mic.state === "on" || mic.trace.length}
+			<label class="layer-toggle">
+				<input type="checkbox" bind:checked={showLiveTrace.value} />
+				Live pitch
+			</label>
+		{/if}
+		<div class="octave-shift" role="group" aria-label="Notes octave">
+			<span class="octave-shift-label">Notes:</span>
+			{#each [[-1, "Down"], [0, "As written"], [1, "Up"]] as [value, label] (value)}
+				<button
+					type="button"
+					class="octave-shift-button"
+					class:active={notesOctaveShift.value === value}
+					onclick={() => (notesOctaveShift.value = value as -1 | 0 | 1)}
+				>
+					{label}
+				</button>
+			{/each}
+		</div>
+		<div class="panel-scale-control" role="group" aria-label="Notes text size">
 			<button
 				type="button"
-				class="octave-shift-button"
-				class:active={notesOctaveShift.value === value}
-				onclick={() => (notesOctaveShift.value = value as -1 | 0 | 1)}
+				class="panel-scale-button"
+				disabled={notesScale.value <= PANEL_SCALE_MIN}
+				aria-label="Smaller notes text"
+				onclick={() => setNotesScale(notesScale.value - PANEL_SCALE_STEP)}
 			>
-				{label}
+				&minus;
 			</button>
-		{/each}
-	</div>
-</div>
-
-{#if currentPage}
-	<div class="pages" class:row={sideBySide} bind:this={container}>
-		<div class="notes-container">
-			{@render pageSvg(currentPage, true, false)}
+			<button
+				type="button"
+				class="panel-scale-value"
+				disabled={notesScale.value === 1}
+				aria-label="Reset notes text size to 100%"
+				onclick={() => setNotesScale(1)}
+			>
+				{Math.round(notesScale.value * 100)}%
+			</button>
+			<button
+				type="button"
+				class="panel-scale-button"
+				disabled={notesScale.value >= PANEL_SCALE_MAX}
+				aria-label="Bigger notes text"
+				onclick={() => setNotesScale(notesScale.value + PANEL_SCALE_STEP)}
+			>
+				&plus;
+			</button>
 		</div>
-		{#if nextPage}
-			<div class="notes-container next-page">
-				{@render pageSvg(nextPage, false, true)}
-			</div>
-		{/if}
 	</div>
-{:else}
-	<p class="note-empty">No layers selected to show.</p>
-{/if}
+
+	{#if currentPage}
+		<div class="pages" class:row={sideBySide} bind:this={container}>
+			<div class="notes-container">
+				{@render pageSvg(currentPage, true, false)}
+			</div>
+			{#if nextPage}
+				<div class="notes-container next-page">
+					{@render pageSvg(nextPage, false, true)}
+				</div>
+			{/if}
+		</div>
+	{:else}
+		<p class="note-empty">No layers selected to show.</p>
+	{/if}
+</div>
 
 <style>
 	.notes-toggles {
@@ -455,6 +499,48 @@
 		border-color: #607d8b;
 		color: white;
 	}
+	.panel-scale-control {
+		display: flex;
+		align-items: stretch;
+		gap: 2px;
+		margin-left: auto;
+	}
+	.panel-scale-button {
+		font: inherit;
+		font-size: 12px;
+		width: 22px;
+		padding: 0;
+		border: 1px solid var(--border-color-primary);
+		border-radius: 5px;
+		background: var(--background-fill-primary);
+		color: var(--body-text-color-subdued);
+		cursor: pointer;
+	}
+	.panel-scale-button:hover:not(:disabled) {
+		background: var(--background-fill-secondary, #f5f5f5);
+	}
+	.panel-scale-button:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+	.panel-scale-value {
+		font: inherit;
+		width: 38px;
+		padding: 0 4px;
+		border: 1px solid var(--border-color-primary);
+		border-radius: 5px;
+		background: var(--background-fill-primary);
+		font-size: 10px;
+		color: var(--body-text-color-subdued);
+		text-align: center;
+		cursor: pointer;
+	}
+	.panel-scale-value:hover:not(:disabled) {
+		background: var(--background-fill-secondary, #f5f5f5);
+	}
+	.panel-scale-value:disabled {
+		cursor: default;
+	}
 	.pages {
 		display: flex;
 		flex-direction: column;
@@ -484,13 +570,23 @@
 		rx: 2;
 	}
 	.note-label {
-		font-size: 8px;
+		/* The pitch-box letter/number, plus chord-name and
+		   note-word below - the three read-from-a-distance
+		   texts in this panel. Font-size only: the boxes'
+		   own geometry (position, width) is computed in the
+		   script from fixed ROW_HEIGHT/page-width numbers,
+		   independent of this scale - enlarging text without
+		   enlarging its box can crowd or overflow at the top
+		   of PANEL_SCALE_MAX, the same honest trade-off the
+		   instrument diagrams' fingering numbers accepted
+		   rather than a full box-geometry rework. */
+		font-size: calc(8px * var(--notes-scale, 1));
 		text-anchor: middle;
 		dominant-baseline: middle;
 		pointer-events: none;
 	}
 	.chord-name {
-		font-size: 11px;
+		font-size: calc(11px * var(--notes-scale, 1));
 		font-weight: 700;
 		text-anchor: start;
 		fill: var(--body-text-color);
@@ -501,7 +597,7 @@
 		opacity: 0.5;
 	}
 	.note-word {
-		font-size: 9px;
+		font-size: calc(9px * var(--notes-scale, 1));
 		text-anchor: middle;
 		fill: var(--body-text-color-subdued, #555);
 		pointer-events: none;

@@ -233,20 +233,19 @@ export function ensureInstrumentScale(family: string): void {
 // mid-edit does not slam it shut.
 export const mixerOpen = $state({ value: false });
 
-// A global text-size control for the things actually read
-// from across a room during a jam - the chart strip's chord
-// and word labels, the phrase buttons, and the Lyrics panel -
-// as opposed to close-up UI chrome (toggles, sliders, panel
-// headers) that's read from arm's length while setting
-// something up and doesn't need the same treatment. One
-// shared knob rather than per-panel ones (unlike the
-// instrument diagrams' per-family scale): those three places
-// are read together, in the same glance, while singing -
-// having them drift out of step with each other would be
-// worse than not being adjustable at all. Same discrete +/-
-// pattern as the instrument scale, for the same reason: a
-// slider needs pointer precision a remote or a couch-distance
-// tap doesn't reliably give.
+// A global text-size control for the chart strip's chord and
+// word labels and the phrase buttons - things read together,
+// in the same glance, while singing, so one shared knob keeps
+// them in step with each other. Lyrics and Notes used to share
+// this too, but each earns its own dedicated control below:
+// they're each a large enough panel with their own reading
+// distance and content density (Lyrics is prose that wraps,
+// Notes is a dense pitch grid) that tying them to the chart
+// strip's own scale, or to each other's, was the wrong amount
+// of coupling - "granular" was the explicit ask. Same discrete
+// +/- pattern throughout, for the same reason: a slider needs
+// pointer precision a remote or a couch-distance tap doesn't
+// reliably give.
 export const readScale = $state({ value: 1 });
 
 export const READ_SCALE_MIN = 0.8;
@@ -256,4 +255,165 @@ export const READ_SCALE_STEP = 0.1;
 export function setReadScale(next: number): void {
 	const clamped = Math.min(READ_SCALE_MAX, Math.max(READ_SCALE_MIN, next));
 	readScale.value = Math.round(clamped * 10) / 10;
+}
+
+// Lyrics' own scale, independent of readScale above and of
+// Notes' below - each panel is read on its own terms.
+export const lyricsScale = $state({ value: 1 });
+
+// Notes' own scale - separate range from the other two: its
+// content (pitch boxes, chord names, syllables all packed into
+// one SVG grid) is denser than a line of lyric text or a chart
+// bar, so it has more headroom to shrink before anything
+// overlaps, and less before an enlarged grid needs to scroll
+// further to see the same number of notes.
+export const notesScale = $state({ value: 1 });
+
+export const PANEL_SCALE_MIN = 0.7;
+export const PANEL_SCALE_MAX = 2;
+export const PANEL_SCALE_STEP = 0.1;
+
+export function setLyricsScale(next: number): void {
+	const clamped = Math.min(PANEL_SCALE_MAX, Math.max(PANEL_SCALE_MIN, next));
+	lyricsScale.value = Math.round(clamped * 10) / 10;
+}
+
+export function setNotesScale(next: number): void {
+	const clamped = Math.min(PANEL_SCALE_MAX, Math.max(PANEL_SCALE_MIN, next));
+	notesScale.value = Math.round(clamped * 10) / 10;
+}
+
+// Two named views, each a preset over the existing panel
+// toggles rather than a new layout mode - "guitar tab" is
+// Lyrics alone, full width; "SingStar" is Notes alone, full
+// width. Both already fall out of the panels record above:
+// a single flex child in lyrics-and-notes takes the whole
+// row on its own (flex-grow only matters when something else
+// is competing for the same space), so nothing about the
+// layout itself needed to change, only which toggles are on.
+//
+// viewPreset names which one is active, or null for the
+// ordinary view. savedPanels holds whatever was on right
+// before a preset was applied, so leaving the preset restores
+// it exactly rather than resetting to some fixed default -
+// someone who had Instruments off already shouldn't have it
+// switched on by leaving Tab view.
+export const viewPreset = $state<{ value: "tab" | "singstar" | null }>({
+	value: null
+});
+
+let savedPanels: Record<string, boolean> | null = null;
+let savedLyricsScale: number | null = null;
+
+const TAB_PANELS: Record<string, boolean> = {
+	strip: false,
+	faders: true,
+	phrases: true,
+	notes: false,
+	lyrics: true,
+	instruments: false
+};
+
+const SINGSTAR_PANELS: Record<string, boolean> = {
+	strip: false,
+	// Phrases now stays on here too (was off) - the same
+	// click-to-jump strip Tab view already gets. SingStar's
+	// own layout (Notes above, a compact two-line Lyrics
+	// strip below) has no built-in way to jump around a song;
+	// Phrases is exactly the navigation piece that was
+	// missing, and it costs nothing extra to wire in since it
+	// already renders generically off this one flag,
+	// independent of which view preset is active.
+	phrases: true,
+	faders: true,
+	notes: true,
+	// Lyrics now stays on here (was off) - not beside Notes
+	// the ordinary way, but as a compact strip stacked below
+	// it (see Index.svelte's singstar branch): the pitch view
+	// carries the singing, and a small current-plus-upcoming
+	// line with its chords underneath lets a hand on an
+	// instrument follow along at the same time, without
+	// competing with the pitch view for the eye's attention
+	// the way a side-by-side 30/70 split would.
+	lyrics: true,
+	instruments: false
+};
+
+// SingStar's own default text sizes - only two or three short
+// lyric lines are ever on screen there (see LyricsPanel's
+// singstar case), and Notes only has one phrase's worth of
+// pitch boxes to show at a time in that layout, so both get
+// room to run larger than the other modes default to without
+// crowding. Notes isn't shown in Tab view at all, so it has
+// no equivalent default to set there.
+const SINGSTAR_DEFAULT_LYRICS_SCALE = 2;
+const SINGSTAR_DEFAULT_NOTES_SCALE = 1.4;
+
+// Tab's own default - smaller than SingStar's, since Tab
+// shows a whole song's worth of columns rather than one or
+// two lines: 130% is a real step up from the ordinary 100%
+// baseline without eating into how much of the song fits on
+// screen before horizontal scrolling kicks in. Still just a
+// starting point - the player's own +/- adjustment (and the
+// column math that already tracks lyricsScale) takes over
+// from here exactly the same as any other manual change.
+const TAB_DEFAULT_LYRICS_SCALE = 1.3;
+
+let savedNotesScale: number | null = null;
+
+export function applyPreset(name: "tab" | "singstar"): void {
+	// Pressing the active preset's own button again is how
+	// you leave it - the same toggle-shaped interaction as
+	// every other button in this row, rather than a separate
+	// "Exit" control to look for.
+	if (viewPreset.value === name) {
+		exitPreset();
+		return;
+	}
+
+	// panels is always fully overwritten below (a complete
+	// fixed record every time), so switching preset to preset
+	// never leaves a stale value behind for it. lyricsScale and
+	// notesScale don't have that same property on their own -
+	// restoring both here, on every call, before the new
+	// preset's own default (below) is applied, is what makes a
+	// direct SingStar -> Tab switch behave the same as SingStar
+	// -> exit -> Tab: one preset's own default doesn't leak
+	// into the next just because Exit was never pressed in
+	// between.
+	if (!savedPanels) {
+		savedPanels = { ...panels };
+		savedLyricsScale = lyricsScale.value;
+		savedNotesScale = notesScale.value;
+	} else {
+		if (savedLyricsScale !== null) lyricsScale.value = savedLyricsScale;
+		if (savedNotesScale !== null) notesScale.value = savedNotesScale;
+	}
+
+	Object.assign(panels, name === "tab" ? TAB_PANELS : SINGSTAR_PANELS);
+
+	if (name === "tab") {
+		lyricsScale.value = TAB_DEFAULT_LYRICS_SCALE;
+	} else {
+		lyricsScale.value = SINGSTAR_DEFAULT_LYRICS_SCALE;
+		notesScale.value = SINGSTAR_DEFAULT_NOTES_SCALE;
+	}
+
+	viewPreset.value = name;
+}
+
+export function exitPreset(): void {
+	if (savedPanels) {
+		Object.assign(panels, savedPanels);
+		savedPanels = null;
+	}
+	if (savedLyricsScale !== null) {
+		lyricsScale.value = savedLyricsScale;
+		savedLyricsScale = null;
+	}
+	if (savedNotesScale !== null) {
+		notesScale.value = savedNotesScale;
+		savedNotesScale = null;
+	}
+	viewPreset.value = null;
 }
