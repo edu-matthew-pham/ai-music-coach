@@ -216,10 +216,16 @@
 
 	let panelElement = $state<HTMLElement | null>(null);
 	let columnsElement = $state<HTMLElement | null>(null);
-	let firstLineElement = $state<HTMLElement | null>(null);
 	let availableHeight = $state(0);
 	let availableWidth = $state(0);
 	let lineHeight = $state(0);
+	// The reserve: how much taller the CURRENT line is than a
+	// typical one, so it can be subtracted from the budget
+	// before dividing. See measure()'s own comment for why this
+	// exists - the original design's intent was a generous
+	// budget that leaves headroom, not one that exactly fills
+	// the space and treats overflow as routine.
+	let currentLineExtra = $state(0);
 
 	function measure(): void {
 		if (typeof window === "undefined") return;
@@ -233,20 +239,97 @@
 		if (panelElement) {
 			availableWidth = panelElement.getBoundingClientRect().width;
 		}
-		// Height is still read off the columns box when it exists
-		// (its top edge is where the columns actually start); in
-		// single layout there is no line budget to compute, so it
-		// simply isn't needed.
+		// Height budget for a column: how tall a column can be and
+		// still fit on screen without vertical scrolling. Read off
+		// the columns box when it exists; in single layout there is
+		// no line budget to compute, so it simply isn't needed.
+		//
+		// Real bug, seen in production on a desktop monitor after
+		// this shipped: the first version computed this as
+		// `window.innerHeight - columnsBox.getBoundingClientRect().top`,
+		// which is "how much of the VIEWPORT is below the box RIGHT
+		// NOW" - a number that changes with every scroll. measure()
+		// runs on mount and on resize/scale change, but not on
+		// scroll, and the mixer is far down the page when it mounts
+		// (the Song section, headings and Gradio's own chrome sit
+		// above it), so on mount `top` was large, the result tiny,
+		// clamped to the 3-line floor - and nothing ever
+		// re-measured once main.py's Playback link scrolled the
+		// mixer up into view half a second later. The panel looked
+		// right for an instant, then collapsed to three-line
+		// columns and stayed there. Measuring viewport-relative
+		// position and never re-measuring on scroll was the
+		// contradiction; the fix is to make the number not depend
+		// on scroll position at all.
+		//
+		// So: the box's offset from the top of the MIXER (a scroll-
+		// independent, document-relative distance - the mixer's own
+		// header rows, seek bar and phrase strip are what sit
+		// above the columns, and they scroll WITH the mixer, so
+		// their height above the box is fixed) is what's above the
+		// columns once the mixer is scrolled to the top of the
+		// screen, which is exactly the state the Playback link puts
+		// it in and the state a person reading Tab view is in.
+		// innerHeight minus that is the room a column has. The
+		// nearest positioned ancestor is .mixer (position: relative
+		// in Index.svelte), so offsetTop is relative to it - not to
+		// the page, and not to the viewport.
 		if (columnsElement) {
-			const top = columnsElement.getBoundingClientRect().top;
-			availableHeight = Math.max(0, window.innerHeight - top - BOTTOM_MARGIN_PX);
+			const mixerRoot = columnsElement.closest(".mixer") as HTMLElement | null;
+			const boxTopInMixer = mixerRoot
+				? columnsElement.getBoundingClientRect().top - mixerRoot.getBoundingClientRect().top
+				: columnsElement.offsetTop;
+			availableHeight = Math.max(0, window.innerHeight - boxTopInMixer - BOTTOM_MARGIN_PX);
 		}
-		if (firstLineElement) {
-			// offsetHeight is the line's own box; the column's flex
-			// gap (10px, .lyrics-column below) sits between lines
-			// and is not part of any one line's box, so it is added
-			// here to get the true per-line stride.
-			lineHeight = firstLineElement.offsetHeight + COLUMN_LINE_GAP_PX;
+		if (columnsElement) {
+			// The yardstick is a TYPICAL line, deliberately not the
+			// first one. Real bug, seen in production right after
+			// the scroll fix above landed: the first line of the
+			// first column is the CURRENT line at the start of a
+			// song, and the current line is drawn bigger (its own
+			// font-size, see .sentence.current) and here wrapped
+			// onto two rows - measured 117px against 52px for every
+			// other line. Dividing the height budget by that
+			// inflated number gave 5 lines a column instead of 10.
+			// The scroll bug had been masking this one: fixing it
+			// just let this second wrong number through, which is
+			// exactly why the columns still looked short.
+			// So: the first line that is NOT current. There is
+			// always at least one unless the song is a single
+			// phrase, in which case fall back to whatever line
+			// exists - a one-line song does not need a line budget
+			// anyway.
+			const typical =
+				columnsElement.querySelector<HTMLElement>(".lyrics-line:not(.current)") ??
+				columnsElement.querySelector<HTMLElement>(".lyrics-line");
+			if (typical) {
+				// offsetHeight is the line's own box; the column's
+				// flex gap (10px, .lyrics-column below) sits between
+				// lines and is not part of any one line's box, so it
+				// is added here to get the true per-line stride.
+				lineHeight = typical.offsetHeight + COLUMN_LINE_GAP_PX;
+			}
+			// The reserve. The current line is drawn bigger (its
+			// own font-size, .sentence.current) and often wraps
+			// where a typical line doesn't - measured 117px against
+			// 52px, a 65px difference on a real song. The current
+			// line always exists SOMEWHERE, and moves between
+			// columns as the song plays, so every column will
+			// eventually hold it - this is not a rare case to
+			// shrug off, it is the routine one. linesPerColumn
+			// reserves this delta so the column that currently
+			// holds it still fits, restoring the original design's
+			// intent (a generous budget that leaves headroom) that
+			// dividing by a bare typical height had quietly lost.
+			// A phrase in DIFFERENT wrapping shoes than the one
+			// caught here (e.g. two lines both wrapping unusually)
+			// is what the documented fallback above still covers -
+			// this reserve narrows that gap, it does not claim to
+			// close it completely.
+			const current = columnsElement.querySelector<HTMLElement>(".lyrics-line.current");
+			currentLineExtra = current && typical
+				? Math.max(0, current.offsetHeight - typical.offsetHeight)
+				: 0;
 		}
 	}
 
@@ -285,7 +368,7 @@
 
 	const linesPerColumn = $derived(
 		availableHeight > 0 && lineHeight > 0
-			? Math.max(3, Math.floor(availableHeight / lineHeight))
+			? Math.max(3, Math.floor((availableHeight - currentLineExtra) / lineHeight))
 			: FALLBACK_LINES
 	);
 
@@ -555,12 +638,10 @@
 
 		{#if mode === "tab" && tabLayout === "columns"}
 			<!-- bind:this on the columns box gives measure() the
-			     real on-screen top of the panel; the wrapper div
-			     around the first line of the first column gives it
-			     one real rendered line to measure. A wrapper rather
-			     than binding inside the snippet, since the same
-			     snippet renders in every mode and only tab needs
-			     this. -->
+			     box's position for the height budget, and a root
+			     to query a typical rendered line from - see the
+			     line-height measurement in measure() for why it
+			     deliberately does NOT read the first line. -->
 			<div class="lyrics-columns" bind:this={columnsElement}>
 				{#each tabColumns as column, colIndex}
 					<div
@@ -568,14 +649,8 @@
 						style="width: {columnWidth}px"
 						bind:this={columnElements[colIndex]}
 					>
-						{#each column as phrase, lineIndex (phrase.start)}
-							{#if colIndex === 0 && lineIndex === 0}
-								<div bind:this={firstLineElement}>
-									{@render lyricsLine(phrase)}
-								</div>
-							{:else}
-								{@render lyricsLine(phrase)}
-							{/if}
+						{#each column as phrase (phrase.start)}
+							{@render lyricsLine(phrase)}
 						{/each}
 					</div>
 				{/each}
