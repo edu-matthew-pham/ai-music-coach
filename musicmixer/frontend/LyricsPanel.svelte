@@ -88,11 +88,24 @@
 	const displayPhrases = $derived.by((): MixerPhrase[] => {
 		switch (mode) {
 			case "windowed":
-			case "tab":
-				// tab in its single-column layout (see tabLayout)
-				// renders through this same list as windowed does
-				// - full song, one column, vertical follow.
 				return effectivePhrases;
+			case "tab":
+				// Columns layout: the full song, split across
+				// columns elsewhere (tabColumns) - this list
+				// itself needs every phrase. Single layout: a
+				// phone can't see a horizontal column, and a
+				// vertical list long enough to need scroll-to-
+				// centre loses the same "where am I" anchor a
+				// mobile player already complained about once
+				// today, for the same reason - the current line
+				// jumping to the middle of the screen makes it
+				// easy to lose while the song keeps moving.
+				// Paired's own answer (visiblePhrases: sung
+				// lines simply stop rendering, current line
+				// always first) already solves exactly this, so
+				// single layout reuses it rather than inventing
+				// a second version of the same fix.
+				return tabLayout === "columns" ? effectivePhrases : visiblePhrases;
 			case "singstar":
 				// Current plus up to SINGSTAR_LOOKAHEAD ahead - a
 				// fixed window, not "current plus however many
@@ -298,11 +311,18 @@
 	let columnElements: Record<number, HTMLElement> = {};
 
 	$effect(() => {
-		// windowed, and tab in its single-column layout, share
-		// the same vertical follow: they render through the same
-		// full-width list, so the same scroll is right for both.
-		const verticalList = mode === "windowed" || (mode === "tab" && tabLayout === "single");
-		if (verticalList && currentIndex >= 0 && phraseElements[currentIndex]) {
+		// windowed scrolls to keep the current line centred -
+		// right there, since it renders the WHOLE song and the
+		// current line can be anywhere in a long scroll region.
+		// Tab's single layout does NOT join this any more: it
+		// now renders through paired's own list (visiblePhrases,
+		// see displayPhrases above), where the current line is
+		// always first by construction - sung lines simply stop
+		// rendering rather than needing to be scrolled past. No
+		// scroll effect is needed for that, the same as paired
+		// itself has never needed one; adding scrollIntoView on
+		// top would fight the drop-off animation for no reason.
+		if (mode === "windowed" && currentIndex >= 0 && phraseElements[currentIndex]) {
 			phraseElements[currentIndex].scrollIntoView({
 				behavior: "smooth",
 				block: "center"
@@ -561,10 +581,17 @@
 				{/each}
 			</div>
 		{:else}
-			<!-- Tab in its single-column layout is styled exactly like
-			     windowed - the same class, on purpose, since it IS the
-			     same rendering: full-width list, vertical follow. -->
-			<div class="lyrics-list" class:mode-windowed={mode === "windowed" || (mode === "tab" && tabLayout === "single")}>
+			<!-- Tab's single-column layout no longer shares
+			     windowed's rendering (see displayPhrases in the
+			     script - it renders through paired's own
+			     visiblePhrases now, lines dropping off the top
+			     rather than a long scrolled list), so it no
+			     longer piggybacks on windowed's class here
+			     either. No max-width cap of its own for the same
+			     reason paired has none: the widths that reach
+			     this layout (see tabLayout) are already well
+			     under what a cap would ever bind on. -->
+			<div class="lyrics-list" class:mode-windowed={mode === "windowed"}>
 				{#each displayPhrases as phrase, index (phrase.start)}
 					<div bind:this={phraseElements[index]} animate:flip={{ duration: 220 }}>
 						{@render lyricsLine(phrase)}
@@ -607,12 +634,18 @@
 		overflow: visible;
 	}
 	.lyrics-panel.mode-tab.tab-single {
-		/* Tab's single-column layout (see tabLayout in the
-		   script) is windowed's rendering, so it gets windowed's
-		   scroll boundary back: the panel scrolls vertically and
-		   the follow effect keeps the current line centred in it.
-		   Same 85vh as .lyrics-panel.mode-windowed above. */
-		max-height: 85vh;
+		/* Tab's single-column layout now renders through
+		   paired's own logic (visiblePhrases, drop-off from the
+		   top - see displayPhrases in the script), not
+		   windowed's scroll-to-centre. So it gets paired's own
+		   scroll treatment back too: the base 70vh/auto above,
+		   not windowed's 85vh. There is nothing tab-specific
+		   left to say here other than undoing mode-tab's own
+		   overflow:visible/max-height:none (needed for the
+		   COLUMNS layout's horizontal scroll, wrong for this
+		   one) - this rule exists only to cancel that, not to
+		   add anything of its own. */
+		max-height: 70vh;
 		overflow-y: auto;
 	}
 	.lyrics-panel.mode-singstar .lyrics-toggles {
