@@ -294,6 +294,21 @@ class MixerEngine {
 		this.playing = false;
 	}
 
+	// A real stop, distinct from the pause-like stop() above:
+	// returns the playhead to the start rather than leaving it
+	// wherever playback was, so pressing Play again begins the
+	// piece over. "The start" is the beginning of the current
+	// selection if one exists, not always 0 - a loop is a
+	// practice choice the person made, and rewinding out of it
+	// on every Stop press would fight that choice rather than
+	// respect it. Does not touch loopFrom/loopTo themselves;
+	// only clearLoop() does that, deliberately kept separate.
+	stopAndRewind(): void {
+		this.offset = this.loopFrom ?? 0;
+		this.stopSources();
+		this.playing = false;
+	}
+
 	// Selection only - moves the start point and the
 	// playhead. Playing straight from a click made the
 	// visual update depend on the async audio path; a

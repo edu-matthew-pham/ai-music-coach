@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { engine } from "./mixerEngine.svelte";
 	import { mic } from "./micPitch.svelte";
-	import type { MixerLayerData } from "./mixerEngine.svelte";
 
 	function toggleMic(event: Event): void {
 		const wanted = (event.target as HTMLInputElement).checked;
@@ -13,20 +12,22 @@
 	}
 
 	interface Props {
-		layers: MixerLayerData[];
 		playhead: number;
 		follow: boolean;
 		hasTimeline: boolean;
+		onTogglePlay: () => void;
+		onStop: () => void;
 		onClearSelection: () => void;
 		onToggleRepeat: () => void;
 		onMasterVolumeChanged: () => void;
 	}
 
 	let {
-		layers,
 		playhead,
 		follow = $bindable(),
 		hasTimeline,
+		onTogglePlay,
+		onStop,
 		onClearSelection,
 		onToggleRepeat,
 		onMasterVolumeChanged
@@ -34,8 +35,17 @@
 </script>
 
 <div class="transport">
-	<button onclick={() => engine.play(layers)}>Play</button>
-	<button onclick={() => engine.stop()}>Stop</button>
+	<button
+		class="play-pause"
+		onclick={onTogglePlay}
+		aria-label={engine.playing ? "Pause" : "Play"}
+	>
+		{engine.playing ? "\u23f8" : "\u25b6"}
+		{engine.playing ? "Pause" : "Play"}
+	</button>
+	<button onclick={onStop} aria-label="Stop">
+		{"\u23f9"} Stop
+	</button>
 	<button onclick={onClearSelection}>Clear selection</button>
 	<label class="volume">
 		Volume

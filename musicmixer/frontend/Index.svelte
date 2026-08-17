@@ -19,6 +19,7 @@
 		previewSideBySide
 	} from "./mixerPanels.svelte";
 	import Transport from "./Transport.svelte";
+	import SeekBar from "./SeekBar.svelte";
 	import PanelToggles from "./PanelToggles.svelte";
 	import ChordStrip from "./ChordStrip.svelte";
 	import PhraseList from "./PhraseList.svelte";
@@ -60,6 +61,18 @@
 	const diagrams = $derived(
 		gradio.props.value?.diagrams ??
 			{ structure: {}, scale: {}, chords: {}, shapes: {} }
+	);
+
+	// For the seek bar's range - the chart's own last bar end
+	// when one exists (already the true song length in
+	// seconds, chart or no chart underneath it makes no
+	// difference to that number), the furthest note otherwise.
+	// Same reduce pattern NotesPanel already uses per-phrase,
+	// applied here to the whole song.
+	const totalDuration = $derived(
+		timeline.length > 0
+			? timeline[timeline.length - 1].end
+			: notes.reduce((max, note) => Math.max(max, note.start + note.length), 0)
 	);
 
 	// The component's own width, not the screen's - the
@@ -211,6 +224,36 @@
 		engine.play(layers);
 	}
 
+	function togglePlay(): void {
+		if (engine.playing) {
+			engine.stop();
+		} else {
+			engine.play(layers);
+		}
+		playhead = engine.position();
+	}
+
+	function stopPlayback(): void {
+		engine.stopAndRewind();
+		playhead = engine.position();
+	}
+
+	// An ordinary scrubber, separate from the chart strip's
+	// bar clicks - it only moves the playhead, never touches
+	// loopFrom/loopTo. Reuses play()'s own `from` argument
+	// (already how a preview click resumes mid-playback), so
+	// no new engine method was needed for seeking itself, only
+	// for the rewind-to-start Stop above.
+	function seek(time: number): void {
+		const clamped = Math.min(Math.max(time, 0), totalDuration);
+		if (engine.playing) {
+			engine.play(layers, clamped);
+		} else {
+			engine.offset = clamped;
+		}
+		playhead = clamped;
+	}
+
 	function clearSelection(): void {
 		engine.clearLoop();
 		playhead = 0;
@@ -330,10 +373,11 @@
 		     pushes nothing else on the page. -->
 		<div class="header-row">
 			<Transport
-				{layers}
 				{playhead}
 				bind:follow
 				hasTimeline={timeline.length > 0}
+				onTogglePlay={togglePlay}
+				onStop={stopPlayback}
 				onClearSelection={clearSelection}
 				onToggleRepeat={toggleRepeat}
 				onMasterVolumeChanged={masterVolumeChanged}
@@ -404,6 +448,8 @@
 				<MixerModal {layers} onLevelChanged={levelChanged} />
 			{/if}
 		</div>
+
+		<SeekBar {playhead} {totalDuration} {timeline} onSeek={seek} />
 
 		{#if panels.strip}
 			<ChordStrip {timeline} {playhead} {follow} onSelectBar={selectBar} />
