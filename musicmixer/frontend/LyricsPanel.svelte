@@ -89,6 +89,9 @@
 		switch (mode) {
 			case "windowed":
 			case "tab":
+				// tab in its single-column layout (see tabLayout)
+				// renders through this same list as windowed does
+				// - full song, one column, vertical follow.
 				return effectivePhrases;
 			case "singstar":
 				// Current plus up to SINGSTAR_LOOKAHEAD ahead - a
@@ -114,10 +117,49 @@
 	// special-casing here.
 	const SINGSTAR_LOOKAHEAD = 3;
 
-	// Tab's column WIDTH tracks lyricsScale reactively - bigger
-	// text needs a wider column to keep line wrapping reasonable.
+	// Tab's column WIDTH tracks lyricsScale - bigger text, wider
+	// column, so wrapping stays reasonable. This is the width a
+	// column WANTS; whether the screen has room for more than one
+	// of them is a separate question, answered by tabLayout
+	// below, not by shrinking the column to fit.
 	const COLUMN_WIDTH_AT_1X = 320;
 	const columnWidth = $derived(Math.round(COLUMN_WIDTH_AT_1X * lyricsScale.value));
+
+	// The real responsive decision for Tab view. Tab means
+	// "lyrics only, laid out like a tab reader" - and a tab
+	// reader's columns only make sense when at least two of them
+	// fit side by side; that's what makes reading across a wide
+	// screen work. On a portrait phone, one 320px column already
+	// exceeds the ~200px actually available, so "columns" there
+	// is one narrow strip plus a sideways scroll to reach the
+	// next - not a tab reader at all, just a worse single page.
+	//
+	// An earlier pass got this wrong by shrinking the column to
+	// fit the phone (down to a 220px floor). That optimised the
+	// size of the wrong layout: the honest answer on a phone is
+	// not a smaller column, it is NO columns - one full-width
+	// list with vertical scroll-follow, which is exactly what
+	// windowed mode already does and is already right on a
+	// phone. So Tab view now picks between two layouts from the
+	// measured width, and the single-column case reuses the
+	// windowed rendering path rather than a special narrow
+	// column layout of its own.
+	//
+	// The threshold is "two columns plus their gap fit", read
+	// off the same measured availableWidth the line budget
+	// already uses - device and orientation fall out of that for
+	// free (a phone rotated to landscape may well fit two and
+	// gets columns; back to portrait it drops to one). Before
+	// the first measurement lands, columns is assumed - a phone
+	// then re-flows to single once measured, a desktop stays
+	// put; either way nothing is hidden during that first paint.
+	// Must match .lyrics-columns' `gap` in the CSS below.
+	const COLUMN_GAP_PX = 32;
+	const tabLayout = $derived.by((): "columns" | "single" => {
+		if (mode !== "tab") return "single";
+		if (availableWidth <= 0) return "columns";
+		return availableWidth >= columnWidth * 2 + COLUMN_GAP_PX ? "columns" : "single";
+	});
 
 	// Column HEIGHT - how many lines fit before a new column
 	// starts - is now MEASURED, not estimated. Two earlier
@@ -159,13 +201,29 @@
 	// Must match .lyrics-column's `gap` in the CSS below.
 	const COLUMN_LINE_GAP_PX = 10;
 
+	let panelElement = $state<HTMLElement | null>(null);
 	let columnsElement = $state<HTMLElement | null>(null);
 	let firstLineElement = $state<HTMLElement | null>(null);
 	let availableHeight = $state(0);
+	let availableWidth = $state(0);
 	let lineHeight = $state(0);
 
 	function measure(): void {
 		if (typeof window === "undefined") return;
+		// Width comes from the panel itself, which exists in BOTH
+		// of Tab's layouts. It must not come from .lyrics-columns:
+		// that element is only rendered in the columns layout, so
+		// once a phone had dropped to single there would be nothing
+		// left to measure, and rotating to landscape could never
+		// find its way back to columns. The panel is the stable
+		// thing across the switch, so it is what gets measured.
+		if (panelElement) {
+			availableWidth = panelElement.getBoundingClientRect().width;
+		}
+		// Height is still read off the columns box when it exists
+		// (its top edge is where the columns actually start); in
+		// single layout there is no line budget to compute, so it
+		// simply isn't needed.
 		if (columnsElement) {
 			const top = columnsElement.getBoundingClientRect().top;
 			availableHeight = Math.max(0, window.innerHeight - top - BOTTOM_MARGIN_PX);
@@ -219,7 +277,7 @@
 	);
 
 	const tabColumns = $derived.by((): MixerPhrase[][] => {
-		if (mode !== "tab") return [];
+		if (mode !== "tab" || tabLayout !== "columns") return [];
 		const columns: MixerPhrase[][] = [];
 		for (let i = 0; i < effectivePhrases.length; i += linesPerColumn) {
 			columns.push(effectivePhrases.slice(i, i + linesPerColumn));
@@ -240,7 +298,11 @@
 	let columnElements: Record<number, HTMLElement> = {};
 
 	$effect(() => {
-		if (mode === "windowed" && currentIndex >= 0 && phraseElements[currentIndex]) {
+		// windowed, and tab in its single-column layout, share
+		// the same vertical follow: they render through the same
+		// full-width list, so the same scroll is right for both.
+		const verticalList = mode === "windowed" || (mode === "tab" && tabLayout === "single");
+		if (verticalList && currentIndex >= 0 && phraseElements[currentIndex]) {
 			phraseElements[currentIndex].scrollIntoView({
 				behavior: "smooth",
 				block: "center"
@@ -249,7 +311,7 @@
 	});
 
 	$effect(() => {
-		if (mode === "tab" && currentIndex >= 0) {
+		if (mode === "tab" && tabLayout === "columns" && currentIndex >= 0) {
 			const columnIndex = Math.floor(currentIndex / linesPerColumn);
 			// block: "nearest" rather than "center" - the panel
 			// no longer caps its own height in tab mode (a
@@ -426,8 +488,10 @@
 		class="lyrics-panel"
 		class:mode-windowed={mode === "windowed"}
 		class:mode-tab={mode === "tab"}
+		class:tab-single={mode === "tab" && tabLayout === "single"}
 		class:mode-singstar={mode === "singstar"}
 		style="--lyrics-scale: {lyricsScale.value}"
+		bind:this={panelElement}
 	>
 		<div class="lyrics-toggles">
 			<label class="chords-toggle">
@@ -469,7 +533,7 @@
 			</div>
 		</div>
 
-		{#if mode === "tab"}
+		{#if mode === "tab" && tabLayout === "columns"}
 			<!-- bind:this on the columns box gives measure() the
 			     real on-screen top of the panel; the wrapper div
 			     around the first line of the first column gives it
@@ -497,7 +561,10 @@
 				{/each}
 			</div>
 		{:else}
-			<div class="lyrics-list" class:mode-windowed={mode === "windowed"}>
+			<!-- Tab in its single-column layout is styled exactly like
+			     windowed - the same class, on purpose, since it IS the
+			     same rendering: full-width list, vertical follow. -->
+			<div class="lyrics-list" class:mode-windowed={mode === "windowed" || (mode === "tab" && tabLayout === "single")}>
 				{#each displayPhrases as phrase, index (phrase.start)}
 					<div bind:this={phraseElements[index]} animate:flip={{ duration: 220 }}>
 						{@render lyricsLine(phrase)}
@@ -531,13 +598,22 @@
 		max-height: 85vh;
 	}
 	.lyrics-panel.mode-tab {
-		/* Tab owns its own scroll region on .lyrics-columns
-		   instead (a min-height, horizontally-scrolling row -
-		   see below), so the vertical max-height/overflow-y
+		/* Tab's columns layout owns its own scroll region on
+		   .lyrics-columns instead (a horizontally-scrolling row
+		   - see below), so the vertical max-height/overflow-y
 		   this panel normally carries has to be cancelled here
 		   or the two would fight each other. */
 		max-height: none;
 		overflow: visible;
+	}
+	.lyrics-panel.mode-tab.tab-single {
+		/* Tab's single-column layout (see tabLayout in the
+		   script) is windowed's rendering, so it gets windowed's
+		   scroll boundary back: the panel scrolls vertically and
+		   the follow effect keeps the current line centred in it.
+		   Same 85vh as .lyrics-panel.mode-windowed above. */
+		max-height: 85vh;
+		overflow-y: auto;
 	}
 	.lyrics-panel.mode-singstar .lyrics-toggles {
 		/* Centred to match the centred text below it - a left-
@@ -695,10 +771,41 @@
 		   overflow-x is the only scroll axis this needs -
 		   overflow-y stays at its default (visible), which is
 		   what lets a tall column push the box's real height
-		   rather than being boxed in by one. */
+		   rather than being boxed in by one.
+		   width: 1px; min-width: 100% is a deliberate pair, not
+		   a typo - the real bug, found and fixed by measuring
+		   the real running app at 360px, not by inspection.
+		   Every .lyrics-column below is flex: 0 0 auto with a
+		   hard pixel width (non-shrinking, by design - a column
+		   should never squash its own text). With three such
+		   columns and no width rule here at all, this box (and
+		   every block ancestor above it up to .lyrics-cell in
+		   Index.svelte) sized itself to fit all of them - 1032px
+		   measured on a 360px screen, nearly 3x over, which
+		   overflow-x: auto never got a chance to catch because
+		   nothing was ever small enough to need scrolling in the
+		   first place. min-width: 100% forces this box to take
+		   its real percentage share of whatever space its
+		   ancestor actually allocated, REGARDLESS of its
+		   children's content size, overriding the tiny width: 1px
+		   (min-width always wins over a smaller conflicting
+		   width) - only once the box has that real, bounded
+		   width does overflow-x: auto have anything to clip
+		   against and actually engage. Confirmed by injecting
+		   this exact rule into the real running app and
+		   measuring .lyrics-cell's rendered width drop from
+		   1032px to 206px, not assumed from reasoning about the
+		   box model alone - an earlier attempt (width: 100% on
+		   .lyrics-panel, one level up) measurably changed
+		   nothing, because .lyrics-panel's own containing block
+		   had no definite width for a percentage to resolve
+		   against either; forcing it here, on the innermost box
+		   that actually needs to be bounded, is what works. */
 		display: flex;
 		align-items: flex-start;
 		gap: 32px;
+		width: 1px;
+		min-width: 100%;
 		overflow-x: auto;
 		padding-bottom: 8px;
 	}

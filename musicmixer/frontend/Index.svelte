@@ -381,7 +381,15 @@
 	allow_overflow={true}
 	padding={true}
 >
-	<div class="mixer" style="--read-scale: {readScale.value}" bind:clientWidth={containerWidth}>
+	<!-- Two elements, on purpose. mixer-container is the size
+	     query container and holds the width measurement; .mixer
+	     inside it holds the tokens and everything else. A container
+	     query cannot style the container itself (measured, not
+	     assumed - see the CSS below), so the tokens have to sit on
+	     a child of the queried element or their band overrides
+	     silently never apply. -->
+	<div class="mixer-container" bind:clientWidth={containerWidth}>
+	<div class="mixer" style="--read-scale: {readScale.value}">
 		<!-- Reading order, top to bottom, is what the eye needs
 		     while playing, then what only matters between
 		     takes: transport, toggles, and the Mix button in
@@ -561,41 +569,49 @@
 			{/if}
 		{/if}
 	</div>
+	</div>
 </Block>
 
 <style>
+	.mixer-container {
+		/* The size query container. This is a SEPARATE element
+		   from .mixer, and that separation is the whole point:
+		   a @container rule cannot style the container element
+		   itself - by spec, an element's own styles are not
+		   allowed to depend on its own size, so the browser
+		   silently ignores such a rule with no error. The
+		   first version of this put container-type and the
+		   tokens on the same .mixer element, and every
+		   band-override rule (`@container ... { .mixer {...} }`)
+		   did nothing at all - measured in headless Chromium
+		   at 375px, not assumed: the narrow token stayed at
+		   its wide value. Splitting the container onto this
+		   wrapper makes .mixer a CHILD of the container, which
+		   is the shape a query CAN style.
+		   `inline-size` queries width only (not height), which
+		   is all this component's layout ever needs. Named
+		   "mixer" so a query says `@container mixer (...)`
+		   explicitly rather than matching an anonymous nearest
+		   ancestor.
+		   width: 100% because inline-size containment stops
+		   the box being sized from its content; without a
+		   definite width from its parent it can shrink below
+		   what's inside it. Also measured: 359px at a 375px
+		   viewport with 8px body padding, i.e. exactly its
+		   parent's content width, which is correct. */
+		container-type: inline-size;
+		container-name: mixer;
+		width: 100%;
+	}
 	.mixer {
 		font-family: sans-serif;
 		position: relative;
 
-		/* Stage 1 of the responsive-layout plan: establishes
-		   .mixer as a size query container so descendant CSS
-		   can use @container instead of a JS `narrow` prop for
-		   pure layout changes. `inline-size` queries width
-		   only (not height), which is all this component's
-		   layout ever needs. Named "mixer" so a query can say
-		   `@container mixer (...)` explicitly rather than an
-		   anonymous nearest-ancestor match - clearer at the
-		   call site about which container is meant, useful if
-		   a panel ever nests a second container of its own
-		   later.
-		   Containment note: inline-size containment also turns
-		   on layout and style containment on this element. Not
-		   expected to change anything here - .mixer has no
-		   floats or margin-collapsing behaviour that reaches
-		   outside it - but worth remembering as the first place
-		   to look if something about .mixer's own box behaves
-		   differently after this line, since containment is a
-		   real behaviour change even though usually invisible. */
-		container-type: inline-size;
-		container-name: mixer;
-
 		/* Spacing and text tokens, wide (default) values here,
-		   narrower bands override below. Nothing reads these
-		   yet - stage 1 only declares them, so this is a
-		   verified no-op; stage 2 starts consuming them for the
-		   header, and stage 4 sweeps the rest of the hard-coded
-		   pixel sizes onto this same set. Keep these three
+		   narrower bands override below (the header rows are the
+		   first consumers; stage 4 of the responsive-layout plan
+		   sweeps the remaining hard-coded pixel sizes onto this
+		   same set). Keep these three
 		   named steps rather than a continuous formula, for the
 		   same reason the preset scale bands are discrete: a
 		   number picked by looking at three real screens is
@@ -672,17 +688,23 @@
 		flex-wrap: wrap;
 	}
 	@container mixer (max-width: 599px) {
-		.header-transport {
+		.header-transport :global(.transport) {
 			/* "Full-width transport on narrow" - Play/Pause and
 			   Stop grow to share the row evenly rather than
 			   sitting at their natural (small) width with empty
 			   space beside them, which is what a phone-width
 			   header otherwise leaves. Only at narrow: on medium
 			   and wide the two buttons stay their natural size
-			   next to everything else already on the row. */
-			justify-content: stretch;
-		}
-		.header-transport :global(.transport) {
+			   next to everything else already on the row.
+			   The stretching itself comes entirely from the
+			   buttons' own `flex: 1 1 0` below - there used to
+			   be a `justify-content: stretch` rule here too, on
+			   the mistaken assumption it was doing some of the
+			   work. It wasn't: `stretch` isn't a valid flexbox
+			   value for justify-content (only for align-content/
+			   align-self), so it was silently ignored by every
+			   browser the whole time. Removed rather than left
+			   as dead, misleading CSS. */
 			width: 100%;
 		}
 		.header-transport :global(.transport button) {
