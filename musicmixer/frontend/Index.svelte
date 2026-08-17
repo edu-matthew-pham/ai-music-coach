@@ -19,6 +19,7 @@
 		previewSideBySide
 	} from "./mixerPanels.svelte";
 	import Transport from "./Transport.svelte";
+	import TransportSettings from "./TransportSettings.svelte";
 	import SeekBar from "./SeekBar.svelte";
 	import PanelToggles from "./PanelToggles.svelte";
 	import ChordStrip from "./ChordStrip.svelte";
@@ -175,6 +176,15 @@
 	});
 
 	let follow = $state(true);
+
+	// Whether the settings row (everything below the always-
+	// visible transport/seek-bar/view-buttons rows) is open on
+	// a narrow screen. Meaningless above the narrow breakpoint
+	// - that row always renders there regardless of this value
+	// - so it only needs to default closed for a first-time
+	// phone visitor to see the minimal row, not a value that
+	// needs to survive a remount the way panels/viewPreset do.
+	let settingsOpen = $state(false);
 
 	function reportValue(): void {
 		if (gradio.props.value) {
@@ -349,16 +359,6 @@
 	padding={true}
 >
 	<div class="mixer" style="--read-scale: {readScale.value}" bind:clientWidth={containerWidth}>
-		<button
-			type="button"
-			class="fullscreen-toggle"
-			onclick={toggleFullscreen}
-			aria-pressed={fullscreenActive}
-			title={fullscreenActive ? "Exit full screen" : "Full screen"}
-		>
-			{fullscreenActive ? "\u2715 Exit full screen" : "\u26f6 Full screen"}
-		</button>
-
 		<!-- Reading order, top to bottom, is what the eye needs
 		     while playing, then what only matters between
 		     takes: transport, toggles, and the Mix button in
@@ -371,59 +371,32 @@
 		     genuinely changes while playing (more layers, a
 		     longer phrase), and at the bottom that growth
 		     pushes nothing else on the page. -->
-		<div class="header-row">
-			<Transport
-				{playhead}
-				bind:follow
-				hasTimeline={timeline.length > 0}
-				onTogglePlay={togglePlay}
-				onStop={stopPlayback}
-				onClearSelection={clearSelection}
-				onToggleRepeat={toggleRepeat}
-				onMasterVolumeChanged={masterVolumeChanged}
-			/>
-			{#if viewPreset.value === "custom"}
-				<PanelToggles
-					hasTimeline={timeline.length > 0}
-					hasNotes={notes.length > 0}
-					hasDiagrams={Object.keys(diagrams.structure ?? {}).length > 0}
-				/>
-				<div class="text-scale-control" role="group" aria-label="Text size">
-					<button
-						type="button"
-						class="text-scale-button"
-						disabled={readScale.value <= READ_SCALE_MIN}
-						aria-label="Smaller text"
-						onclick={() => setReadScale(readScale.value - READ_SCALE_STEP)}
-					>
-						&minus;
-					</button>
-					<button
-						type="button"
-						class="text-scale-value"
-						disabled={readScale.value === 1}
-						aria-label="Reset text size to 100%"
-						onclick={() => setReadScale(1)}
-					>
-						{Math.round(readScale.value * 100)}%
-					</button>
-					<button
-						type="button"
-						class="text-scale-button"
-						disabled={readScale.value >= READ_SCALE_MAX}
-						aria-label="Bigger text"
-						onclick={() => setReadScale(readScale.value + READ_SCALE_STEP)}
-					>
-						&plus;
-					</button>
-				</div>
-			{/if}
+
+		<!-- The header used to be one flat wrapping row of
+		     roughly twenty controls - fine on a desktop, a
+		     wall of wrapped buttons on a phone, since nothing
+		     grouped what mattered while playing separately
+		     from what gets set up between takes. Now three
+		     tiers: transport + seek bar (always visible, every
+		     width - the minimum needed to use the app at all),
+		     the three view buttons (also always visible, small
+		     enough to never need folding), then everything else
+		     behind a Settings toggle that only exists below the
+		     narrow breakpoint - above it, that row just renders
+		     open, unchanged from before. -->
+		<div class="header-row header-transport">
+			<Transport onTogglePlay={togglePlay} onStop={stopPlayback} />
+		</div>
+
+		<SeekBar {playhead} {totalDuration} {timeline} onSeek={seek} />
+
+		<div class="header-row header-views">
 			<div class="preset-buttons" role="group" aria-label="View">
 				<button
 					type="button"
 					class="preset-button"
 					aria-pressed={viewPreset.value === "tab"}
-					onclick={() => applyPreset("tab")}
+					onclick={() => applyPreset("tab", containerWidth)}
 				>
 					Tab view
 				</button>
@@ -431,7 +404,7 @@
 					type="button"
 					class="preset-button"
 					aria-pressed={viewPreset.value === "singstar"}
-					onclick={() => applyPreset("singstar")}
+					onclick={() => applyPreset("singstar", containerWidth)}
 				>
 					SingStar view
 				</button>
@@ -439,17 +412,81 @@
 					type="button"
 					class="preset-button"
 					aria-pressed={viewPreset.value === "custom"}
-					onclick={() => applyPreset("custom")}
+					onclick={() => applyPreset("custom", containerWidth)}
 				>
 					Custom
 				</button>
 			</div>
-			{#if panels.faders}
-				<MixerModal {layers} onLevelChanged={levelChanged} />
+			{#if narrow}
+				<button
+					type="button"
+					class="settings-toggle"
+					aria-expanded={settingsOpen}
+					onclick={() => (settingsOpen = !settingsOpen)}
+				>
+					{settingsOpen ? "Hide settings" : "Settings"}
+				</button>
 			{/if}
 		</div>
 
-		<SeekBar {playhead} {totalDuration} {timeline} onSeek={seek} />
+		{#if !narrow || settingsOpen}
+			<div class="header-row header-settings">
+				{#if viewPreset.value === "custom"}
+					<PanelToggles
+						hasTimeline={timeline.length > 0}
+						hasNotes={notes.length > 0}
+						hasDiagrams={Object.keys(diagrams.structure ?? {}).length > 0}
+					/>
+					<div class="text-scale-control" role="group" aria-label="Text size">
+						<button
+							type="button"
+							class="text-scale-button"
+							disabled={readScale.value <= READ_SCALE_MIN}
+							aria-label="Smaller text"
+							onclick={() => setReadScale(readScale.value - READ_SCALE_STEP)}
+						>
+							&minus;
+						</button>
+						<button
+							type="button"
+							class="text-scale-value"
+							disabled={readScale.value === 1}
+							aria-label="Reset text size to 100%"
+							onclick={() => setReadScale(1)}
+						>
+							{Math.round(readScale.value * 100)}%
+						</button>
+						<button
+							type="button"
+							class="text-scale-button"
+							disabled={readScale.value >= READ_SCALE_MAX}
+							aria-label="Bigger text"
+							onclick={() => setReadScale(readScale.value + READ_SCALE_STEP)}
+						>
+							&plus;
+						</button>
+					</div>
+				{/if}
+				{#if panels.faders}
+					<MixerModal {layers} onLevelChanged={levelChanged} />
+				{/if}
+				<TransportSettings
+					bind:follow
+					hasTimeline={timeline.length > 0}
+					onClearSelection={clearSelection}
+					onToggleRepeat={toggleRepeat}
+					onMasterVolumeChanged={masterVolumeChanged}
+				/>
+				<button
+					type="button"
+					class="fullscreen-toggle-inline"
+					onclick={toggleFullscreen}
+					aria-pressed={fullscreenActive}
+				>
+					{fullscreenActive ? "\u2715 Exit full screen" : "\u26f6 Full screen"}
+				</button>
+			</div>
+		{/if}
 
 		{#if panels.strip}
 			<ChordStrip {timeline} {playhead} {follow} onSelectBar={selectBar} />
@@ -458,6 +495,7 @@
 		{#if panels.phrases}
 			<PhraseList {phrases} {playhead} onSelectPhrase={selectPhrase} {narrow} />
 		{/if}
+
 
 		{#if panels.instruments}
 			<InstrumentPanel {diagrams} {timeline} {playhead} />
@@ -507,10 +545,11 @@
 		font-family: sans-serif;
 		position: relative;
 	}
-	.fullscreen-toggle {
-		position: absolute;
-		top: 0;
-		right: 0;
+	.fullscreen-toggle-inline {
+		/* Was an absolutely-positioned corner button; now an
+		   ordinary member of the settings row, which is what
+		   let header-row drop the padding-right it used to
+		   reserve for the old corner button. */
 		font: inherit;
 		font-size: 11px;
 		padding: 4px 10px;
@@ -519,9 +558,8 @@
 		background: var(--background-fill-primary);
 		color: var(--body-text-color-subdued);
 		cursor: pointer;
-		z-index: 1;
 	}
-	.fullscreen-toggle:hover {
+	.fullscreen-toggle-inline:hover {
 		background: var(--background-fill-secondary, #f5f5f5);
 	}
 	.header-row {
@@ -530,9 +568,28 @@
 		align-items: center;
 		gap: 8px 18px;
 		margin-bottom: 6px;
-		/* leaves room for the absolute-positioned full-screen
-		   toggle in the top-right corner */
-		padding-right: 110px;
+	}
+	.header-transport {
+		/* No wrapping cause to worry about - two buttons, every
+		   width - but explicit anyway so a future addition here
+		   inherits the same behaviour as the other two rows. */
+		flex-wrap: wrap;
+	}
+	.header-views {
+		justify-content: space-between;
+	}
+	.settings-toggle {
+		font: inherit;
+		font-size: 12px;
+		padding: 5px 12px;
+		border: 1px solid var(--border-color-primary);
+		border-radius: 6px;
+		background: var(--background-fill-primary);
+		color: var(--body-text-color-subdued);
+		cursor: pointer;
+	}
+	.settings-toggle:hover {
+		background: var(--background-fill-secondary, #f5f5f5);
 	}
 	.lyrics-and-notes {
 		display: flex;

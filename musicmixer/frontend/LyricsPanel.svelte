@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { flip } from "svelte/animate";
+	import { onMount } from "svelte";
 	import type { MixerBar, MixerNote, MixerPhrase } from "./types";
 	import {
 		lyricsShowChords,
@@ -113,28 +114,109 @@
 	// special-casing here.
 	const SINGSTAR_LOOKAHEAD = 3;
 
-	// Tab's column widths and line budget both track lyricsScale,
-	// reactively - bigger text needs wider columns (or a line
-	// wraps more) and fits fewer lines before a column would
-	// run long, so both numbers move together whenever the
-	// scale buttons are pressed, with no separate wiring.
-	//
-	// This is a fixed LINE COUNT per column, not a measured
-	// height - deliberately generous (10 lines at 1x, most
-	// real phrases are one line) rather than tightly packed.
-	// A column is allowed to run past the nominal height if a
-	// phrase happens to wrap across several lines; the layout
-	// below is built so that's genuinely harmless (see
-	// .lyrics-columns' min-height, not height, further down) -
-	// the column just ends up a little taller than its
-	// neighbours, not clipped and not forcing a reflow.
-	const LINES_PER_COLUMN_AT_1X = 10;
+	// Tab's column WIDTH tracks lyricsScale reactively - bigger
+	// text needs a wider column to keep line wrapping reasonable.
 	const COLUMN_WIDTH_AT_1X = 320;
+	const columnWidth = $derived(Math.round(COLUMN_WIDTH_AT_1X * lyricsScale.value));
+
+	// Column HEIGHT - how many lines fit before a new column
+	// starts - is now MEASURED, not estimated. Two earlier
+	// versions of this were both guesses and both wrong on real
+	// screens: a fixed "10 lines at 1x", then "75% of the browser
+	// window at 42px a line". The second one still put too many
+	// lines in a column on an ordinary monitor, for two reasons
+	// worth keeping on record:
+	//
+	// 1. The panel is not at the top of the window. Gradio's nav
+	//    bar, the page heading, the Song section, the transport
+	//    row and the seek bar all sit above it, so "75% of the
+	//    window" is far more room than the panel actually has.
+	//    Now measured: the real distance from where the columns
+	//    box starts on screen to the bottom of the viewport.
+	//    That's the space the panel is GIVEN, not the space it
+	//    takes up - measuring its own height would be circular,
+	//    since its height is set by how many lines were put in it.
+	//
+	// 2. 42px a line was worked out from the CSS, not rendered.
+	//    Gradio's font stack, and the chord-tag row that sits
+	//    above the words when Chords is on, both make a real line
+	//    taller. Now measured: the rendered height of the first
+	//    actual line, re-read whenever the text scale changes.
+	//
+	// Both measurements are taken after render (onMount, and
+	// after each resize/scale change) so they see the real
+	// layout. Until the first measurement lands, a conservative
+	// fallback keeps the first paint sane rather than blank.
+	//
+	// The safety net is unchanged and does not depend on either
+	// measurement being exact: scroll-follow (below) always
+	// brings the current line's column into view, so a phrase
+	// that wraps across several lines can still make one column
+	// run a little long - slightly uneven columns, never a lost
+	// or hidden current line.
+	const FALLBACK_LINES = 8;
+	const BOTTOM_MARGIN_PX = 24;
+	// Must match .lyrics-column's `gap` in the CSS below.
+	const COLUMN_LINE_GAP_PX = 10;
+
+	let columnsElement = $state<HTMLElement | null>(null);
+	let firstLineElement = $state<HTMLElement | null>(null);
+	let availableHeight = $state(0);
+	let lineHeight = $state(0);
+
+	function measure(): void {
+		if (typeof window === "undefined") return;
+		if (columnsElement) {
+			const top = columnsElement.getBoundingClientRect().top;
+			availableHeight = Math.max(0, window.innerHeight - top - BOTTOM_MARGIN_PX);
+		}
+		if (firstLineElement) {
+			// offsetHeight is the line's own box; the column's flex
+			// gap (10px, .lyrics-column below) sits between lines
+			// and is not part of any one line's box, so it is added
+			// here to get the true per-line stride.
+			lineHeight = firstLineElement.offsetHeight + COLUMN_LINE_GAP_PX;
+		}
+	}
+
+	onMount(() => {
+		measure();
+		// Debounced: some mobile browsers fire resize repeatedly
+		// while their address bar shows/hides during ordinary
+		// scrolling, not just on a real rotation or window resize.
+		// Reacting to every one would recompute which phrases
+		// belong to which column mid-scroll for no reason.
+		let timeout: ReturnType<typeof setTimeout> | null = null;
+		function handleResize(): void {
+			if (timeout !== null) clearTimeout(timeout);
+			timeout = setTimeout(measure, 150);
+		}
+		window.addEventListener("resize", handleResize);
+		window.addEventListener("orientationchange", handleResize);
+		return () => {
+			if (timeout !== null) clearTimeout(timeout);
+			window.removeEventListener("resize", handleResize);
+			window.removeEventListener("orientationchange", handleResize);
+		};
+	});
+
+	// Re-measure the line height whenever the scale changes -
+	// the font, and so the rendered line, changes with it. The
+	// scale is read here only so this effect depends on it;
+	// measure() itself reads the DOM. Runs after the DOM has
+	// updated for the new scale, which is what makes the
+	// measurement land on the new size rather than the old one.
+	$effect(() => {
+		void lyricsScale.value;
+		void mode;
+		measure();
+	});
 
 	const linesPerColumn = $derived(
-		Math.max(3, Math.round(LINES_PER_COLUMN_AT_1X / lyricsScale.value))
+		availableHeight > 0 && lineHeight > 0
+			? Math.max(3, Math.floor(availableHeight / lineHeight))
+			: FALLBACK_LINES
 	);
-	const columnWidth = $derived(Math.round(COLUMN_WIDTH_AT_1X * lyricsScale.value));
 
 	const tabColumns = $derived.by((): MixerPhrase[][] => {
 		if (mode !== "tab") return [];
@@ -388,15 +470,28 @@
 		</div>
 
 		{#if mode === "tab"}
-			<div class="lyrics-columns">
+			<!-- bind:this on the columns box gives measure() the
+			     real on-screen top of the panel; the wrapper div
+			     around the first line of the first column gives it
+			     one real rendered line to measure. A wrapper rather
+			     than binding inside the snippet, since the same
+			     snippet renders in every mode and only tab needs
+			     this. -->
+			<div class="lyrics-columns" bind:this={columnsElement}>
 				{#each tabColumns as column, colIndex}
 					<div
 						class="lyrics-column"
 						style="width: {columnWidth}px"
 						bind:this={columnElements[colIndex]}
 					>
-						{#each column as phrase (phrase.start)}
-							{@render lyricsLine(phrase)}
+						{#each column as phrase, lineIndex (phrase.start)}
+							{#if colIndex === 0 && lineIndex === 0}
+								<div bind:this={firstLineElement}>
+									{@render lyricsLine(phrase)}
+								</div>
+							{:else}
+								{@render lyricsLine(phrase)}
+							{/if}
 						{/each}
 					</div>
 				{/each}
@@ -588,25 +683,22 @@
 		   an earlier version of this. Each .lyrics-column below
 		   is an ordinary flex child - a real element that can
 		   be measured and scrolled to.
-		   min-height, not height: a fixed height plus
-		   overflow-y:hidden would CLIP a column that runs
-		   longer than its generous line budget (an occasional
-		   wrapped phrase). min-height only sets a floor - the
-		   row's actual height still grows to fit its tallest
-		   column, so a long column pushes the box taller
-		   instead of losing content off the bottom. The trade
-		   is a small amount of empty space below shorter
-		   columns most of the time, in exchange for never
-		   silently cutting lyrics off - the right side of that
-		   trade for a panel showing the whole song.
+		   No height and no min-height on purpose. The line
+		   count per column is now measured from the real space
+		   below this box (see measure() in the script), so the
+		   box's natural height IS the intended height - a CSS
+		   floor here would only re-add empty space under short
+		   columns, and a fixed height plus overflow-y:hidden
+		   would CLIP a column that runs long from a wrapped
+		   phrase. Left to grow: a long column pushes the box
+		   taller instead of losing content off the bottom.
 		   overflow-x is the only scroll axis this needs -
-		   overflow-y is left at its default (visible), which
-		   is what lets a tall column push the box's real
-		   height rather than being boxed in by one. */
+		   overflow-y stays at its default (visible), which is
+		   what lets a tall column push the box's real height
+		   rather than being boxed in by one. */
 		display: flex;
 		align-items: flex-start;
 		gap: 32px;
-		min-height: 75vh;
 		overflow-x: auto;
 		padding-bottom: 8px;
 	}

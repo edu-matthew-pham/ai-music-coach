@@ -349,24 +349,63 @@ const SINGSTAR_PANELS: Record<string, boolean> = {
 // room to run larger than the other modes default to without
 // crowding. Notes isn't shown in Tab view at all, so it has
 // no equivalent default to set there.
-const SINGSTAR_DEFAULT_LYRICS_SCALE = 2;
-const SINGSTAR_DEFAULT_NOTES_SCALE = 1.4;
+//
+// Both Tab's and SingStar's defaults are now width-aware
+// rather than one fixed number: the same 130%/200%/140% that
+// suit a TV across a room are too large on a phone or tablet
+// held closer. Three bands, not a continuous formula - a
+// discrete choice is easier to reason about and to check by
+// eye on a real device than a computed curve would be.
+// PHONE_MAX/TABLET_MAX are container width in CSS pixels, the
+// same measurement Index.svelte's own `narrow` breakpoint
+// (600px) already uses for NARROW_BREAKPOINT - PHONE_MAX is
+// deliberately the same 600 so the two don't quietly disagree
+// about where "phone" ends.
+const PHONE_MAX = 600;
+const TABLET_MAX = 1100;
 
-// Tab's own default - smaller than SingStar's, since Tab
-// shows a whole song's worth of columns rather than one or
-// two lines: 130% is a real step up from the ordinary 100%
-// baseline without eating into how much of the song fits on
-// screen before horizontal scrolling kicks in. Still just a
-// starting point - the player's own +/- adjustment (and the
-// column math that already tracks lyricsScale) takes over
-// from here exactly the same as any other manual change.
-const TAB_DEFAULT_LYRICS_SCALE = 1.3;
+type ScaleBand = "phone" | "tablet" | "tv";
+
+function scaleBand(width: number): ScaleBand {
+	if (width < PHONE_MAX) return "phone";
+	if (width < TABLET_MAX) return "tablet";
+	return "tv";
+}
+
+// The tablet-band numbers are a first guess, not yet checked
+// against a real tablet the way the phone and TV ends were
+// reasoned from the app's own stated distances (couch-remote
+// TV viewing; a phone held close) - worth a look on a real
+// device before trusting them further.
+const TAB_LYRICS_SCALE: Record<ScaleBand, number> = {
+	phone: 1.0,
+	tablet: 1.15,
+	tv: 1.3
+};
+const SINGSTAR_LYRICS_SCALE: Record<ScaleBand, number> = {
+	phone: 1.3,
+	tablet: 1.6,
+	tv: 2.0
+};
+const SINGSTAR_NOTES_SCALE: Record<ScaleBand, number> = {
+	phone: 1.0,
+	tablet: 1.2,
+	tv: 1.4
+};
 
 // The three buttons are a radio group now, not toggles - the
 // active one no longer means "press again to leave". Custom
 // is the explicit third choice, reached by pressing its own
 // button, the same as Tab or SingStar.
-export function applyPreset(name: "tab" | "singstar" | "custom"): void {
+//
+// `width` picks the scale band for Tab/SingStar's own default
+// - ignored when entering Custom, since Custom restores
+// whatever scale was last saved rather than setting one fresh.
+// Every call site passes the real, currently-measured width
+// except the one at module load below, where nothing has been
+// measured yet and window.innerWidth stands in as the nearest
+// available guess.
+export function applyPreset(name: "tab" | "singstar" | "custom", width: number): void {
 	if (viewPreset.value === name) return;
 
 	// Leaving Custom is the one moment worth remembering: its
@@ -387,11 +426,12 @@ export function applyPreset(name: "tab" | "singstar" | "custom"): void {
 		notesScale.value = savedNotesScale;
 	} else {
 		Object.assign(panels, name === "tab" ? TAB_PANELS : SINGSTAR_PANELS);
+		const band = scaleBand(width);
 		if (name === "tab") {
-			lyricsScale.value = TAB_DEFAULT_LYRICS_SCALE;
+			lyricsScale.value = TAB_LYRICS_SCALE[band];
 		} else {
-			lyricsScale.value = SINGSTAR_DEFAULT_LYRICS_SCALE;
-			notesScale.value = SINGSTAR_DEFAULT_NOTES_SCALE;
+			lyricsScale.value = SINGSTAR_LYRICS_SCALE[band];
+			notesScale.value = SINGSTAR_NOTES_SCALE[band];
 		}
 	}
 
@@ -401,7 +441,11 @@ export function applyPreset(name: "tab" | "singstar" | "custom"): void {
 // Jam sessions (Tab) are the more common case per the
 // person's own steer, so that's the landing view - applied
 // here, once, at module load, through the same function a
-// button press uses, rather than a separately maintained
-// initial panels/scale state that could drift from what Tab
-// actually means.
-applyPreset("tab");
+// button press uses. window.innerWidth stands in for the
+// mixer's own container width, which Index.svelte cannot
+// measure this early (nothing has mounted yet): a real
+// mismatch is possible if the mixer sits in a narrow Gradio
+// column on a wide window, but this is a one-time default the
+// +/- controls can always correct, not a value anything else
+// depends on staying right.
+applyPreset("tab", typeof window !== "undefined" ? window.innerWidth : 1280);
