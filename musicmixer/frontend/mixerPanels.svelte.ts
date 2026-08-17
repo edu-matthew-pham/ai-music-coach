@@ -30,6 +30,9 @@
 // than the panel itself - the "opt-in extra" reasoning that
 // justified starting it off no longer applies once Lyrics
 // alone can't fill that space on its own.
+
+import { bandFor, type Band } from "./responsive";
+
 export const panels: Record<string, boolean> = $state({
 	strip: true,
 	faders: true,
@@ -356,41 +359,34 @@ const SINGSTAR_PANELS: Record<string, boolean> = {
 // held closer. Three bands, not a continuous formula - a
 // discrete choice is easier to reason about and to check by
 // eye on a real device than a computed curve would be.
-// PHONE_MAX/TABLET_MAX are container width in CSS pixels, the
-// same measurement Index.svelte's own `narrow` breakpoint
-// (600px) already uses for NARROW_BREAKPOINT - PHONE_MAX is
-// deliberately the same 600 so the two don't quietly disagree
-// about where "phone" ends.
-const PHONE_MAX = 600;
-const TABLET_MAX = 1100;
+//
+// Band thresholds and the Band type itself now come from
+// responsive.ts, the one place they're named - this file used
+// to keep its own PHONE_MAX/TABLET_MAX copy of the same two
+// numbers under different names (phone/tablet/tv rather than
+// narrow/medium/wide), which is exactly the kind of duplicate
+// the responsive-layout plan flagged as a real risk: nothing
+// stopped the two copies drifting apart.
 
-type ScaleBand = "phone" | "tablet" | "tv";
-
-function scaleBand(width: number): ScaleBand {
-	if (width < PHONE_MAX) return "phone";
-	if (width < TABLET_MAX) return "tablet";
-	return "tv";
-}
-
-// The tablet-band numbers are a first guess, not yet checked
-// against a real tablet the way the phone and TV ends were
+// The medium-band numbers are a first guess, not yet checked
+// against a real tablet the way the narrow and wide ends were
 // reasoned from the app's own stated distances (couch-remote
 // TV viewing; a phone held close) - worth a look on a real
 // device before trusting them further.
-const TAB_LYRICS_SCALE: Record<ScaleBand, number> = {
-	phone: 1.0,
-	tablet: 1.15,
-	tv: 1.3
+const TAB_LYRICS_SCALE: Record<Band, number> = {
+	narrow: 1.0,
+	medium: 1.15,
+	wide: 1.3
 };
-const SINGSTAR_LYRICS_SCALE: Record<ScaleBand, number> = {
-	phone: 1.3,
-	tablet: 1.6,
-	tv: 2.0
+const SINGSTAR_LYRICS_SCALE: Record<Band, number> = {
+	narrow: 1.3,
+	medium: 1.6,
+	wide: 2.0
 };
-const SINGSTAR_NOTES_SCALE: Record<ScaleBand, number> = {
-	phone: 1.0,
-	tablet: 1.2,
-	tv: 1.4
+const SINGSTAR_NOTES_SCALE: Record<Band, number> = {
+	narrow: 1.0,
+	medium: 1.2,
+	wide: 1.4
 };
 
 // The three buttons are a radio group now, not toggles - the
@@ -426,7 +422,7 @@ export function applyPreset(name: "tab" | "singstar" | "custom", width: number):
 		notesScale.value = savedNotesScale;
 	} else {
 		Object.assign(panels, name === "tab" ? TAB_PANELS : SINGSTAR_PANELS);
-		const band = scaleBand(width);
+		const band = bandFor(width);
 		if (name === "tab") {
 			lyricsScale.value = TAB_LYRICS_SCALE[band];
 		} else {

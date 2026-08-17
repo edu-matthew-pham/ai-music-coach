@@ -4,8 +4,9 @@
 	import type { MixerPhrase } from "./types";
 	import { Gradio } from "@gradio/utils";
 	import { Block } from "@gradio/atoms";
-	import { onDestroy, onMount } from "svelte";
+	import { onDestroy, onMount, setContext } from "svelte";
 	import { engine } from "./mixerEngine.svelte";
+	import { bandFor, SIZE_CONTEXT_KEY, type SizeContext } from "./responsive";
 	import {
 		panels,
 		readScale,
@@ -80,14 +81,25 @@
 	// mixer can be narrow on a wide desktop (a small window,
 	// a Gradio column sharing the row) just as easily as
 	// on a phone, and it should respond to the room it is
-	// actually given either way. One breakpoint, tuned by
-	// looking at the real layout rather than argued about
-	// in advance.
-	const NARROW_BREAKPOINT = 600;
+	// actually given either way. Breakpoints now live in
+	// responsive.ts, the one place NARROW_MAX/MEDIUM_MAX are
+	// named for every file that needs them, rather than each
+	// file keeping its own copy of the same numbers.
 	let containerWidth = $state(0);
-	const narrow = $derived(
-		containerWidth > 0 && containerWidth < NARROW_BREAKPOINT
-	);
+	const size = $derived(bandFor(containerWidth));
+	const narrow = $derived(containerWidth > 0 && size === "narrow");
+
+	// The one provider for the reactive size band - every
+	// descendant component reads this via getContext instead
+	// of being handed a `narrow` prop relayed down through
+	// whatever sits between it and here. See responsive.ts's
+	// own comment on why this is a getter, not a plain value.
+	const sizeContext: SizeContext = {
+		get band() {
+			return size;
+		}
+	};
+	setContext(SIZE_CONTEXT_KEY, sizeContext);
 
 	// LyricsPanel's one mode prop, decided here and nowhere
 	// else - the view preset takes priority (it's an explicit
@@ -544,6 +556,74 @@
 	.mixer {
 		font-family: sans-serif;
 		position: relative;
+
+		/* Stage 1 of the responsive-layout plan: establishes
+		   .mixer as a size query container so descendant CSS
+		   can use @container instead of a JS `narrow` prop for
+		   pure layout changes. `inline-size` queries width
+		   only (not height), which is all this component's
+		   layout ever needs. Named "mixer" so a query can say
+		   `@container mixer (...)` explicitly rather than an
+		   anonymous nearest-ancestor match - clearer at the
+		   call site about which container is meant, useful if
+		   a panel ever nests a second container of its own
+		   later.
+		   Containment note: inline-size containment also turns
+		   on layout and style containment on this element. Not
+		   expected to change anything here - .mixer has no
+		   floats or margin-collapsing behaviour that reaches
+		   outside it - but worth remembering as the first place
+		   to look if something about .mixer's own box behaves
+		   differently after this line, since containment is a
+		   real behaviour change even though usually invisible. */
+		container-type: inline-size;
+		container-name: mixer;
+
+		/* Spacing and text tokens, wide (default) values here,
+		   narrower bands override below. Nothing reads these
+		   yet - stage 1 only declares them, so this is a
+		   verified no-op; stage 2 starts consuming them for the
+		   header, and stage 4 sweeps the rest of the hard-coded
+		   pixel sizes onto this same set. Keep these three
+		   named steps rather than a continuous formula, for the
+		   same reason the preset scale bands are discrete: a
+		   number picked by looking at three real screens is
+		   easier to check by eye than a computed curve. */
+		--mixer-space-1: 4px;
+		--mixer-space-2: 8px;
+		--mixer-space-3: 16px;
+		--mixer-text-sm: 12px;
+		--mixer-text-base: 14px;
+		--mixer-text-lg: 18px;
+	}
+
+	/* NARROW_MAX/MEDIUM_MAX below must match responsive.ts's
+	   own NARROW_MAX (600) and MEDIUM_MAX (1100) exactly - CSS
+	   cannot import the TS constant, so this is the one place
+	   the two copies have to be kept in step by hand. */
+	@container mixer (max-width: 599px) {
+		.mixer {
+			--mixer-space-1: 3px;
+			--mixer-space-2: 6px;
+			--mixer-space-3: 12px;
+			--mixer-text-sm: 11px;
+			--mixer-text-base: 13px;
+			--mixer-text-lg: 16px;
+		}
+	}
+	@container mixer (min-width: 600px) and (max-width: 1099px) {
+		.mixer {
+			/* medium's own numbers, listed explicitly rather
+			   than left as an implied interpolation between
+			   narrow and wide - a reader can see what medium
+			   actually is without computing it by eye. */
+			--mixer-space-1: 4px;
+			--mixer-space-2: 7px;
+			--mixer-space-3: 14px;
+			--mixer-text-sm: 12px;
+			--mixer-text-base: 13px;
+			--mixer-text-lg: 17px;
+		}
 	}
 	.fullscreen-toggle-inline {
 		/* Was an absolutely-positioned corner button; now an
