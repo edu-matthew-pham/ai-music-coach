@@ -283,27 +283,30 @@ export function setNotesScale(next: number): void {
 	notesScale.value = Math.round(clamped * 10) / 10;
 }
 
-// Two named views, each a preset over the existing panel
-// toggles rather than a new layout mode - "guitar tab" is
-// Lyrics alone, full width; "SingStar" is Notes alone, full
-// width. Both already fall out of the panels record above:
-// a single flex child in lyrics-and-notes takes the whole
-// row on its own (flex-grow only matters when something else
-// is competing for the same space), so nothing about the
-// layout itself needed to change, only which toggles are on.
+// Three named views, not two presets plus an implicit
+// default. "Tab" and "SingStar" are fixed layouts for jam
+// sessions and solo mic practice respectively - each a
+// preset over the panels record below. "Custom" is the
+// free-toggle view: the six panel checkboxes only make sense
+// there, since in Tab or SingStar the preset already owns
+// `panels` and a stray checkbox click would silently fight
+// it without changing the button label.
 //
-// viewPreset names which one is active, or null for the
-// ordinary view. savedPanels holds whatever was on right
-// before a preset was applied, so leaving the preset restores
-// it exactly rather than resetting to some fixed default -
-// someone who had Instruments off already shouldn't have it
-// switched on by leaving Tab view.
-export const viewPreset = $state<{ value: "tab" | "singstar" | null }>({
-	value: null
+// Opens in "tab" - jam sessions (multiple people reading
+// lyrics/chords off one screen, no mic) are the more common
+// case than Custom's everything-on layout, per the person's
+// own steer. savedPanels/savedLyricsScale/savedNotesScale
+// hold whatever Custom was last set up as, so returning to
+// Custom restores exactly that rather than some fixed
+// default - someone who had Instruments off already
+// shouldn't have it switched back on by leaving Tab view.
+export const viewPreset = $state<{ value: "tab" | "singstar" | "custom" }>({
+	value: "custom"
 });
 
-let savedPanels: Record<string, boolean> | null = null;
-let savedLyricsScale: number | null = null;
+let savedPanels: Record<string, boolean> = { ...panels };
+let savedLyricsScale: number = lyricsScale.value;
+let savedNotesScale: number = notesScale.value;
 
 const TAB_PANELS: Record<string, boolean> = {
 	strip: false,
@@ -359,61 +362,46 @@ const SINGSTAR_DEFAULT_NOTES_SCALE = 1.4;
 // from here exactly the same as any other manual change.
 const TAB_DEFAULT_LYRICS_SCALE = 1.3;
 
-let savedNotesScale: number | null = null;
+// The three buttons are a radio group now, not toggles - the
+// active one no longer means "press again to leave". Custom
+// is the explicit third choice, reached by pressing its own
+// button, the same as Tab or SingStar.
+export function applyPreset(name: "tab" | "singstar" | "custom"): void {
+	if (viewPreset.value === name) return;
 
-export function applyPreset(name: "tab" | "singstar"): void {
-	// Pressing the active preset's own button again is how
-	// you leave it - the same toggle-shaped interaction as
-	// every other button in this row, rather than a separate
-	// "Exit" control to look for.
-	if (viewPreset.value === name) {
-		exitPreset();
-		return;
-	}
-
-	// panels is always fully overwritten below (a complete
-	// fixed record every time), so switching preset to preset
-	// never leaves a stale value behind for it. lyricsScale and
-	// notesScale don't have that same property on their own -
-	// restoring both here, on every call, before the new
-	// preset's own default (below) is applied, is what makes a
-	// direct SingStar -> Tab switch behave the same as SingStar
-	// -> exit -> Tab: one preset's own default doesn't leak
-	// into the next just because Exit was never pressed in
-	// between.
-	if (!savedPanels) {
+	// Leaving Custom is the one moment worth remembering: its
+	// layout and both scales are whatever the player set up
+	// freely, and nothing else captures that automatically.
+	// Leaving Tab or SingStar for another preset has nothing
+	// of its own worth saving - Tab and SingStar always reset
+	// to their own fixed defaults on entry regardless.
+	if (viewPreset.value === "custom") {
 		savedPanels = { ...panels };
 		savedLyricsScale = lyricsScale.value;
 		savedNotesScale = notesScale.value;
-	} else {
-		if (savedLyricsScale !== null) lyricsScale.value = savedLyricsScale;
-		if (savedNotesScale !== null) notesScale.value = savedNotesScale;
 	}
 
-	Object.assign(panels, name === "tab" ? TAB_PANELS : SINGSTAR_PANELS);
-
-	if (name === "tab") {
-		lyricsScale.value = TAB_DEFAULT_LYRICS_SCALE;
+	if (name === "custom") {
+		Object.assign(panels, savedPanels);
+		lyricsScale.value = savedLyricsScale;
+		notesScale.value = savedNotesScale;
 	} else {
-		lyricsScale.value = SINGSTAR_DEFAULT_LYRICS_SCALE;
-		notesScale.value = SINGSTAR_DEFAULT_NOTES_SCALE;
+		Object.assign(panels, name === "tab" ? TAB_PANELS : SINGSTAR_PANELS);
+		if (name === "tab") {
+			lyricsScale.value = TAB_DEFAULT_LYRICS_SCALE;
+		} else {
+			lyricsScale.value = SINGSTAR_DEFAULT_LYRICS_SCALE;
+			notesScale.value = SINGSTAR_DEFAULT_NOTES_SCALE;
+		}
 	}
 
 	viewPreset.value = name;
 }
 
-export function exitPreset(): void {
-	if (savedPanels) {
-		Object.assign(panels, savedPanels);
-		savedPanels = null;
-	}
-	if (savedLyricsScale !== null) {
-		lyricsScale.value = savedLyricsScale;
-		savedLyricsScale = null;
-	}
-	if (savedNotesScale !== null) {
-		notesScale.value = savedNotesScale;
-		savedNotesScale = null;
-	}
-	viewPreset.value = null;
-}
+// Jam sessions (Tab) are the more common case per the
+// person's own steer, so that's the landing view - applied
+// here, once, at module load, through the same function a
+// button press uses, rather than a separately maintained
+// initial panels/scale state that could drift from what Tab
+// actually means.
+applyPreset("tab");

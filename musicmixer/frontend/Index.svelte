@@ -338,40 +338,42 @@
 				onToggleRepeat={toggleRepeat}
 				onMasterVolumeChanged={masterVolumeChanged}
 			/>
-			<PanelToggles
-				hasTimeline={timeline.length > 0}
-				hasNotes={notes.length > 0}
-				hasDiagrams={Object.keys(diagrams.structure ?? {}).length > 0}
-			/>
-			<div class="text-scale-control" role="group" aria-label="Text size">
-				<button
-					type="button"
-					class="text-scale-button"
-					disabled={readScale.value <= READ_SCALE_MIN}
-					aria-label="Smaller text"
-					onclick={() => setReadScale(readScale.value - READ_SCALE_STEP)}
-				>
-					&minus;
-				</button>
-				<button
-					type="button"
-					class="text-scale-value"
-					disabled={readScale.value === 1}
-					aria-label="Reset text size to 100%"
-					onclick={() => setReadScale(1)}
-				>
-					{Math.round(readScale.value * 100)}%
-				</button>
-				<button
-					type="button"
-					class="text-scale-button"
-					disabled={readScale.value >= READ_SCALE_MAX}
-					aria-label="Bigger text"
-					onclick={() => setReadScale(readScale.value + READ_SCALE_STEP)}
-				>
-					&plus;
-				</button>
-			</div>
+			{#if viewPreset.value === "custom"}
+				<PanelToggles
+					hasTimeline={timeline.length > 0}
+					hasNotes={notes.length > 0}
+					hasDiagrams={Object.keys(diagrams.structure ?? {}).length > 0}
+				/>
+				<div class="text-scale-control" role="group" aria-label="Text size">
+					<button
+						type="button"
+						class="text-scale-button"
+						disabled={readScale.value <= READ_SCALE_MIN}
+						aria-label="Smaller text"
+						onclick={() => setReadScale(readScale.value - READ_SCALE_STEP)}
+					>
+						&minus;
+					</button>
+					<button
+						type="button"
+						class="text-scale-value"
+						disabled={readScale.value === 1}
+						aria-label="Reset text size to 100%"
+						onclick={() => setReadScale(1)}
+					>
+						{Math.round(readScale.value * 100)}%
+					</button>
+					<button
+						type="button"
+						class="text-scale-button"
+						disabled={readScale.value >= READ_SCALE_MAX}
+						aria-label="Bigger text"
+						onclick={() => setReadScale(readScale.value + READ_SCALE_STEP)}
+					>
+						&plus;
+					</button>
+				</div>
+			{/if}
 			<div class="preset-buttons" role="group" aria-label="View">
 				<button
 					type="button"
@@ -379,7 +381,7 @@
 					aria-pressed={viewPreset.value === "tab"}
 					onclick={() => applyPreset("tab")}
 				>
-					{viewPreset.value === "tab" ? "Exit tab view" : "Tab view"}
+					Tab view
 				</button>
 				<button
 					type="button"
@@ -387,7 +389,15 @@
 					aria-pressed={viewPreset.value === "singstar"}
 					onclick={() => applyPreset("singstar")}
 				>
-					{viewPreset.value === "singstar" ? "Exit SingStar view" : "SingStar view"}
+					SingStar view
+				</button>
+				<button
+					type="button"
+					class="preset-button"
+					aria-pressed={viewPreset.value === "custom"}
+					onclick={() => applyPreset("custom")}
+				>
+					Custom
 				</button>
 			</div>
 			{#if panels.faders}

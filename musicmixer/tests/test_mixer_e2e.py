@@ -28,8 +28,14 @@ NOTHING_LOOPED = "Nothing looped yet"
 
 
 def build_mixer(page: Page, url: str) -> None:
+    # The app now opens in Tab view (jam-session default),
+    # where the chart strip and the panel checkboxes these
+    # tests click are hidden. Every test here exercises the
+    # free-toggle Custom view specifically, so switch to it
+    # right after building, same as a person would.
     page.goto(url)
     page.get_by_role("button", name="Build the mixer").click()
+    page.get_by_role("button", name="Custom").click()
     expect(page.locator('[data-bar="1"]')).to_be_visible(timeout=15000)
 
 

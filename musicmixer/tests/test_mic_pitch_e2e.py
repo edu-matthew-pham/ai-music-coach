@@ -56,8 +56,16 @@ def write_sine_wav(path, hz=SINE_HZ, seconds=10.0, rate=44100):
 
 
 def build_mixer(page: Page, url: str) -> None:
+    # The app now opens in Tab view (jam-session default),
+    # where the chart strip and the "Visual notes" checkbox
+    # this file's show_notes_panel() uses are hidden (Mic
+    # itself lives in Transport, not the gated panel
+    # checkboxes, so it stays visible in every view). Switch
+    # to Custom right after building, same as build_mixer in
+    # test_mixer_e2e.py and for the same reason.
     page.goto(url)
     page.get_by_role("button", name="Build the mixer").click()
+    page.get_by_role("button", name="Custom").click()
     expect(page.locator('[data-bar="1"]')).to_be_visible(timeout=15000)
 
 
