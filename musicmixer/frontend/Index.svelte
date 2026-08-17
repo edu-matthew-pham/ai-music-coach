@@ -121,15 +121,26 @@
 	// pitch boxes next to the upcoming phrase's, side by side
 	// rather than stacked) - that genuinely wants the width
 	// back, so margins step aside for it specifically rather
-	// than fighting it. Mirrors NotesPanel's own condition for
-	// entering that layout (showNextPreview && previewSideBySide
-	// && !narrow) - if NotesPanel wouldn't actually go wide,
-	// margins here shouldn't back off for nothing.
-	const singstarWide = $derived(
+	// than fighting it.
+	//
+	// This used to fold the container-width check (!narrow)
+	// into this same boolean, which is exactly the kind of
+	// layout-in-JS the responsive-layout plan calls out - the
+	// width part now lives in CSS instead (see
+	// .lyrics-and-notes.singstar.preview-wide's @container
+	// rule below). What's left here is pure feature state: is
+	// the preview actually on and actually side-by-side. It is
+	// NOT redundant with NotesPanel's own narrow-driven
+	// disabling of that same toggle - previewSideBySide is a
+	// persisted module-level value, so a person could enable
+	// it while wide, then resize narrower without ever
+	// touching the checkbox again, leaving it stuck true. The
+	// CSS width gate is what actually protects against that
+	// stale value at narrow width now, not this boolean.
+	const singstarPreviewWide = $derived(
 		viewPreset.value === "singstar" &&
 			showNextPreview.value &&
-			previewSideBySide.value &&
-			!narrow
+			previewSideBySide.value
 	);
 
 	// A loop is seconds into a particular song. Carried over
@@ -522,7 +533,7 @@
 				     for an instrument while the pitch view
 				     carries the singing, not a second thing
 				     competing for the eye. -->
-				<div class="lyrics-and-notes singstar" class:wide={singstarWide}>
+				<div class="lyrics-and-notes singstar" class:preview-wide={singstarPreviewWide}>
 					{#if panels.notes}
 						<div class="notes-cell">
 							<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} />
@@ -535,7 +546,7 @@
 					{/if}
 				</div>
 			{:else}
-				<div class="lyrics-and-notes" class:narrow>
+				<div class="lyrics-and-notes">
 					{#if panels.lyrics}
 						<div class="lyrics-cell">
 							<LyricsPanel {notes} {timeline} {phrases} {playhead} mode={lyricsMode} />
@@ -646,8 +657,13 @@
 		display: flex;
 		flex-wrap: wrap;
 		align-items: center;
-		gap: 8px 18px;
-		margin-bottom: 6px;
+		/* Was a fixed "8px 18px" - now the mixer's own spacing
+		   tokens (declared on .mixer, adjusted per band by the
+		   @container rules there), so every header row tightens
+		   automatically at narrower widths instead of needing
+		   its own copy of the same three numbers. */
+		gap: var(--mixer-space-2) calc(var(--mixer-space-3) + 2px);
+		margin-bottom: var(--mixer-space-1);
 	}
 	.header-transport {
 		/* No wrapping cause to worry about - two buttons, every
@@ -655,12 +671,30 @@
 		   inherits the same behaviour as the other two rows. */
 		flex-wrap: wrap;
 	}
+	@container mixer (max-width: 599px) {
+		.header-transport {
+			/* "Full-width transport on narrow" - Play/Pause and
+			   Stop grow to share the row evenly rather than
+			   sitting at their natural (small) width with empty
+			   space beside them, which is what a phone-width
+			   header otherwise leaves. Only at narrow: on medium
+			   and wide the two buttons stay their natural size
+			   next to everything else already on the row. */
+			justify-content: stretch;
+		}
+		.header-transport :global(.transport) {
+			width: 100%;
+		}
+		.header-transport :global(.transport button) {
+			flex: 1 1 0;
+		}
+	}
 	.header-views {
 		justify-content: space-between;
 	}
 	.settings-toggle {
 		font: inherit;
-		font-size: 12px;
+		font-size: var(--mixer-text-sm);
 		padding: 5px 12px;
 		border: 1px solid var(--border-color-primary);
 		border-radius: 6px;
@@ -676,8 +710,17 @@
 		align-items: flex-start;
 		gap: 16px;
 	}
-	.lyrics-and-notes.narrow {
-		flex-direction: column;
+	/* NARROW_MAX below must match responsive.ts's own
+	   NARROW_MAX (600) - see the note on .mixer's own
+	   @container rules further up this file. */
+	@container mixer (max-width: 599px) {
+		.lyrics-and-notes {
+			flex-direction: column;
+		}
+		.lyrics-and-notes .lyrics-cell,
+		.lyrics-and-notes .notes-cell {
+			min-width: 0;
+		}
 	}
 	.lyrics-and-notes.singstar {
 		/* Stacked, not side by side - Notes first (the thing
@@ -698,7 +741,7 @@
 		max-width: 1200px;
 		margin: 0 auto;
 	}
-	.lyrics-and-notes.singstar.wide {
+	.lyrics-and-notes.singstar.preview-wide {
 		/* Notes' own "side by side" preview genuinely wants
 		   the width back (two phrases' worth of pitch boxes
 		   next to each other) - margins step aside for it
@@ -706,6 +749,20 @@
 		   everything else defaults to. */
 		max-width: none;
 		margin: 0;
+	}
+	@container mixer (max-width: 599px) {
+		.lyrics-and-notes.singstar.preview-wide {
+			/* The width half of what used to be JS's !narrow
+			   check (see singstarPreviewWide's own comment in
+			   the script above) - even if the preview toggle is
+			   stuck on from a wider session, don't let it push
+			   the layout past the container at narrow width.
+			   NotesPanel already disables the toggle itself at
+			   this band, so this is a backstop for a stale
+			   value, not the primary mechanism. */
+			max-width: 1200px;
+			margin: 0 auto;
+		}
 	}
 	.lyrics-and-notes.singstar .lyrics-cell,
 	.lyrics-and-notes.singstar .notes-cell {
@@ -729,15 +786,9 @@
 		flex: 3 1 220px;
 		min-width: 220px;
 	}
-	.lyrics-and-notes.narrow .lyrics-cell {
-		min-width: 0;
-	}
 	.notes-cell {
 		flex: 7 1 260px;
 		min-width: 260px;
-	}
-	.lyrics-and-notes.narrow .notes-cell {
-		min-width: 0;
 	}
 	.text-scale-control {
 		display: flex;
