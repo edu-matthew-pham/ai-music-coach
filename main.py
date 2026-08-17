@@ -183,7 +183,13 @@ with gr.Blocks(
         + anchor_link("Song", "song")
         + anchor_link("Arrange", "arrange")
         + anchor_link("Playback", "playback")
-        + anchor_link("Practice", "practice")
+        # "Practice" (the record-then-Compare flow below) is
+        # hidden for now - the mixer's own live mic covers
+        # this need today. Not deleted: the section, its
+        # event wiring and every function it calls are all
+        # untouched, only unreachable from the nav and not
+        # rendered. Restore by re-adding this link and
+        # dropping visible=False on the practice Column.
         + "</div>"
     )
 
@@ -497,9 +503,20 @@ with gr.Blocks(
 
         # -------------------------------------------------
         # PRACTICE: sing it and see how it went
+        #
+        # Hidden for now (visible=False), not removed - the
+        # mixer's own live mic (micPitch.svelte.ts) covers
+        # what this record-then-Compare flow was for, per
+        # PLAN-realtime-judging.md. Every component, handler
+        # and function below stays wired exactly as before;
+        # only rendering is switched off, the same way
+        # Generate Playback and the static Instruments
+        # section were retired in earlier sessions - except
+        # this one is deliberately reversible, not deleted,
+        # so drop visible=False to bring it back.
         # -------------------------------------------------
 
-        with gr.Column(elem_id="practice"):
+        with gr.Column(elem_id="practice", visible=False):
 
             gr.Markdown("## Practice")
 
