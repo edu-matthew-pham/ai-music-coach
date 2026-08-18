@@ -828,3 +828,216 @@ def test_a_single_tune_song_is_untouched_by_carrying_on():
     )
 
     assert not [ph for ph in value["phrases"] if ph.get("part")]
+
+
+# A synthetic several-tune piece built to hit the shapes the
+# round example never produces: a voice that finishes in the
+# MIDDLE (two others carrying on with DIFFERENT phrasing at
+# that moment, so the overlap-merge branch runs), and a voice
+# that only ENTERS after another has finished. Same technique
+# as the multi-key tests' synthetic modulating score - typed
+# directly, so every boundary is known to the beat.
+
+def _staggered_piece():
+    """
+    Three tunes over eight bars of 4/4:
+
+      Lead    sings bars 1-4, then rests           (finishes first)
+      Alto    sings bars 3-8, phrases 3-5 / 6-8    (starts mid-way,
+                                                    straddles Lead's end)
+      Tenor   rests bars 1-4, sings 5-8            (enters only after
+                                                    Lead has finished)
+
+    Lead's last phrase ends at bar 4; Alto's phrase 1 (bars
+    3-5) is still going then, so it must be clipped to start
+    at bar 5 not skipped; Tenor's first phrase starts exactly
+    at bar 5, alongside Alto's clipped one - the merge branch.
+    """
+
+    bar_rest_p, bar_rest_d = "R", "4"
+
+    lead_p = " ".join(["C4 D4 E4 F4"] * 2 + ["G4 A4 G4 F4"] * 2) + " " + " ".join([bar_rest_p] * 4)
+    lead_d = " ".join(["1 1 1 1"] * 4) + " " + " ".join([bar_rest_d] * 4)
+    lead_l = "one two three four\nfive six sev- en\neight nine ten el-\nev- en twelve thir-"
+
+    alto_p = " ".join([bar_rest_p] * 2) + " " + " ".join(["E4 F4 G4 A4"] * 6)
+    alto_d = " ".join([bar_rest_d] * 2) + " " + " ".join(["1 1 1 1"] * 6)
+    alto_l = "a b c d e f g h i j k l\nm n o p q r s t u v w x"
+
+    tenor_p = " ".join([bar_rest_p] * 4) + " " + " ".join(["C4 C4 C4 C4"] * 4)
+    tenor_d = " ".join([bar_rest_d] * 4) + " " + " ".join(["1 1 1 1"] * 4)
+    tenor_l = "la la la la la la la la\nla la la la la la la la"
+
+    pitches = f"=== Lead ===\n{lead_p}\n=== Alto ===\n{alto_p}\n=== Tenor ===\n{tenor_p}"
+    durations = f"=== Lead ===\n{lead_d}\n=== Alto ===\n{alto_d}\n=== Tenor ===\n{tenor_d}"
+    lyrics = f"=== Lead ===\n{lead_l}\n=== Alto ===\n{alto_l}\n=== Tenor ===\n{tenor_l}"
+
+    chart = "| " + " | ".join(["C . . ."] * 8) + " |"
+
+    return pitches, durations, lyrics, "C", chart, 120
+
+
+def test_synthetic_stagger_is_the_shape_it_claims_to_be():
+    """
+    Pin the fixture itself first, so a later edit to it can't
+    silently stop exercising what the tests below rely on.
+    """
+
+    from piece import Piece
+    from notes import is_rest
+
+    pitches, durations, lyrics, key, chart, tempo = _staggered_piece()
+
+    parts = dict(Piece.read_parts(pitches, durations, lyrics, key, chart, tempo))
+
+    assert set(parts) == {"Lead", "Alto", "Tenor"}
+
+    for piece in parts.values():
+        assert abs(piece.beats() - 32.0) < 1e-9
+
+    def first_sung(piece):
+        return next(
+            s for s, p in zip(piece.starts(), piece.pitches) if not is_rest(p)
+        )
+
+    assert first_sung(parts["Lead"]) == 0.0
+    assert first_sung(parts["Alto"]) == 8.0
+    assert first_sung(parts["Tenor"]) == 16.0
+
+
+def test_a_middle_finisher_carries_on_with_both_remaining_voices():
+    """
+    Lead finishes at bar 4 (beat 16). Alto's first phrase
+    straddles that moment and must be clipped, not skipped;
+    Tenor's first phrase starts exactly there. Both continue,
+    interleaved by time, with no gap and full coverage.
+    """
+
+    from mixer_data import mixer_data
+
+    pitches, durations, lyrics, key, chart, tempo = _staggered_piece()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, part_label="Lead"
+    )
+
+    phrases = value["phrases"]
+    own = [ph for ph in phrases if not ph.get("part")]
+    carried = [ph for ph in phrases if ph.get("part")]
+
+    # Lead's own four lines, ending where its singing does
+    # (one closing rest kept - beat 16 is where the last
+    # sung note ends, so the phrase ends at the next rest,
+    # 4 beats = 2s at 120bpm on).
+    assert len(own) == 4
+    lead_end = own[-1]["end"]
+
+    assert carried, "nothing carried on after Lead finished"
+
+    # First carried-on phrase picks up exactly where Lead
+    # ended - not at Alto's own phrase start (which was
+    # earlier), and not with a hole.
+    assert abs(carried[0]["start"] - lead_end) < 1e-6
+
+    # Alto and Tenor both start a phrase the moment Lead
+    # finishes: Alto one long line to the end, Tenor two
+    # shorter ones. The stated rule is that the finer cut
+    # wins the pages (closest thing to your phrasing once you
+    # have stopped) - so the tail is Tenor's two pages, and
+    # Alto's single long phrase is not used as a page break.
+    # Alto is still heard and drawn throughout; only its
+    # break is not taken.
+    assert [ph["part"] for ph in carried] == ["Tenor", "Tenor"]
+    assert len(carried) == 2
+
+    # No gaps, full coverage.
+    for earlier, later in zip(phrases, phrases[1:]):
+        assert abs(later["start"] - earlier["end"]) < 1e-6, (
+            f"gap between {earlier['label']!r} and {later['label']!r}"
+        )
+    assert abs(phrases[-1]["end"] - value["timeline"][-1]["end"]) < 1e-6
+
+
+def test_the_merge_keeps_one_phrase_per_stretch_of_time():
+    """
+    When two carried-on phrases cover the same seconds (Alto's
+    clipped first line and Tenor's first line both start at
+    beat 16), only one is kept for that stretch - a second
+    page over the same seconds would just be the same notes
+    drawn again.
+    """
+
+    from mixer_data import mixer_data
+
+    pitches, durations, lyrics, key, chart, tempo = _staggered_piece()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, part_label="Lead"
+    )
+
+    carried = [ph for ph in value["phrases"] if ph.get("part")]
+
+    for earlier, later in zip(carried, carried[1:]):
+        assert later["start"] >= earlier["end"] - 1e-6, (
+            f"{earlier['label']!r} and {later['label']!r} overlap"
+        )
+
+
+def test_a_late_entrant_is_paged_when_it_is_the_singer():
+    """
+    Tenor rests four bars then sings. As the singer, its
+    phrases start where it enters; nothing before that is a
+    phrase of its own. And since it finishes last, nothing is
+    carried on after it.
+    """
+
+    from mixer_data import mixer_data
+
+    pitches, durations, lyrics, key, chart, tempo = _staggered_piece()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, part_label="Tenor"
+    )
+
+    phrases = value["phrases"]
+
+    assert not [ph for ph in phrases if ph.get("part")]
+
+    # Its last phrase runs to the piece's end (it IS the last
+    # thing sounding), and coverage is complete.
+    assert abs(phrases[-1]["end"] - value["timeline"][-1]["end"]) < 1e-6
+
+
+def test_carried_on_phrases_name_the_part_their_words_come_from():
+    """
+    A panel drawing words for a carried-on page has to fetch
+    that part's words, not the singer's - the tag is what
+    lets it.
+    """
+
+    from mixer_data import mixer_data
+
+    pitches, durations, lyrics, key, chart, tempo = _staggered_piece()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, part_label="Lead"
+    )
+
+    notes = value["notes"]
+
+    for ph in value["phrases"]:
+        if not ph.get("part"):
+            continue
+
+        # There ARE words from the named part inside this
+        # window - the tag points at something real.
+        inside = [
+            n for n in notes
+            if n["layer"] == ph["part"] and n.get("word")
+            and ph["start"] <= n["start"] < ph["end"]
+        ]
+        assert inside, f"{ph['label']!r} tagged {ph['part']!r} but no words there"

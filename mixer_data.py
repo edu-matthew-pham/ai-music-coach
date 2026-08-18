@@ -596,13 +596,23 @@ def _continue_with_other_parts(own_phrases, part_label, phrases_by_part):
     # Several parts may still be going; interleave their
     # phrases by when each starts, so the pages read in the
     # order they happen rather than one part's whole tail
-    # then the next's.
+    # then the next's. Where two start at the same moment,
+    # the SHORTER goes first - a deliberate rule, not sort
+    # luck: it means the pages that follow yours are cut as
+    # finely as any remaining part cuts them, which is the
+    # closest thing to "your phrasing" once you have stopped.
+    # (Checked against a synthetic three-part stagger where
+    # Alto's one long phrase and Tenor's two short ones both
+    # began the moment Lead finished: Tenor's win, so the
+    # tail is two pages, not one.)
     tail.sort(key=lambda phrase: (phrase["start"], phrase["end"]))
 
     # The same stretch of time may be a phrase for two parts
     # at once (a round's voices two bars apart, say). Keep the
     # first one that covers it; a second page over the same
-    # seconds would just be the same notes drawn again.
+    # seconds would just be the same notes drawn again. The
+    # part whose phrase is dropped is still heard and still
+    # drawn - only its page break is not used.
     merged = []
 
     for phrase in tail:

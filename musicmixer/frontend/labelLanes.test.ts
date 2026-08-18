@@ -136,6 +136,38 @@ describe("assignLanes", () => {
 		expect(r.b.y).toBe(190);
 	});
 
+	it("separates labels of a harmony a third away with no box collision", () => {
+		// The case the round never produces: two tunes at
+		// DIFFERENT pitches close enough that only their labels
+		// crowd. Rows are 14px apart, labels sit 10px below
+		// their row and are ~9px tall - so a label under row N
+		// and one under row N-1 land 4px apart vertically with
+		// overlapping x. No pitch is shared, no box is split;
+		// only the text collides, and it must still be found.
+		const r = place(
+			[
+				{ id: "melody", x: 100, y: 110, text: "life", priority: 0 },
+				{ id: "third", x: 102, y: 124, text: "but", priority: 1 }
+			],
+			{ lineHeight: 9, glyphWidth: 5, gap: 2 }
+		);
+		expect(r.melody.y).toBe(110);
+		// 124 is within one lineHeight of 110+9=119? No: 124-110=14
+		// > 9*0.5, so they are NOT on the same line and both stay.
+		// The real crowding case is when the offset makes them
+		// land closer than half a line apart:
+		const r2 = place(
+			[
+				{ id: "melody", x: 100, y: 110, text: "life", priority: 0 },
+				{ id: "third", x: 102, y: 113, text: "but", priority: 1 }
+			],
+			{ lineHeight: 9, glyphWidth: 5, gap: 2 }
+		);
+		expect(r2.melody.y).toBe(110);
+		expect(r2.third.y).not.toBe(113);
+		expect(Math.abs(r2.third.y - r2.melody.y)).toBeGreaterThanOrEqual(9);
+	});
+
 	it("respects maxLanes rather than searching forever", () => {
 		const labels: LabelInput[] = [];
 		for (let i = 0; i < 10; i++) {

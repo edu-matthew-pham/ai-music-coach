@@ -19,6 +19,7 @@
 	} from "./mixerPanels.svelte";
 	import type { MixerNote, MixerBar, MixerPhrase } from "./types";
 	import { assignLanes, type LabelInput, type LabelPlacement } from "./labelLanes";
+	import { overlappingPartners, noteSegments } from "./noteSegments";
 
 	// A static page per phrase, hard-cut to the next rather
 	// than scrolled - the way SingStar shows a line of notes:
@@ -394,108 +395,10 @@
 		return paths;
 	}
 
-	// Two DIFFERENT sung tunes landing on the same pitch at
-	// overlapping times - the exact shape a partner song's
-	// harmonised moments produce, or a short syllable of one
-	// tune briefly grazing a long held note of another - need
-	// a way to tell the two apart rather than one box winning
-	// by drawing last. Same idea as the violin's split-
-	// position marks, but sliced by TIME, not by whole note:
-	// a first version grouped any two notes that ever overlap
-	// and squashed BOTH to a shared height for their ENTIRE
-	// duration, which meant a three-beat held note ("dream.")
-	// collapsed to a quarter of its row for its whole length
-	// just because a few short eighth notes from an unrelated
-	// phrase happened to touch the same pitch for an instant -
-	// the short notes' own words became unreadably thin at the
-	// same time. Real bug, found from a real screenshot, not
-	// guessed at. Each note now computes its own segments: full
-	// height everywhere nothing else is sounding at its pitch,
-	// split height only for the specific slice of time another
-	// tune's note is actually there too.
-	//
-	// Deliberately cross-tune only: two consecutive notes of
-	// the SAME tune sitting on the same pitch (an ordinary
-	// repeated note) are not a collision and must render as
-	// two separate, ordinary boxes.
-	interface NoteSegment {
-		segStart: number;
-		segEnd: number;
-		bandIndex: number;
-		bandCount: number;
-	}
-
-	function overlappingPartners(
-		note: MixerNote,
-		pageNotes: MixerNote[]
-	): MixerNote[] {
-		if (parts.length < 2 || !parts.includes(note.layer)) return [];
-
-		return pageNotes.filter(
-			(other) =>
-				other !== note &&
-				other.layer !== note.layer &&
-				parts.includes(other.layer) &&
-				other.midi === note.midi &&
-				other.start < note.start + note.length &&
-				other.start + other.length > note.start
-		);
-	}
-
-	function noteSegments(note: MixerNote, partners: MixerNote[]): NoteSegment[] {
-		const noteEnd = note.start + note.length;
-
-		if (!partners.length) {
-			return [{ segStart: note.start, segEnd: noteEnd, bandIndex: 0, bandCount: 1 }];
-		}
-
-		// Break the note's own span at every point a partner
-		// starts or ends within it - each resulting slice has a
-		// fixed, unambiguous set of who else is sounding.
-		const points = new Set<number>([note.start, noteEnd]);
-
-		for (const partner of partners) {
-			const partnerEnd = partner.start + partner.length;
-			if (partner.start > note.start && partner.start < noteEnd) {
-				points.add(partner.start);
-			}
-			if (partnerEnd > note.start && partnerEnd < noteEnd) {
-				points.add(partnerEnd);
-			}
-		}
-
-		const bounds = Array.from(points).sort((a, b) => a - b);
-		const segments: NoteSegment[] = [];
-
-		for (let i = 0; i < bounds.length - 1; i++) {
-
-			const segStart = bounds[i];
-			const segEnd = bounds[i + 1];
-			const midpoint = (segStart + segEnd) / 2;
-
-			const active = partners.filter(
-				(partner) => partner.start <= midpoint && partner.start + partner.length > midpoint
-			);
-
-			// A stable band order (by position in `parts`, the
-			// same order the part chooser and the tune layers
-			// already use) so the same tune always draws in the
-			// same band whenever it is present, rather than
-			// jumping around slice to slice.
-			const present = [note, ...active].sort(
-				(a, b) => parts.indexOf(a.layer) - parts.indexOf(b.layer)
-			);
-
-			segments.push({
-				segStart,
-				segEnd,
-				bandIndex: present.indexOf(note),
-				bandCount: present.length
-			});
-		}
-
-		return segments;
-	}
+	// Split-box slicing lives in noteSegments.ts - pure and
+	// tested on its own with synthetic notes, same as
+	// labelLanes.ts. The template calls it with this panel's
+	// `parts` so the module never needs to know what a part is.
 </script>
 
 {#snippet pageSvg(page: Page, showPlayhead: boolean, dimmed: boolean)}
@@ -545,8 +448,8 @@
 		{/if}
 
 		{#each page.notes as note}
-			{@const partners = overlappingPartners(note, page.notes)}
-			{@const segments = noteSegments(note, partners)}
+			{@const partners = overlappingPartners(note, page.notes, parts)}
+			{@const segments = noteSegments(note, partners, parts)}
 			<g>
 				{#each segments as segment}
 					{@const bandHeight = (ROW_HEIGHT - 2) / segment.bandCount}
