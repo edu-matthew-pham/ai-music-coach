@@ -1,6 +1,6 @@
 
 # `gradio_musicmixer`
-<img alt="Static Badge" src="https://img.shields.io/badge/version%20-%200.0.9%20-%20orange">  
+<img alt="Static Badge" src="https://img.shields.io/badge/version%20-%200.0.11%20-%20orange">  
 
 Python library for easily interacting with trained machine learning models
 
