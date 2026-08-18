@@ -14,9 +14,11 @@ from key_detector import (
     time_on_each_pitch
 )
 from music import (
+    read_music,
+)
+from examples import (
     load_twinkle_phrase,
     load_wellerman_phrase,
-    read_music
 )
 
 

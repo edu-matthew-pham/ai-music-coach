@@ -15,8 +15,8 @@ from music import (
     analyse_single_note,
     analyse_sequence,
     analyse_instrument,
-    load_twinkle_phrase
 )
+from examples import load_twinkle_phrase
 
 
 def test_read_music():
@@ -133,11 +133,11 @@ def test_load_wellerman_phrase_is_playable_and_harmonisable():
     """
 
     from music import (
-        load_wellerman_phrase,
         read_music,
         read_lyrics,
-        sung_count
+        sung_count,
     )
+    from examples import load_wellerman_phrase
     from harmony import make_harmony
 
     pitches, durations, lyrics, key, chart = load_wellerman_phrase()
@@ -484,12 +484,12 @@ def test_every_example_is_complete_and_singable():
     """
 
     from music import (
-        load_wellerman_phrase,
         read_music,
         read_lyrics,
         sung_count,
-        play_music
+        play_music,
     )
+    from examples import load_wellerman_phrase
     from harmony import make_harmony
 
     for loader in (load_twinkle_phrase, load_wellerman_phrase):
@@ -528,7 +528,8 @@ def test_examples_fill_whole_bars():
     out of the last note rather than being added on top.
     """
 
-    from music import load_wellerman_phrase, read_music
+    from music import read_music
+    from examples import load_wellerman_phrase
 
     for loader in (load_twinkle_phrase, load_wellerman_phrase):
 
@@ -553,7 +554,7 @@ def test_examples_return_everything_the_boxes_need():
     is what that wiring depends on.
     """
 
-    from music import load_wellerman_phrase
+    from examples import load_wellerman_phrase
 
     for loader in (load_twinkle_phrase, load_wellerman_phrase):
 
@@ -575,10 +576,10 @@ def test_every_example_brings_a_chart_that_fits_it():
     """
 
     from music import (
-        load_wellerman_phrase,
         read_music,
-        read_chords
+        read_chords,
     )
+    from examples import load_wellerman_phrase
 
     for loader in (load_twinkle_phrase, load_wellerman_phrase):
 
@@ -603,7 +604,8 @@ def test_the_wellerman_line_is_two_bars_of_four():
     put the downbeat in a different place each time round.
     """
 
-    from music import load_wellerman_phrase, read_music, read_chords
+    from music import read_music, read_chords
+    from examples import load_wellerman_phrase
 
     pitches, durations, lyrics, key, chart = load_wellerman_phrase()
 
@@ -623,7 +625,7 @@ def test_the_full_twinkle_is_a_consistent_piece():
 
     from fractions import Fraction
 
-    from music import load_twinkle
+    from examples import load_twinkle
     from piece import Piece
     from chords import chart_beats
 
@@ -656,7 +658,7 @@ def test_the_full_wellerman_is_a_consistent_piece():
 
     from fractions import Fraction
 
-    from music import load_wellerman
+    from examples import load_wellerman
     from piece import Piece
     from chords import chart_beats, read_chart
 
@@ -690,7 +692,7 @@ def test_the_full_wellerman_opens_like_the_phrase_example():
     which is what makes the rest of the grid trustworthy.
     """
 
-    from music import load_wellerman, load_wellerman_phrase
+    from examples import load_wellerman, load_wellerman_phrase
 
     full = load_wellerman()
     phrase = load_wellerman_phrase()
@@ -809,7 +811,8 @@ def test_transposing_and_back_is_exact():
     was typed, and the round trip is exact anyway.
     """
 
-    from music import transpose_music, load_wellerman
+    from music import transpose_music
+    from examples import load_wellerman
 
     original, durations, lyrics, key, chart, tempo = load_wellerman()
 
@@ -1050,7 +1053,8 @@ def test_the_layers_are_the_same_ones_the_mix_uses():
     someone compares them.
     """
 
-    from music import load_wellerman, separate_layers, LAYER_NAMES
+    from music import separate_layers, LAYER_NAMES
+    from examples import load_wellerman
 
     pitches, durations, lyrics, key, chart, tempo = load_wellerman()
 

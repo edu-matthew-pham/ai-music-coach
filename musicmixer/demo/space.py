@@ -1,4 +1,3 @@
-
 import gradio as gr
 from app import demo as app
 import os
@@ -67,7 +66,7 @@ from gradio_musicmixer import MusicMixer
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from mixer_data import mixer_data, loop_region  # noqa: E402
-from music import load_wellerman, load_twinkle  # noqa: E402
+from examples import load_wellerman, load_twinkle  # noqa: E402
 
 
 def build():

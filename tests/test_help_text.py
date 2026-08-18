@@ -38,7 +38,7 @@ def test_the_example_in_the_guide_is_real_music():
     has to exist and produce something playable.
     """
 
-    from music import load_twinkle_phrase
+    from examples import load_twinkle_phrase
 
     assert "Twinkle" in HELP_TEXT
 

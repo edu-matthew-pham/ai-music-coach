@@ -459,7 +459,8 @@ def test_no_chart_means_no_accompaniment():
 def test_chords_mix_with_the_melody():
     import numpy as np
 
-    from music import play_music, load_twinkle_phrase
+    from music import play_music
+    from examples import load_twinkle_phrase
 
     pitches, durations, lyrics, key, chart = load_twinkle_phrase()
 
@@ -507,7 +508,8 @@ def test_layers_together_do_not_clip():
 
     import numpy as np
 
-    from music import play_music, load_twinkle_phrase
+    from music import play_music
+    from examples import load_twinkle_phrase
 
     pitches, durations, lyrics, key, chart = load_twinkle_phrase()
 
@@ -770,7 +772,8 @@ def test_a_bass_performance_is_judged_against_the_bass():
     import numpy as np
 
     from playback import make_melody
-    from music import analyse_performance, load_twinkle_phrase
+    from music import analyse_performance
+    from examples import load_twinkle_phrase
 
     pitches, durations, lyrics, key, chart = load_twinkle_phrase()
 
@@ -805,7 +808,8 @@ def test_bass_is_a_playback_layer_too():
 
     import numpy as np
 
-    from music import play_music, load_twinkle_phrase
+    from music import play_music
+    from examples import load_twinkle_phrase
 
     pitches, durations, lyrics, key, chart = load_twinkle_phrase()
 
@@ -1636,7 +1640,8 @@ def test_a_melody_implies_chords_even_alone():
     between.
     """
 
-    from music import suggest_chords, load_twinkle_phrase
+    from music import suggest_chords
+    from examples import load_twinkle_phrase
 
     pitches, durations, lyrics, key, chart = load_twinkle_phrase()
 
@@ -1653,7 +1658,8 @@ def test_a_minor_melody_is_harmonised_from_its_own_tonic():
     song puts every cadence in the wrong place.
     """
 
-    from music import suggest_chords, load_wellerman_phrase
+    from music import suggest_chords
+    from examples import load_wellerman_phrase
 
     pitches, durations, lyrics, key, chart = load_wellerman_phrase()
 
@@ -1739,7 +1745,8 @@ def test_the_axis_counts_bars_when_there_is_a_chart():
     invention.
     """
 
-    from music import show_target_music, load_twinkle_phrase
+    from music import show_target_music
+    from examples import load_twinkle_phrase
 
     pitches, durations, lyrics, key, chart = load_twinkle_phrase()
 

@@ -24,7 +24,8 @@ from mixer_data import (
     loop_region,
     loop_notes
 )
-from music import load_wellerman, LAYER_NAMES
+from music import LAYER_NAMES
+from examples import load_wellerman
 
 
 def song():

@@ -24,7 +24,6 @@ from music import (
     GUIDE_CHOICES,
     HARMONY_STYLES,
     make_practice_guide,
-    load_wellerman_phrase,
     import_midi_file,
     list_midi_tracks,
     list_midi_phrases,
@@ -33,8 +32,11 @@ from music import (
     selected_piece,
     phrase_number_from,
     analyse_performance,
+)
+from examples import (
+    load_wellerman_phrase,
     load_twinkle,
-    load_wellerman
+    load_wellerman,
 )
 
 
