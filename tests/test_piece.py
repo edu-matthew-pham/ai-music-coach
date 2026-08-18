@@ -254,3 +254,299 @@ def test_a_slice_straddling_the_change_carries_both_keys():
 
     assert middle.key_changes == [(0.0, "C"), (2.0, "G")]
     assert middle.key == "C"
+
+# Several tunes in one set of boxes, divided by
+# "=== name ===" lines - PLAN-multi-part.md, stage 1.
+
+def test_no_divider_is_still_one_part():
+    """
+    A box with no "=== name ===" line reads as one section,
+    name None - every song the app had before this exists.
+    """
+
+    from piece import split_parts
+
+    sections = split_parts(
+        "C4 C4 G4 G4", "1 1 1 1", "Twin- kle twin- kle"
+    )
+
+    assert len(sections) == 1
+
+    name, pitch_text, duration_text, lyric_text = sections[0]
+
+    assert name is None
+    assert pitch_text == "C4 C4 G4 G4"
+    assert duration_text == "1 1 1 1"
+    assert lyric_text == "Twin- kle twin- kle"
+
+
+def test_read_parts_on_undivided_boxes_matches_read():
+    """
+    read_parts on a plain, undivided song returns exactly
+    what Piece.read already returns for it - the single-
+    tune path is not a special case, it is what the general
+    mechanism does with one section.
+    """
+
+    parts = Piece.read_parts(
+        "C4 C4 G4 G4 A4 A4 G4 R",
+        "1 1 1 1 1 1 3/2 1/2",
+        "Twin- kle twin- kle lit- tle star",
+        "C",
+        "| C . . . | F . C . |"
+    )
+
+    assert len(parts) == 1
+
+    name, piece = parts[0]
+
+    assert name is None
+    assert piece.pitches == TWINKLE.pitches
+    assert piece.durations == TWINKLE.durations
+    assert piece.lyrics == TWINKLE.lyrics
+    assert piece.key == TWINKLE.key
+    assert piece.chart == TWINKLE.chart
+
+
+def test_a_partner_song_reads_as_three_named_parts():
+    """
+    Three tunes, three names, in the order written - the
+    shape a partner song (Frere Jacques / Three Blind Mice
+    / Hot Cross Buns) needs.
+    """
+
+    pitch_text = (
+        "=== Frere Jacques ===\n"
+        "C4 D4 E4 C4\n"
+        "=== Three Blind Mice ===\n"
+        "E4 D4 C4 R\n"
+        "=== Hot Cross Buns ===\n"
+        "E4 D4 C4 R\n"
+    )
+
+    duration_text = (
+        "=== Frere Jacques ===\n"
+        "1 1 1 1\n"
+        "=== Three Blind Mice ===\n"
+        "1 1 1 1\n"
+        "=== Hot Cross Buns ===\n"
+        "1 1 1 1\n"
+    )
+
+    lyric_text = (
+        "=== Frere Jacques ===\n"
+        "Fre- re Jac- ques\n"
+        "=== Three Blind Mice ===\n"
+        "Three blind mice\n"
+        "=== Hot Cross Buns ===\n"
+        "Hot cross buns\n"
+    )
+
+    parts = Piece.read_parts(
+        pitch_text, duration_text, lyric_text, "C"
+    )
+
+    assert [name for name, _ in parts] == [
+        "Frere Jacques", "Three Blind Mice", "Hot Cross Buns"
+    ]
+
+    names_to_pieces = dict(parts)
+
+    assert names_to_pieces["Frere Jacques"].pitches == [
+        "C4", "D4", "E4", "C4"
+    ]
+    assert names_to_pieces["Three Blind Mice"].lyrics == \
+        "Three blind mice"
+
+    # Key and chart are shared, not repeated per part.
+    for _, piece in parts:
+        assert piece.key == "C"
+
+
+def test_a_response_part_keeps_its_leading_rests():
+    """
+    A duet's answering line is silent until it enters - the
+    rests must survive exactly as written, not be trimmed,
+    or the part drifts out of time with the others.
+    """
+
+    pitch_text = (
+        "=== Lead ===\n"
+        "C4 D4 E4 F4\n"
+        "=== Response ===\n"
+        "R R E4 F4\n"
+    )
+
+    duration_text = (
+        "=== Lead ===\n"
+        "1 1 1 1\n"
+        "=== Response ===\n"
+        "1 1 1 1\n"
+    )
+
+    parts = Piece.read_parts(pitch_text, duration_text)
+
+    names_to_pieces = dict(parts)
+
+    assert names_to_pieces["Response"].pitches == [
+        "R", "R", "E4", "F4"
+    ]
+    assert names_to_pieces["Response"].beats() == 4
+
+
+def test_mismatched_part_names_between_pitch_and_duration_raise():
+    pitch_text = "=== A ===\nC4 D4\n=== B ===\nE4 F4\n"
+    duration_text = "=== A ===\n1 1\n=== C ===\n1 1\n"
+
+    with pytest.raises(MusicInputError):
+        Piece.read_parts(pitch_text, duration_text)
+
+
+def test_a_missing_divider_in_one_box_raises():
+    pitch_text = "=== A ===\nC4 D4\n=== B ===\nE4 F4\n"
+    duration_text = "1 1 1 1"
+
+    with pytest.raises(MusicInputError):
+        Piece.read_parts(pitch_text, duration_text)
+
+
+def test_undivided_lyrics_are_fine_with_one_part():
+    parts = Piece.read_parts(
+        "C4 D4 E4 F4", "1 1 1 1", "Doe a deer a"
+    )
+
+    assert parts[0][1].lyrics == "Doe a deer a"
+
+
+def test_undivided_lyrics_with_several_parts_needs_dividers():
+    pitch_text = "=== A ===\nC4 D4\n=== B ===\nE4 F4\n"
+    duration_text = "=== A ===\n1 1\n=== B ===\n1 1\n"
+
+    with pytest.raises(MusicInputError):
+        Piece.read_parts(pitch_text, duration_text, "some words")
+
+
+def test_empty_lyrics_with_several_parts_is_fine():
+    pitch_text = "=== A ===\nC4 D4\n=== B ===\nE4 F4\n"
+    duration_text = "=== A ===\n1 1\n=== B ===\n1 1\n"
+
+    parts = Piece.read_parts(pitch_text, duration_text, "")
+
+    assert dict(parts)["A"].lyrics is None
+    assert dict(parts)["B"].lyrics is None
+
+
+# The partner-song example: the first thing in the app to
+# use the divider at all, so it is pinned here as well as
+# in the examples' own tests.
+
+def test_the_partner_song_reads_as_three_parts_of_equal_length():
+    """
+    All three tunes must run the full twenty-eight bars,
+    or they drift out of time with each other the moment
+    more than one is heard at once.
+    """
+
+    from examples import load_partner_songs
+
+    pitches, durations, lyrics, key, chart, tempo = load_partner_songs()
+
+    parts = Piece.read_parts(
+        pitches, durations, lyrics, key, chart, tempo
+    )
+
+    assert [name for name, _ in parts] == [
+        "Frere Jacques", "Three Blind Mice", "Hot Cross Buns"
+    ]
+
+    for _, piece in parts:
+        assert piece.beats() == 112.0
+        assert piece.key == "C"
+        assert piece.tempo == 120
+
+
+def test_each_partner_song_part_sings_in_its_own_stretch():
+    """
+    Each tune sings its own eight bars and rests through
+    the others' - the rests are literal, so a part that
+    enters late still enters in the right bar.
+    """
+
+    from examples import load_partner_songs
+    from notes import is_rest
+
+    pitches, durations, lyrics, key, chart, tempo = load_partner_songs()
+
+    parts = dict(Piece.read_parts(
+        pitches, durations, lyrics, key, chart, tempo
+    ))
+
+    # Three Blind Mice waits ten bars (forty beats) before
+    # its first sung note.
+    mice = parts["Three Blind Mice"]
+
+    starts = mice.starts()
+
+    first_sung = next(
+        start for start, pitch in zip(starts, mice.pitches)
+        if not is_rest(pitch)
+    )
+
+    assert first_sung == 40.0
+
+    # Hot Cross Buns waits twenty bars.
+    buns = parts["Hot Cross Buns"]
+
+    first_buns = next(
+        start for start, pitch in zip(buns.starts(), buns.pitches)
+        if not is_rest(pitch)
+    )
+
+    assert first_buns == 80.0
+
+    # Frere Jacques opens the song.
+    frere = parts["Frere Jacques"]
+
+    assert not is_rest(frere.pitches[0])
+
+
+def test_no_partner_song_note_clashes_with_its_chord():
+    """
+    Checked with chord_semitones rather than by ear or by
+    memory: every note landing on a strong beat is a tone
+    of whatever chord the chart has sounding there.
+    """
+
+    from examples import load_partner_songs
+    from chords import chord_semitones
+    from notes import is_rest, note_to_midi
+
+    pitches, durations, lyrics, key, chart, tempo = load_partner_songs()
+
+    parts = Piece.read_parts(
+        pitches, durations, lyrics, key, chart, tempo
+    )
+
+    for name, piece in parts:
+
+        beat = 0.0
+
+        for pitch, length in zip(piece.pitches, piece.durations):
+
+            on_strong_beat = (
+                abs(beat % 4) < 1e-9 or abs(beat % 4 - 2) < 1e-9
+            )
+
+            if not is_rest(pitch) and on_strong_beat:
+
+                chord = piece.chord_at(beat)
+
+                assert chord is not None, (
+                    f"{name}: no chord under beat {beat}"
+                )
+
+                assert note_to_midi(pitch) % 12 in chord_semitones(chord), (
+                    f"{name}: {pitch} on beat {beat} clashes with {chord}"
+                )
+
+            beat += length

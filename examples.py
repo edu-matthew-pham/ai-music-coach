@@ -324,3 +324,187 @@ def load_wellerman_phrase():
     )
 
     return pitches, durations, lyrics, "F", chart
+
+
+# Three tunes in one song - PLAN-multi-part.md's own worked
+# example, and the first thing in the app to use the
+# "=== name ===" divider at all.
+#
+# Frere Jacques (traditional French), Three Blind Mice
+# (Ravenscroft, 1609) and Hot Cross Buns (an old English
+# street cry) are all long out of copyright, and all three
+# are real partner songs: they are built on the same tonic
+# and dominant, so they can be sung together. Here they are
+# laid out one after another, each singing its own eight
+# bars while the other two rest, with a two-bar
+# instrumental link between - the way the tunes are usually
+# introduced before being combined.
+#
+# Every note was checked against the chart with
+# chord_semitones before being written down: no note on a
+# strong beat sits outside the chord sounding under it, in
+# any of the three tunes.
+
+_FRERE_PITCHES = (
+    "C4 D4 E4 C4 C4 D4 E4 C4 "
+    "E4 F4 G4 E4 F4 G4 "
+    "G4 A4 G4 F4 E4 C4 G4 A4 G4 F4 E4 C4 "
+    "C4 G3 C4 C4 G3 C4"
+)
+
+_FRERE_DURATIONS = (
+    "1 1 1 1 1 1 1 1 "
+    "1 1 2 1 1 2 "
+    "1/2 1/2 1/2 1/2 1 1 1/2 1/2 1/2 1/2 1 1 "
+    "1 1 2 1 1 2"
+)
+
+_FRERE_LYRICS = (
+    "Are you sleep- ing are you sleep- ing\n"
+    "Broth- er John Broth- er John\n"
+    "Morn- ing bells are ring- ing morn- ing bells are ring- ing\n"
+    "Ding dang dong Ding dang dong"
+)
+
+_MICE_PITCHES = (
+    "E4 D4 C4 E4 D4 C4 "
+    "G4 F4 F4 E4 G4 F4 F4 E4 "
+    "G4 C5 C5 B4 A4 B4 C5 G4 G4 "
+    "G4 C5 C5 B4 A4 B4 C5 G4 F4 E4"
+)
+
+_MICE_DURATIONS = (
+    "1 1 2 1 1 2 "
+    "1 1/2 1/2 2 1 1/2 1/2 2 "
+    "1 1 1 1/2 1/2 1/2 1/2 1 2 "
+    "1 1 1/2 1/2 1/2 1/2 1/2 1/2 1 2"
+)
+
+_MICE_LYRICS = (
+    "Three blind mice Three blind mice\n"
+    "See how they run See how they run\n"
+    "They all ran af- ter the far- mer's wife\n"
+    "She cut off their tails with a carv- ing knife"
+)
+
+_BUNS_PITCHES = (
+    "E4 D4 C4 E4 D4 C4 "
+    "C4 C4 C4 C4 D4 D4 D4 D4 "
+    "E4 D4 C4"
+)
+
+_BUNS_DURATIONS = (
+    "1 1 2 1 1 2 "
+    "1/2 1/2 1/2 1/2 1/2 1/2 1/2 1/2 "
+    "1 1 2"
+)
+
+_BUNS_LYRICS = (
+    "Hot cross buns Hot cross buns\n"
+    "One a pen- ny two a pen- ny\n"
+    "Hot cross buns"
+)
+
+
+def _bars_of_rest(bars):
+    """
+    Whole bars of silence, one token each.
+
+    Invariant 9: a long silence is bars of rest, not one
+    enormous written length - which is also what a singer
+    counting themselves in actually counts.
+    """
+
+    if bars <= 0:
+        return "", ""
+
+    return " ".join(["R"] * bars), " ".join(["4"] * bars)
+
+
+def _padded(pitches, durations, before, after):
+    """
+    One tune, with bars of rest before and after it, so
+    every part of the song runs the same full length.
+    """
+
+    opening_pitches, opening_durations = _bars_of_rest(before)
+    closing_pitches, closing_durations = _bars_of_rest(after)
+
+    return (
+        " ".join(
+            part for part in
+            (opening_pitches, pitches, closing_pitches) if part
+        ),
+        " ".join(
+            part for part in
+            (opening_durations, durations, closing_durations) if part
+        )
+    )
+
+
+def load_partner_songs():
+    """
+    Frere Jacques, Three Blind Mice and Hot Cross Buns, as
+    three parts of one twenty-eight bar song.
+
+    Bars 1-8 are Frere Jacques, 11-18 Three Blind Mice,
+    21-28 Hot Cross Buns (its four-bar tune sung twice),
+    with a two-bar instrumental link between each - the
+    chart keeps running through those, so the link sounds
+    like an introduction rather than a hole.
+
+    Each singer picks their own part; the other two are
+    rests, written out literally so the parts stay in time
+    with each other rather than being trimmed to their own
+    first note.
+    """
+
+    frere_pitches, frere_durations = _padded(
+        _FRERE_PITCHES, _FRERE_DURATIONS, 0, 20
+    )
+
+    mice_pitches, mice_durations = _padded(
+        _MICE_PITCHES, _MICE_DURATIONS, 10, 10
+    )
+
+    buns_pitches, buns_durations = _padded(
+        _BUNS_PITCHES + " " + _BUNS_PITCHES,
+        _BUNS_DURATIONS + " " + _BUNS_DURATIONS,
+        20, 0
+    )
+
+    pitches = (
+        "=== Frere Jacques ===\n" + frere_pitches + "\n"
+        "=== Three Blind Mice ===\n" + mice_pitches + "\n"
+        "=== Hot Cross Buns ===\n" + buns_pitches
+    )
+
+    durations = (
+        "=== Frere Jacques ===\n" + frere_durations + "\n"
+        "=== Three Blind Mice ===\n" + mice_durations + "\n"
+        "=== Hot Cross Buns ===\n" + buns_durations
+    )
+
+    lyrics = (
+        "=== Frere Jacques ===\n" + _FRERE_LYRICS + "\n"
+        "=== Three Blind Mice ===\n" + _MICE_LYRICS + "\n"
+        "=== Hot Cross Buns ===\n" + _BUNS_LYRICS + "\n" + _BUNS_LYRICS
+    )
+
+    # Twenty-eight bars. Frere Jacques sits on the tonic
+    # throughout; Three Blind Mice needs the dominant at
+    # bar 16 for its B; Hot Cross Buns splits its third bar
+    # so the repeated D lands on G rather than clashing
+    # with C.
+    chart = (
+        "| C . . . | C . . . | C . . . | C . . . "
+        "| C . . . | C . . . | C . . . | C . . . "
+        "| C . . . | G . . . "
+        "| C . . . | C . . . | C . . . | C . . . "
+        "| C . . . | G . . . | C . . . | C . . . "
+        "| C . . . | G . . . "
+        "| C . . . | C . . . | C . G . | C . . . "
+        "| C . . . | C . . . | C . G . | C . . . |"
+    )
+
+    return pitches, durations, lyrics, "C", chart, 120

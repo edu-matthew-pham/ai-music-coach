@@ -27,7 +27,129 @@ Likewise the piece is what the music is, not what anyone
 wants done with it. Which part you are singing, which
 harmony style, whether the metronome is on - none of those
 belong here, however often they travel alongside.
+
+A Piece is still one tune. Several tunes sung together
+(PLAN-multi-part.md) are written as sections in the same
+three boxes, divided by a "=== name ===" line; Piece.read
+never sees more than one tune at a time, unchanged from
+before this existed. read_parts is the boundary that
+splits the boxes and hands each section to Piece.read in
+turn - a box with no divider is one section, so nothing
+about this changes what a single-tune song does.
 """
+
+import re
+
+PART_HEADER = re.compile(r"^[ \t]*===[ \t]*(.+?)[ \t]*===[ \t]*$", re.MULTILINE)
+
+
+def _split_box(text):
+    """
+    One box's text, cut into (name, body) sections by
+    "=== name ===" divider lines.
+
+    No divider found: one section, name None, body is the
+    whole text - exactly what every box has always held.
+    """
+
+    text = text or ""
+
+    matches = list(PART_HEADER.finditer(text))
+
+    if not matches:
+        return [(None, text)]
+
+    sections = []
+
+    for index, match in enumerate(matches):
+
+        start = match.end()
+        end = (
+            matches[index + 1].start()
+            if index + 1 < len(matches) else len(text)
+        )
+
+        # Only the newline right after the header and right
+        # before the next one is trimmed - a body's own
+        # internal blank lines (lyric phrase breaks) are
+        # left exactly as written.
+        sections.append((match.group(1), text[start:end].strip("\n")))
+
+    return sections
+
+
+def split_parts(pitch_text, duration_text, lyric_text=""):
+    """
+    The pitch, duration and lyric boxes, cut into tunes.
+
+    Returns a list of (name, pitch_text, duration_text,
+    lyric_text) tuples, in the order written. The pitch and
+    duration boxes must agree on how many tunes there are
+    and what each is called, in the same order - a piece
+    only has one true division into parts, and the two
+    boxes are both describing it. The lyric box may divide
+    the same way, or may carry no divider at all (a piece
+    with no lyrics, or - only when there is a single tune -
+    one tune's plain lyric line, exactly as before this
+    existed).
+
+    No divider anywhere: one tune, name None. This is every
+    song the app has ever had, and this is the path all of
+    them still take.
+    """
+
+    from music import MusicInputError
+
+    pitch_sections = _split_box(pitch_text)
+    duration_sections = _split_box(duration_text)
+
+    pitch_names = [name for name, _ in pitch_sections]
+    duration_names = [name for name, _ in duration_sections]
+
+    if pitch_names != duration_names:
+        raise MusicInputError(
+            "The pitch and duration boxes divide into "
+            "different parts - make the \"=== name ===\" "
+            "lines match, in the same order, in both."
+        )
+
+    lyric_sections = _split_box(lyric_text)
+    lyric_names = [name for name, _ in lyric_sections]
+
+    if lyric_names == [None]:
+        # No divider in the lyric box at all. Fine as-is
+        # when there is only one tune (today's shape,
+        # unchanged); ambiguous for several, since there
+        # would be no way to say which tune the words
+        # belong to.
+        if len(pitch_sections) == 1:
+            lyric_sections = [(None, lyric_text or "")]
+
+        elif (lyric_text or "").strip():
+            raise MusicInputError(
+                "This piece has several parts, so the "
+                "lyrics need their own \"=== name ===\" "
+                "lines too, matching the pitch box - or "
+                "leave the lyrics box empty."
+            )
+
+        else:
+            lyric_sections = [
+                (name, "") for name in pitch_names
+            ]
+
+    elif lyric_names != pitch_names:
+        raise MusicInputError(
+            "The lyric box's parts don't match the pitch "
+            "box's - make the \"=== name ===\" lines the "
+            "same, in the same order, in both."
+        )
+
+    return [
+        (name, p_text, d_text, l_text)
+        for (name, p_text), (_, d_text), (_, l_text)
+        in zip(pitch_sections, duration_sections, lyric_sections)
+    ]
 
 
 class Piece:
@@ -142,6 +264,36 @@ class Piece:
         read_chords(chart_text, durations)
 
         return piece
+
+    @staticmethod
+    def read_parts(pitch_text, duration_text, lyric_text="",
+                    key="C", chart_text="", tempo=None):
+        """
+        Read one or several tunes out of the text boxes.
+
+        Returns a list of (name, Piece) pairs, in the order
+        written - a single, undivided piece (the only kind
+        that existed before several-tune songs did) comes
+        back as one pair, name None, and that Piece is
+        exactly what Piece.read already returns for the
+        same boxes: this function's only new work is
+        splitting the boxes first, in split_parts.
+
+        Key, chart and tempo are shared across every tune,
+        by design - a round has one chart, not several.
+        """
+
+        sections = split_parts(pitch_text, duration_text, lyric_text)
+
+        return [
+            (
+                name,
+                Piece.read(
+                    p_text, d_text, l_text, key, chart_text, tempo
+                )
+            )
+            for name, p_text, d_text, l_text in sections
+        ]
 
     def phrases(self):
         """
