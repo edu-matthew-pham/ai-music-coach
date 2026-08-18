@@ -533,6 +533,88 @@ def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,
     return all_notes
 
 
+def _continue_with_other_parts(own_phrases, part_label, phrases_by_part):
+    """
+    Your part's phrases, carried on by the other parts' once
+    yours have finished.
+
+    While your part is singing, its own phrases set the pages
+    - nothing here touches them. But a part can finish before
+    the piece does (a round's first voice ends bars ahead of
+    the last), and its final phrase used to swallow every bar
+    of that tail: drawn several times the length of its other
+    lines, and the whole page's scale with it. Trimming that
+    phrase to the last sung note (music.py's _last_phrase_end)
+    fixed the scale but then hid the tail entirely - the other
+    voices were still singing there with nowhere to appear.
+
+    So once your part is done, the pages follow whoever is
+    still singing: every other part's phrases still going
+    when yours ended are appended, in time order, each
+    labelled with the part it belongs to. One that had
+    already begun is clipped to start where yours finished
+    rather than skipped, so there is never a hole between
+    your last page and the next. Nothing of yours is cut
+    short, and nothing of anyone's is left unshown.
+
+    Ordinary single-tune songs have no other parts and pass
+    straight through unchanged.
+    """
+
+    if not phrases_by_part or not own_phrases:
+        return own_phrases
+
+    finished_at = own_phrases[-1]["end"]
+
+    tail = []
+
+    for name, theirs in phrases_by_part.items():
+
+        if name == part_label:
+            continue
+
+        for phrase in theirs:
+
+            if phrase["end"] <= finished_at:
+                continue
+
+            # A phrase that had already begun when yours ended
+            # is not skipped - that would leave a hole between
+            # your last page and the next one - but picks up
+            # from where yours finished, so it never reaches
+            # back into a page of yours.
+            tail.append({
+                **phrase,
+                "start": max(phrase["start"], finished_at),
+                "label": f"{name}: {phrase['label']}",
+                # Whose phrase this is, so a panel that draws
+                # words can fetch that part's rather than yours
+                # (which has none here - you have finished).
+                "part": name
+            })
+
+    # Several parts may still be going; interleave their
+    # phrases by when each starts, so the pages read in the
+    # order they happen rather than one part's whole tail
+    # then the next's.
+    tail.sort(key=lambda phrase: (phrase["start"], phrase["end"]))
+
+    # The same stretch of time may be a phrase for two parts
+    # at once (a round's voices two bars apart, say). Keep the
+    # first one that covers it; a second page over the same
+    # seconds would just be the same notes drawn again.
+    merged = []
+
+    for phrase in tail:
+
+        if merged and phrase["start"] < merged[-1]["end"]:
+            continue
+
+        merged.append(phrase)
+
+    return own_phrases + merged
+
+
 def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
                       part_label=None):
     """
@@ -703,11 +785,6 @@ def mixer_data(
         harmony_style, lyric_text, phrase_label, part_label
     )
 
-    phrases = _phrase_timeline(
-        pitch_text, duration_text, key, bpm, lyric_text,
-        part_label
-    )
-
     # Every tune's phrases, by name, for showing several
     # singers' words side by side. Empty for an ordinary
     # song, which has no tunes to name.
@@ -717,6 +794,15 @@ def mixer_data(
         )
         for name in tunes
     }
+
+    own_phrases = _phrase_timeline(
+        pitch_text, duration_text, key, bpm, lyric_text,
+        part_label
+    )
+
+    phrases = _continue_with_other_parts(
+        own_phrases, part_label, phrases_by_part
+    )
 
     diagrams = _diagrams(key, timeline)
 

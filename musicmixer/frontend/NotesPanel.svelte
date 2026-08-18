@@ -4,6 +4,7 @@
 	import {
 		noteLayers,
 		ensureNoteLayer,
+		partsSideBySide,
 		showNextPreview,
 		previewSideBySide,
 		notesShowLabels,
@@ -17,6 +18,7 @@
 		PANEL_SCALE_STEP
 	} from "./mixerPanels.svelte";
 	import type { MixerNote, MixerBar, MixerPhrase } from "./types";
+	import { assignLanes, type LabelInput, type LabelPlacement } from "./labelLanes";
 
 	// A static page per phrase, hard-cut to the next rather
 	// than scrolled - the way SingStar shows a line of notes:
@@ -53,7 +55,33 @@
 		if (singing && singing in noteLayers && !noteLayers[singing]) {
 			noteLayers[singing] = true;
 		}
+	});
 
+	// "Show all parts" (the Lyrics-side toggle) is the singer's
+	// intent about what to see, and Notes should follow it both
+	// ways: on means every sung tune's notes are showing, off
+	// means only your own. A state sync, not an edge trigger -
+	// an earlier version fired only on the rising edge and
+	// guarded against re-applying on remount, which was wrong in
+	// two ways at once: unticking never hid the tunes again, and
+	// switching view (which remounts this component while the
+	// module-scoped toggle stays on) saw no edge and left the
+	// other tunes hidden. Syncing on every run fixes both.
+	//
+	// One-way from tick to toggles, on purpose. The individual
+	// Notes toggles are fine-tuning UNDER the tick, and do not
+	// write back to it - if they did, hiding one voice in Notes
+	// would untick "Show all parts" and collapse the side-by-
+	// side lyric columns as a side effect, which is a jump no
+	// one asked for. Your own part is always on regardless.
+	// Derived layers (harmony, bass) are untouched - they
+	// aren't "parts".
+	$effect(() => {
+		const on = partsSideBySide.value;
+		for (const name of parts) {
+			if (name === singing) continue;
+			noteLayers[name] = on;
+		}
 	});
 
 	const ROW_HEIGHT = 14;
@@ -132,6 +160,28 @@
 		chordOffset: number;
 	}
 
+	// Word-label sizing, shared by computePage (which reserves
+	// room for labels below the lowest note) and the lane
+	// placement further down (which puts them there). Both
+	// read the same numbers so height and placement can never
+	// quietly disagree. The label font scales with
+	// --notes-scale; the row grid it sits on does not, so
+	// everything here is scaled explicitly.
+	const LABEL_OFFSET = 10;
+	const LABEL_LINE_HEIGHT = 9;
+	const LABEL_GLYPH_WIDTH = 5;
+	const LABEL_GAP = 2;
+	// How many stacked label lanes the page reserves room for
+	// below its lowest note. Two covers the common collision
+	// (two tunes' words at once); a rarer three-way stack still
+	// works - assignLanes climbs into the row above when it
+	// runs out below - it just isn't budgeted for in height.
+	const LABEL_RESERVE_LANES = 2;
+
+	function labelOffset(): number {
+		return LABEL_OFFSET * notesScale.value;
+	}
+
 	function computePage(phrase: MixerPhrase | null, width: number): Page | null {
 		if (!phrase) return null;
 
@@ -167,7 +217,22 @@
 		}
 
 		const chordOffset = notesShowChords.value ? CHORD_ROW_HEIGHT : 0;
-		const height = (highest - lowest + 1) * ROW_HEIGHT + chordOffset;
+
+		// Reserve room below the lowest note for its word labels,
+		// or a label under a bottom-row note has nowhere to go
+		// and every downstream placement rule (floor, climbing)
+		// is coping with a page that was simply too short. Sized
+		// from the same numbers assignLanes uses - the scaled
+		// offset plus enough lanes for a real collision stack -
+		// so height and placement can never quietly disagree.
+		// Zero when labels are off, so the panel is exactly as
+		// tall as before this existed in that case.
+		const labelReserve = notesShowLabels.value
+			? labelOffset() + LABEL_RESERVE_LANES * LABEL_LINE_HEIGHT * notesScale.value
+			: 0;
+
+		const height =
+			(highest - lowest + 1) * ROW_HEIGHT + chordOffset + labelReserve;
 		const span = phrase.end - phrase.start;
 		const pxPerSecond = span > 0 ? width / span : 60;
 
@@ -216,76 +281,70 @@
 		return (time - page.phrase.start) * page.pxPerSecond;
 	}
 
-	// A word label's font-size scales with --notes-scale (see
-	// the .note-word rule below), but the row geometry these
-	// functions place it against does not - boxes stay a fixed
-	// ROW_HEIGHT regardless of scale, by design, so pitch stays
-	// meaningful at any zoom. That mismatch is exactly what let
-	// a label collide with content two rows away at 140%+ zoom:
-	// a bigger label needs more of the fixed rows below it
-	// before it is actually clear, not just one. LABEL_OFFSET is
-	// the same 10px the layout always used, now scaled the same
-	// way the text itself is; rowsNeeded is how many ROW_HEIGHT-
-	// sized rows that scaled offset actually reaches into.
-	const LABEL_OFFSET = 10;
+	// Word-label placement lives in labelLanes.ts - pure lane
+	// assignment over label text geometry, so every collision
+	// shape (same pitch, different pitch, a harmony line a
+	// third away) is handled by one rule and tested on its
+	// own. This panel's only job is to supply each label's
+	// wanted position and the scale-aware sizes (the LABEL_*
+	// constants above computePage).
 
-	function labelOffset(): number {
-		return LABEL_OFFSET * notesScale.value;
+	// Priority: your own part's words keep the top line; other
+	// tunes come next in their part order; derived harmony and
+	// bass lines (which today carry no words, but may) come
+	// last. Lower is higher priority.
+	function labelPriority(note: MixerNote): number {
+		if (note.layer === singing || (!singing && note.layer === "Melody")) return 0;
+		const partIndex = parts.indexOf(note.layer);
+		if (partIndex >= 0) return 1 + partIndex;
+		return 100;
 	}
 
-	function labelRow(page: Page, note: MixerNote, pageNotes: MixerNote[]): number {
-		const rowsNeeded = Math.max(1, Math.ceil(labelOffset() / ROW_HEIGHT));
-		let row = note.midi - rowsNeeded;
-		let pushes = 0;
+	// One lane pass per page. Cached per page object so the
+	// template can look each note's label up without redoing
+	// the pass per note. Also keyed by scale, belt and braces:
+	// computePage now reads notesScale too (for the label
+	// reserve), so a zoom change already yields a fresh page,
+	// but a stale entry would silently misplace every label if
+	// that ever stopped being true.
+	const labelCache = new WeakMap<Page, { scale: number; map: Map<string, LabelPlacement> }>();
 
-		while (
-			pushes < 3 &&
-			rangeOccupied(row, row + rowsNeeded - 1, note.start, note.length, pageNotes)
-		) {
-			row -= rowsNeeded;
-			pushes += 1;
+	function labelPlacements(page: Page): Map<string, LabelPlacement> {
+		const cached = labelCache.get(page);
+		if (cached && cached.scale === notesScale.value) return cached.map;
+
+		const inputs: LabelInput[] = [];
+
+		for (const note of page.notes) {
+			if (!note.word) continue;
+			inputs.push({
+				id: labelId(note),
+				x: x(page, note.start) + (note.length * page.pxPerSecond) / 2,
+				y: y(page, note.midi) + ROW_HEIGHT + labelOffset(),
+				text: note.word,
+				priority: labelPriority(note)
+			});
 		}
 
-		return row;
+		const placed = assignLanes(inputs, {
+			lineHeight: LABEL_LINE_HEIGHT * notesScale.value,
+			glyphWidth: LABEL_GLYPH_WIDTH * notesScale.value,
+			gap: LABEL_GAP,
+			floorY: page.height - 4
+		});
+
+		const map = new Map(placed.map((p) => [p.id, p]));
+		labelCache.set(page, { scale: notesScale.value, map });
+		return map;
 	}
 
-	// Every row the label's own height actually spans, not just
-	// the one it lands in - a label two rows tall at 2x zoom
-	// that only checked its lowest row could still collide with
-	// something in the row just above that, same mistake in a
-	// different place.
-	function rangeOccupied(
-		lowMidi: number,
-		highMidi: number,
-		start: number,
-		length: number,
-		pageNotes: MixerNote[]
-	): boolean {
-		return pageNotes.some(
-			(other) =>
-				other.midi >= lowMidi &&
-				other.midi <= highMidi &&
-				other.start < start + length &&
-				other.start + other.length > start
-		);
+	function labelId(note: MixerNote): string {
+		return `${note.layer}|${note.start}|${note.midi}`;
 	}
 
-	// The actual pixel y for a word label, given the row
-	// labelRow found - +labelOffset(), not +ROW_HEIGHT+
-	// labelOffset(), because labelRow already names the row
-	// closest to the note's own (see its own comment): the
-	// label sits labelOffset() into whichever row that is.
-	function labelY(page: Page, note: MixerNote, pageNotes: MixerNote[]): number {
-		return y(page, labelRow(page, note, pageNotes)) + labelOffset();
-	}
-
-	// Split-cell labels (two different tunes' words at the
-	// same pitch and moment) start from the same collision-
-	// avoided row as an ordinary label, then stack by index
-	// within the group - also scaled, for the same reason as
-	// labelOffset() above.
-	function stackLineHeight(): number {
-		return 9 * notesScale.value;
+	function labelY(page: Page, note: MixerNote): number {
+		return labelPlacements(page).get(labelId(note))?.y
+			?? y(page, note.midi) + ROW_HEIGHT + labelOffset();
 	}
 
 	// Hz to the same vertical scale the boxes use, as a
@@ -337,71 +396,105 @@
 
 	// Two DIFFERENT sung tunes landing on the same pitch at
 	// overlapping times - the exact shape a partner song's
-	// harmonised moments produce - drew as two identical,
-	// fully-overlapping rects with no way to tell one from
-	// the other. Same fix as the violin's split-position
-	// marks: a note belonging to more than one tune splits
-	// its box into equal horizontal bands, one per tune,
-	// rather than either box winning by drawing last.
+	// harmonised moments produce, or a short syllable of one
+	// tune briefly grazing a long held note of another - need
+	// a way to tell the two apart rather than one box winning
+	// by drawing last. Same idea as the violin's split-
+	// position marks, but sliced by TIME, not by whole note:
+	// a first version grouped any two notes that ever overlap
+	// and squashed BOTH to a shared height for their ENTIRE
+	// duration, which meant a three-beat held note ("dream.")
+	// collapsed to a quarter of its row for its whole length
+	// just because a few short eighth notes from an unrelated
+	// phrase happened to touch the same pitch for an instant -
+	// the short notes' own words became unreadably thin at the
+	// same time. Real bug, found from a real screenshot, not
+	// guessed at. Each note now computes its own segments: full
+	// height everywhere nothing else is sounding at its pitch,
+	// split height only for the specific slice of time another
+	// tune's note is actually there too.
+	//
 	// Deliberately cross-tune only: two consecutive notes of
 	// the SAME tune sitting on the same pitch (an ordinary
 	// repeated note) are not a collision and must render as
-	// two separate, ordinary boxes, not a split one - caught
-	// by checking against the real example data, where
-	// Three Blind Mice's own back-to-back repeated notes
-	// were wrongly grouping with each other before the
-	// candidate.layer === note.layer check was added.
-	interface NoteGroup {
-		notes: MixerNote[];
-		start: number;
-		length: number;
-		midi: number;
+	// two separate, ordinary boxes.
+	interface NoteSegment {
+		segStart: number;
+		segEnd: number;
+		bandIndex: number;
+		bandCount: number;
 	}
 
-	function collisionGroups(pageNotes: MixerNote[]): NoteGroup[] {
-		const tuneNotes = parts.length > 1
-			? pageNotes.filter((note) => parts.includes(note.layer))
-			: [];
-		const others = parts.length > 1
-			? pageNotes.filter((note) => !parts.includes(note.layer))
-			: pageNotes;
+	function overlappingPartners(
+		note: MixerNote,
+		pageNotes: MixerNote[]
+	): MixerNote[] {
+		if (parts.length < 2 || !parts.includes(note.layer)) return [];
 
-		const used = new Set<MixerNote>();
-		const groups: NoteGroup[] = [];
+		return pageNotes.filter(
+			(other) =>
+				other !== note &&
+				other.layer !== note.layer &&
+				parts.includes(other.layer) &&
+				other.midi === note.midi &&
+				other.start < note.start + note.length &&
+				other.start + other.length > note.start
+		);
+	}
 
-		for (const note of tuneNotes) {
-			if (used.has(note)) continue;
+	function noteSegments(note: MixerNote, partners: MixerNote[]): NoteSegment[] {
+		const noteEnd = note.start + note.length;
 
-			const cluster = [note];
-			used.add(note);
+		if (!partners.length) {
+			return [{ segStart: note.start, segEnd: noteEnd, bandIndex: 0, bandCount: 1 }];
+		}
 
-			for (const candidate of tuneNotes) {
-				if (
-					used.has(candidate) ||
-					candidate.midi !== note.midi ||
-					candidate.layer === note.layer
-				) continue;
+		// Break the note's own span at every point a partner
+		// starts or ends within it - each resulting slice has a
+		// fixed, unambiguous set of who else is sounding.
+		const points = new Set<number>([note.start, noteEnd]);
 
-				const overlaps = candidate.start < note.start + note.length &&
-					candidate.start + candidate.length > note.start;
-
-				if (overlaps) {
-					cluster.push(candidate);
-					used.add(candidate);
-				}
+		for (const partner of partners) {
+			const partnerEnd = partner.start + partner.length;
+			if (partner.start > note.start && partner.start < noteEnd) {
+				points.add(partner.start);
 			}
-
-			const start = Math.min(...cluster.map((n) => n.start));
-			const end = Math.max(...cluster.map((n) => n.start + n.length));
-
-			groups.push({ notes: cluster, start, length: end - start, midi: note.midi });
+			if (partnerEnd > note.start && partnerEnd < noteEnd) {
+				points.add(partnerEnd);
+			}
 		}
 
-		for (const note of others) {
-			groups.push({ notes: [note], start: note.start, length: note.length, midi: note.midi });
+		const bounds = Array.from(points).sort((a, b) => a - b);
+		const segments: NoteSegment[] = [];
+
+		for (let i = 0; i < bounds.length - 1; i++) {
+
+			const segStart = bounds[i];
+			const segEnd = bounds[i + 1];
+			const midpoint = (segStart + segEnd) / 2;
+
+			const active = partners.filter(
+				(partner) => partner.start <= midpoint && partner.start + partner.length > midpoint
+			);
+
+			// A stable band order (by position in `parts`, the
+			// same order the part chooser and the tune layers
+			// already use) so the same tune always draws in the
+			// same band whenever it is present, rather than
+			// jumping around slice to slice.
+			const present = [note, ...active].sort(
+				(a, b) => parts.indexOf(a.layer) - parts.indexOf(b.layer)
+			);
+
+			segments.push({
+				segStart,
+				segEnd,
+				bandIndex: present.indexOf(note),
+				bandCount: present.length
+			});
 		}
 
-		return groups;
+		return segments;
 	}
 </script>
 
@@ -451,90 +544,54 @@
 			{/each}
 		{/if}
 
-		{#each collisionGroups(page.notes) as group}
-			{#if group.notes.length === 1}
-				{@const note = group.notes[0]}
-				<g>
+		{#each page.notes as note}
+			{@const partners = overlappingPartners(note, page.notes)}
+			{@const segments = noteSegments(note, partners)}
+			<g>
+				{#each segments as segment}
+					{@const bandHeight = (ROW_HEIGHT - 2) / segment.bandCount}
 					<rect
 						class="note-box"
-						x={x(page, note.start)}
-						y={y(page, note.midi) + 1}
-						width={Math.max(note.length * page.pxPerSecond - 1, 2)}
-						height={ROW_HEIGHT - 2}
+						class:note-box-split={segment.bandCount > 1}
+						x={x(page, segment.segStart)}
+						y={y(page, note.midi) + 1 + segment.bandIndex * bandHeight}
+						width={Math.max(
+							(segment.segEnd - segment.segStart) * page.pxPerSecond - 1, 2
+						)}
+						height={bandHeight}
 						fill={note.colour}
-						fill-opacity={note.layer === "Melody" ? 0.22 : 0.14}
+						fill-opacity={segment.bandCount > 1
+							? 0.32
+							: note.layer === "Melody" ? 0.22 : 0.14}
 						stroke={note.colour}
 					/>
-					{#if note.length * page.pxPerSecond > 20}
-						<text
-							class="note-label"
-							x={x(page, note.start) + (note.length * page.pxPerSecond) / 2}
-							y={y(page, note.midi) + ROW_HEIGHT / 2}
-							fill={note.colour}
-						>
-							{noteName(note.midi)}
-						</text>
-					{/if}
-					{#if note.word && notesShowLabels.value}
-						<text
-							class="note-word"
-							x={x(page, note.start) + (note.length * page.pxPerSecond) / 2}
-							y={labelY(page, note, page.notes)}
-						>
-							{note.word}
-						</text>
-					{/if}
-				</g>
-			{:else}
-				<!-- Several sung tunes share this pitch at this
-				     moment - split-circle's own rule, applied to
-				     a box instead of a mark: each tune keeps its
-				     own true timing (its own x and width), but
-				     the row's height divides into equal bands so
-				     both draw fully rather than one overlapping
-				     the other. -->
-				{@const bandHeight = (ROW_HEIGHT - 2) / group.notes.length}
-				{@const groupLabelY = labelY(page, group.notes[0], page.notes)}
-				<g>
-					{#each group.notes as note, bandIndex}
-						<rect
-							class="note-box note-box-split"
-							x={x(page, note.start)}
-							y={y(page, note.midi) + 1 + bandIndex * bandHeight}
-							width={Math.max(note.length * page.pxPerSecond - 1, 2)}
-							height={bandHeight}
-							fill={note.colour}
-							fill-opacity={0.32}
-							stroke={note.colour}
-						/>
-						{#if note.word && notesShowLabels.value}
-							<!-- Two different tunes' words, stacked
-							     one above the other rather than
-							     printed on top of each other - the
-							     row-avoided position above is the
-							     first line; each further tune in the
-							     group takes the next line down. -->
-							<text
-								class="note-word"
-								x={x(page, note.start) + (note.length * page.pxPerSecond) / 2}
-								y={groupLabelY + bandIndex * stackLineHeight()}
-								style="fill: {note.colour}"
-							>
-								{note.word}
-							</text>
-						{/if}
-					{/each}
-					{#if group.length * page.pxPerSecond > 20}
-						<text
-							class="note-label note-label-split"
-							x={x(page, group.start) + (group.length * page.pxPerSecond) / 2}
-							y={y(page, group.midi) + ROW_HEIGHT / 2}
-						>
-							{noteName(group.midi)}
-						</text>
-					{/if}
-				</g>
-			{/if}
+				{/each}
+				{#if note.length * page.pxPerSecond > 20 && partners.length === 0}
+					<text
+						class="note-label"
+						x={x(page, note.start) + (note.length * page.pxPerSecond) / 2}
+						y={y(page, note.midi) + ROW_HEIGHT / 2}
+						fill={note.colour}
+					>
+						{noteName(note.midi)}
+					</text>
+				{/if}
+				{#if note.word && notesShowLabels.value}
+					<!-- Coloured by tune whenever more than one tune
+					     is on the page at all - not just on a same-
+					     pitch collision - since a label that has been
+					     moved down a lane needs its colour to say
+					     which box it belongs to. -->
+					<text
+						class="note-word"
+						x={x(page, note.start) + (note.length * page.pxPerSecond) / 2}
+						y={labelY(page, note)}
+						style={parts.length > 1 ? `fill: ${note.colour}` : undefined}
+					>
+						{note.word}
+					</text>
+				{/if}
+			</g>
 		{/each}
 
 
@@ -803,11 +860,6 @@
 		text-anchor: middle;
 		dominant-baseline: middle;
 		pointer-events: none;
-	}
-	.note-label-split {
-		/* No per-tune colour on purpose - a shared pitch
-		   label over a split box belongs to neither tune. */
-		fill: var(--body-text-color);
 	}
 	.chord-name {
 		font-size: calc(11px * var(--notes-scale, 1));

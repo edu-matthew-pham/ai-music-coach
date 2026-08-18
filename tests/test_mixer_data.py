@@ -750,5 +750,81 @@ def test_every_tunes_phrases_are_sent_by_name():
     assert "Three blind mice" in by_part["Three Blind Mice"][0]["label"]
     assert "Fre" in by_part["Frere Jacques"][0]["label"]
 
-    # The chosen tune's own list is the same list as before.
-    assert value["phrases"] == by_part["Three Blind Mice"]
+    # The chosen tune's own phrases come first, unchanged;
+    # after they finish, the pages carry on with the other
+    # part's (see _continue_with_other_parts), so the full
+    # list is a superset, not an exact match.
+    own = by_part["Three Blind Mice"]
+    assert value["phrases"][:len(own)] == own
+    assert len(value["phrases"]) >= len(own)
+
+
+def test_pages_carry_on_with_other_parts_once_yours_has_finished():
+    """
+    A round's first voice finishes bars before the piece does.
+    Its own phrases end where its singing does; after that,
+    the pages follow whoever is still singing - each carried-
+    on phrase labelled and tagged with the part it belongs to,
+    with no gap and nothing of the tail left unshown.
+    """
+
+    from examples import load_row_your_boat
+
+    pitches, durations, lyrics, key, chart, tempo = load_row_your_boat()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, part_label="Voice 1"
+    )
+
+    phrases = value["phrases"]
+
+    own = [ph for ph in phrases if not ph.get("part")]
+    carried = [ph for ph in phrases if ph.get("part")]
+
+    assert len(own) == 4
+    assert carried, "nothing carried on after Voice 1 finished"
+
+    # Everything carried on belongs to another part, and is
+    # said so - not silently pretending to be Voice 1's.
+    for ph in carried:
+        assert ph["part"] != "Voice 1"
+        assert ph["label"].startswith(ph["part"] + ":")
+
+    # No hole between pages, and coverage right to the end.
+    for earlier, later in zip(phrases, phrases[1:]):
+        assert abs(later["start"] - earlier["end"]) < 1e-6, (
+            f"gap between {earlier['label']!r} and {later['label']!r}"
+        )
+
+    assert abs(phrases[-1]["end"] - value["timeline"][-1]["end"]) < 1e-6
+
+
+def test_the_last_voice_of_a_round_carries_nothing_on():
+    """
+    Whoever finishes last has no one still singing after
+    them - their pages are exactly their own, unchanged.
+    """
+
+    from examples import load_row_your_boat
+
+    pitches, durations, lyrics, key, chart, tempo = load_row_your_boat()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, part_label="Voice 3"
+    )
+
+    assert not [ph for ph in value["phrases"] if ph.get("part")]
+
+
+def test_a_single_tune_song_is_untouched_by_carrying_on():
+    from examples import load_wellerman
+
+    pitches, durations, lyrics, key, chart, tempo = load_wellerman()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart, lyric_text=lyrics
+    )
+
+    assert not [ph for ph in value["phrases"] if ph.get("part")]

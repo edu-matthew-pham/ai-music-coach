@@ -497,7 +497,16 @@
 		source: MixerNote[] = words
 	): MixerNote[] {
 		if (!phrase) return [];
-		return source.filter(
+
+		// A phrase carried on from another part once yours has
+		// finished says whose it is; its words are that part's,
+		// not yours (you have none there). Anything else reads
+		// from the source it was given, as before.
+		const pool = phrase.part
+			? notes.filter((note) => note.layer === phrase.part && note.word)
+			: source;
+
+		return pool.filter(
 			(note) => note.start >= phrase.start && note.start < phrase.end
 		);
 	}

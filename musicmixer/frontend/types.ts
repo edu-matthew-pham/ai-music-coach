@@ -34,6 +34,10 @@ export interface MixerPhrase {
 	start: number;
 	end: number;
 	label: string;
+	// Set only on a phrase that belongs to another part - one
+	// appended after yours has finished (see mixer_data.py's
+	// _continue_with_other_parts). Absent means "yours".
+	part?: string;
 }
 
 // Four layers per instrument, meant to be stacked: the
