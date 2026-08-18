@@ -1098,3 +1098,128 @@ def test_asking_for_a_missing_part_says_why():
             "C4 C4", "1 1", "C",
             melody_level=1, bpm=120, chart_text="", chords_level=1
         )
+
+# Several tunes in one song - PLAN-multi-part.md stage 1.
+
+def test_part_names_lists_the_tunes_or_nothing():
+    """
+    An undivided song has one unnamed tune and gets an
+    empty list rather than a list of one: there is nothing
+    to choose between, and a chooser showing a single
+    option is worse than no chooser at all.
+    """
+
+    from music import part_names
+    from examples import load_partner_songs, load_twinkle
+
+    pitches, durations, lyrics, key, chart, tempo = load_partner_songs()
+
+    assert part_names(pitches, durations, lyrics) == [
+        "Three Blind Mice", "Frere Jacques"
+    ]
+
+    pitches, durations, lyrics, key, chart, tempo = load_twinkle()
+
+    assert part_names(pitches, durations, lyrics) == []
+
+
+def test_selected_piece_cuts_to_the_chosen_tune():
+    """
+    Everything downstream receives a plain one-tune Piece,
+    exactly as it always has - the tune is resolved here,
+    at the seam, and nowhere else.
+    """
+
+    from music import selected_piece
+    from examples import load_partner_songs
+    from notes import is_rest
+
+    pitches, durations, lyrics, key, chart, tempo = load_partner_songs()
+
+    frere = selected_piece(
+        pitches, durations, lyrics, key, chart, None, "Frere Jacques"
+    )
+
+    assert frere.lyrics.split()[0] == "Fre-"
+
+    # Its own entry, four bars in, not the first tune's.
+    first_sung = next(
+        start for start, pitch in zip(frere.starts(), frere.pitches)
+        if not is_rest(pitch)
+    )
+
+    assert abs(first_sung - 8.0) < 1e-9
+
+
+def test_an_undivided_song_ignores_the_tune_argument():
+    """
+    Every song that existed before several-tune songs did
+    takes exactly the same path, whatever is passed here.
+    """
+
+    from music import selected_piece
+    from examples import load_twinkle
+
+    pitches, durations, lyrics, key, chart, tempo = load_twinkle()
+
+    plain = selected_piece(pitches, durations, lyrics, key, chart)
+
+    named = selected_piece(
+        pitches, durations, lyrics, key, chart, None, "Whatever"
+    )
+
+    assert plain.pitches == named.pitches
+    assert plain.lyrics == named.lyrics
+
+
+def test_separate_layers_builds_one_sound_per_tune():
+    """
+    A song with several tunes gets one layer per tune; an
+    ordinary song still gets a single layer called Melody,
+    so every existing reader of that name keeps working.
+    """
+
+    from music import separate_layers
+    from examples import load_partner_songs, load_twinkle
+
+    pitches, durations, lyrics, key, chart, tempo = load_partner_songs()
+
+    sample_rate, layers = separate_layers(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, part_label="Frere Jacques"
+    )
+
+    for tune in ("Three Blind Mice", "Frere Jacques"):
+        assert tune in layers
+
+    assert "Melody" not in layers
+
+    # Every tune runs the full length of the song, or they
+    # drift apart the moment more than one is heard.
+    lengths = {
+        len(layers[tune]) for tune in
+        ("Three Blind Mice", "Frere Jacques")
+    }
+
+    assert len(lengths) == 1
+
+    pitches, durations, lyrics, key, chart, tempo = load_twinkle()
+
+    sample_rate, layers = separate_layers(
+        pitches, durations, key, tempo, chart, lyric_text=lyrics
+    )
+
+    assert "Melody" in layers
+
+
+def test_list_phrases_follows_the_chosen_tune():
+    from music import list_phrases
+    from examples import load_partner_songs
+
+    pitches, durations, lyrics, key, chart, tempo = load_partner_songs()
+
+    frere = list_phrases(pitches, durations, lyrics)
+    frere_j = list_phrases(pitches, durations, lyrics, "Frere Jacques")
+
+    assert "Three blind mice" in frere[1]
+    assert "Fre" in frere_j[1]

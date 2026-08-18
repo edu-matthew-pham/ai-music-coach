@@ -3,6 +3,7 @@
 	import { mic } from "./micPitch.svelte";
 	import {
 		noteLayers,
+		ensureNoteLayer,
 		showNextPreview,
 		previewSideBySide,
 		notesShowLabels,
@@ -29,9 +30,28 @@
 		phrases: MixerPhrase[];
 		playhead: number;
 		narrow?: boolean;
+		singing?: string | null;
 	}
 
-	let { notes, timeline, phrases, playhead, narrow = false }: Props = $props();
+	let {
+		notes, timeline, phrases, playhead, narrow = false, singing = null
+	}: Props = $props();
+
+	// Whichever tunes this song actually has get a toggle
+	// the first time they arrive, derived from the notes
+	// themselves rather than from a list written here. Your
+	// own tune starts showing; the others start hidden, the
+	// same way the generated harmony lines already do - they
+	// are there to glance at, not to read.
+	$effect(() => {
+		for (const note of notes) {
+			ensureNoteLayer(note.layer, note.layer === singing);
+		}
+
+		if (singing && singing in noteLayers && !noteLayers[singing]) {
+			noteLayers[singing] = true;
+		}
+	});
 
 	const ROW_HEIGHT = 14;
 

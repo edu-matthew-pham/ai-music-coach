@@ -44,12 +44,24 @@
 		phrases: MixerPhrase[];
 		playhead: number;
 		mode?: "paired" | "windowed" | "tab" | "singstar";
+		singing?: string | null;
+		parts?: string[];
 	}
 
-	let { notes, timeline, phrases, playhead, mode = "paired" }: Props = $props();
+	let {
+		notes, timeline, phrases, playhead, mode = "paired",
+		singing = null, parts = []
+	}: Props = $props();
+
+	// Whose words these are. An ordinary song has one sung
+	// line, always called "Melody"; a song with several
+	// tunes names them itself and says which one is being
+	// sung, so the words follow that rather than a name
+	// fixed here.
+	const myLayer = $derived(singing || "Melody");
 
 	const words = $derived(
-		notes.filter((note) => note.layer === "Melody" && note.word)
+		notes.filter((note) => note.layer === myLayer && note.word)
 	);
 
 	const effectivePhrases = $derived.by((): MixerPhrase[] => {

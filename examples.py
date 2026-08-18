@@ -326,185 +326,103 @@ def load_wellerman_phrase():
     return pitches, durations, lyrics, "F", chart
 
 
-# Three tunes in one song - PLAN-multi-part.md's own worked
+# Two tunes in one song - PLAN-multi-part.md's own worked
 # example, and the first thing in the app to use the
 # "=== name ===" divider at all.
 #
-# Frere Jacques (traditional French), Three Blind Mice
-# (Ravenscroft, 1609) and Hot Cross Buns (an old English
-# street cry) are all long out of copyright, and all three
-# are real partner songs: they are built on the same tonic
-# and dominant, so they can be sung together. Here they are
-# laid out one after another, each singing its own eight
-# bars while the other two rest, with a two-bar
-# instrumental link between - the way the tunes are usually
-# introduced before being combined.
+# Transcribed bar by bar from a two-part score (Three Blind
+# Mice over Frere Jacques, 6/8, F major, twenty bars): both
+# tunes are centuries out of copyright, and the score itself
+# carries no arranger's claim. Three Blind Mice sings bars
+# 1-16 and rests to the end; Frere Jacques rests four bars
+# and enters underneath at bar 5, running to bar 20 - a real
+# partner song, sung together, not two tunes taking turns.
 #
-# Every note was checked against the chart with
-# chord_semitones before being written down: no note on a
-# strong beat sits outside the chord sounding under it, in
-# any of the three tunes.
-
-_FRERE_PITCHES = (
-    "C4 D4 E4 C4 C4 D4 E4 C4 "
-    "E4 F4 G4 E4 F4 G4 "
-    "G4 A4 G4 F4 E4 C4 G4 A4 G4 F4 E4 C4 "
-    "C4 G3 C4 C4 G3 C4"
-)
-
-_FRERE_DURATIONS = (
-    "1 1 1 1 1 1 1 1 "
-    "1 1 2 1 1 2 "
-    "1/2 1/2 1/2 1/2 1 1 1/2 1/2 1/2 1/2 1 1 "
-    "1 1 2 1 1 2"
-)
-
-_FRERE_LYRICS = (
-    "Are you sleep- ing are you sleep- ing\n"
-    "Broth- er John Broth- er John\n"
-    "Morn- ing bells are ring- ing morn- ing bells are ring- ing\n"
-    "Ding dang dong Ding dang dong"
-)
+# Six-eight is written with the dotted quarter as the beat,
+# so a bar is two beats: a quarter is 2/3, an eighth 1/3.
+# Every note was checked before being written down - each
+# tune runs exactly twenty bars, every sung note has one
+# syllable, and every note landing on a beat is a tone of
+# the chord under it, with C7 on the second beat of the bars
+# where both tunes ask for it (they agree on every one).
 
 _MICE_PITCHES = (
-    "E4 D4 C4 E4 D4 C4 "
-    "G4 F4 F4 E4 G4 F4 F4 E4 "
-    "G4 C5 C5 B4 A4 B4 C5 G4 G4 "
-    "G4 C5 C5 B4 A4 B4 C5 G4 F4 E4"
+    "A4 G4 F4 R A4 G4 F4 R C5 Bb4 Bb4 A4 R C5 Bb4 Bb4 A4 R R "
+    "C5 F5 F5 E5 D5 E5 F5 C5 C5 C5 F5 F5 F5 E5 D5 E5 F5 C5 C5 "
+    "C5 F5 F5 F5 E5 D5 E5 F5 C5 C5 C5 Bb4 A4 G4 F4 R R R R R"
 )
 
 _MICE_DURATIONS = (
-    "1 1 2 1 1 2 "
-    "1 1/2 1/2 2 1 1/2 1/2 2 "
-    "1 1 1 1/2 1/2 1/2 1/2 1 2 "
-    "1 1 1/2 1/2 1/2 1/2 1/2 1/2 1 2"
+    "1 1 1 1 1 1 1 1 1 2/3 1/3 1 1 1 2/3 1/3 1 1/3 1/3 1/3 "
+    "2/3 1/3 1/3 1/3 1/3 2/3 1/3 2/3 1/3 1/3 1/3 1/3 1/3 1/3 "
+    "1/3 2/3 1/3 2/3 1/3 1/3 1/3 1/3 1/3 1/3 1/3 1/3 1/3 1/3 "
+    "2/3 1/3 1 1 1 1 2 2 2 2"
 )
 
 _MICE_LYRICS = (
-    "Three blind mice Three blind mice\n"
-    "See how they run See how they run\n"
-    "They all ran af- ter the far- mer's wife\n"
-    "She cut off their tails with a carv- ing knife"
+    "Three blind mice\n"
+    "three blind mice\n"
+    "See how they run\n"
+    "See how they run\n"
+    "They all ran af- ter the far- mer's wife she\n"
+    "cut off their tails with a car- ving knife Did\n"
+    "you e- ver see such a sight in your life as\n"
+    "Three blind mice\n"
 )
 
-_BUNS_PITCHES = (
-    "E4 D4 C4 E4 D4 C4 "
-    "C4 C4 C4 C4 D4 D4 D4 D4 "
-    "E4 D4 C4"
+_FRERE_PITCHES = (
+    "R R R R F4 G4 A4 F4 F4 G4 A4 F4 A4 Bb4 C5 R A4 Bb4 C5 R "
+    "C5 D5 C5 Bb4 A4 F4 C5 D5 C5 Bb4 A4 F4 F4 C4 F4 R F4 C4 "
+    "F4 R"
 )
 
-_BUNS_DURATIONS = (
-    "1 1 2 1 1 2 "
-    "1/2 1/2 1/2 1/2 1/2 1/2 1/2 1/2 "
-    "1 1 2"
+_FRERE_DURATIONS = (
+    "2 2 2 2 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 2/3 1/3 2/3 1/3 "
+    "1 1 2/3 1/3 2/3 1/3 1 1 1 1 1 1 1 1 1 1"
 )
 
-_BUNS_LYRICS = (
-    "Hot cross buns Hot cross buns\n"
-    "One a pen- ny two a pen- ny\n"
-    "Hot cross buns"
+_FRERE_LYRICS = (
+    "Fre- re Jac- ques Fre- re Jac- ques\n"
+    "Dor- mez vous Dor- mez vous\n"
+    "Son- nez les ma- tin- nes Son- nez les ma- tin- nes\n"
+    "Din dan don Din dan don\n"
 )
-
-
-def _bars_of_rest(bars):
-    """
-    Whole bars of silence, one token each.
-
-    Invariant 9: a long silence is bars of rest, not one
-    enormous written length - which is also what a singer
-    counting themselves in actually counts.
-    """
-
-    if bars <= 0:
-        return "", ""
-
-    return " ".join(["R"] * bars), " ".join(["4"] * bars)
-
-
-def _padded(pitches, durations, before, after):
-    """
-    One tune, with bars of rest before and after it, so
-    every part of the song runs the same full length.
-    """
-
-    opening_pitches, opening_durations = _bars_of_rest(before)
-    closing_pitches, closing_durations = _bars_of_rest(after)
-
-    return (
-        " ".join(
-            part for part in
-            (opening_pitches, pitches, closing_pitches) if part
-        ),
-        " ".join(
-            part for part in
-            (opening_durations, durations, closing_durations) if part
-        )
-    )
 
 
 def load_partner_songs():
     """
-    Frere Jacques, Three Blind Mice and Hot Cross Buns, as
-    three parts of one twenty-eight bar song.
+    Three Blind Mice and Frere Jacques, as two parts of one
+    twenty-bar song in six-eight, F major.
 
-    Bars 1-8 are Frere Jacques, 11-18 Three Blind Mice,
-    21-28 Hot Cross Buns (its four-bar tune sung twice),
-    with a two-bar instrumental link between each - the
-    chart keeps running through those, so the link sounds
-    like an introduction rather than a hole.
-
-    Each singer picks their own part; the other two are
-    rests, written out literally so the parts stay in time
-    with each other rather than being trimmed to their own
-    first note.
+    Three Blind Mice opens alone; Frere Jacques comes in
+    underneath at bar 5 and the two run together to the end.
+    Each singer picks their own part; the other is written
+    out in full - rests included, literally, so a part that
+    enters late still enters in the right bar rather than
+    being trimmed to its own first note.
     """
 
-    frere_pitches, frere_durations = _padded(
-        _FRERE_PITCHES, _FRERE_DURATIONS, 0, 20
-    )
-
-    mice_pitches, mice_durations = _padded(
-        _MICE_PITCHES, _MICE_DURATIONS, 10, 10
-    )
-
-    buns_pitches, buns_durations = _padded(
-        _BUNS_PITCHES + " " + _BUNS_PITCHES,
-        _BUNS_DURATIONS + " " + _BUNS_DURATIONS,
-        20, 0
-    )
-
     pitches = (
-        "=== Frere Jacques ===\n" + frere_pitches + "\n"
-        "=== Three Blind Mice ===\n" + mice_pitches + "\n"
-        "=== Hot Cross Buns ===\n" + buns_pitches
+        "=== Three Blind Mice ===\n" + _MICE_PITCHES + "\n"
+        "=== Frere Jacques ===\n" + _FRERE_PITCHES
     )
 
     durations = (
-        "=== Frere Jacques ===\n" + frere_durations + "\n"
-        "=== Three Blind Mice ===\n" + mice_durations + "\n"
-        "=== Hot Cross Buns ===\n" + buns_durations
+        "=== Three Blind Mice ===\n" + _MICE_DURATIONS + "\n"
+        "=== Frere Jacques ===\n" + _FRERE_DURATIONS
     )
 
     lyrics = (
-        "=== Frere Jacques ===\n" + _FRERE_LYRICS + "\n"
-        "=== Three Blind Mice ===\n" + _MICE_LYRICS + "\n"
-        "=== Hot Cross Buns ===\n" + _BUNS_LYRICS + "\n" + _BUNS_LYRICS
+        "=== Three Blind Mice ===\n" + _MICE_LYRICS
+        + "=== Frere Jacques ===\n" + _FRERE_LYRICS
     )
 
-    # Twenty-eight bars. Frere Jacques sits on the tonic
-    # throughout; Three Blind Mice needs the dominant at
-    # bar 16 for its B; Hot Cross Buns splits its third bar
-    # so the repeated D lands on G rather than clashing
-    # with C.
+    # Two beats a bar. F throughout, with the dominant on the
+    # second beat wherever either tune leans on it - the odd
+    # bars up to 15, where "blind", "how they" and "Dor-mez"
+    # all sit on the fifth or the seventh.
     chart = (
-        "| C . . . | C . . . | C . . . | C . . . "
-        "| C . . . | C . . . | C . . . | C . . . "
-        "| C . . . | G . . . "
-        "| C . . . | C . . . | C . . . | C . . . "
-        "| C . . . | G . . . | C . . . | C . . . "
-        "| C . . . | G . . . "
-        "| C . . . | C . . . | C . G . | C . . . "
-        "| C . . . | C . . . | C . G . | C . . . |"
+        "| F C7 | F . | F C7 | F . | F C7 | F . | F C7 | F . | F C7 | F . | F C7 | F . | F C7 | F . | F C7 | F . | F . | F . | F . | F . |"
     )
 
-    return pitches, durations, lyrics, "C", chart, 120
+    return pitches, durations, lyrics, "F", chart, 66

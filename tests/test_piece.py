@@ -440,11 +440,11 @@ def test_empty_lyrics_with_several_parts_is_fine():
 # use the divider at all, so it is pinned here as well as
 # in the examples' own tests.
 
-def test_the_partner_song_reads_as_three_parts_of_equal_length():
+def test_the_partner_song_reads_as_two_parts_of_equal_length():
     """
-    All three tunes must run the full twenty-eight bars,
-    or they drift out of time with each other the moment
-    more than one is heard at once.
+    Both tunes must run the full twenty bars (six-eight, two
+    beats a bar, so forty beats), or they drift out of time
+    with each other the moment both are heard at once.
     """
 
     from examples import load_partner_songs
@@ -456,20 +456,20 @@ def test_the_partner_song_reads_as_three_parts_of_equal_length():
     )
 
     assert [name for name, _ in parts] == [
-        "Frere Jacques", "Three Blind Mice", "Hot Cross Buns"
+        "Three Blind Mice", "Frere Jacques"
     ]
 
     for _, piece in parts:
-        assert piece.beats() == 112.0
-        assert piece.key == "C"
-        assert piece.tempo == 120
+        assert abs(piece.beats() - 40.0) < 1e-9
+        assert piece.key == "F"
 
 
-def test_each_partner_song_part_sings_in_its_own_stretch():
+def test_frere_jacques_enters_under_three_blind_mice_at_bar_five():
     """
-    Each tune sings its own eight bars and rests through
-    the others' - the rests are literal, so a part that
-    enters late still enters in the right bar.
+    The rests are literal, so a part that enters late still
+    enters in the right bar - four bars of rest is eight
+    beats, and Frere Jacques' first note falls exactly there.
+    Three Blind Mice opens the song.
     """
 
     from examples import load_partner_songs
@@ -481,40 +481,23 @@ def test_each_partner_song_part_sings_in_its_own_stretch():
         pitches, durations, lyrics, key, chart, tempo
     ))
 
-    # Three Blind Mice waits ten bars (forty beats) before
-    # its first sung note.
-    mice = parts["Three Blind Mice"]
-
-    starts = mice.starts()
-
-    first_sung = next(
-        start for start, pitch in zip(starts, mice.pitches)
-        if not is_rest(pitch)
-    )
-
-    assert first_sung == 40.0
-
-    # Hot Cross Buns waits twenty bars.
-    buns = parts["Hot Cross Buns"]
-
-    first_buns = next(
-        start for start, pitch in zip(buns.starts(), buns.pitches)
-        if not is_rest(pitch)
-    )
-
-    assert first_buns == 80.0
-
-    # Frere Jacques opens the song.
     frere = parts["Frere Jacques"]
 
-    assert not is_rest(frere.pitches[0])
+    first_sung = next(
+        start for start, pitch in zip(frere.starts(), frere.pitches)
+        if not is_rest(pitch)
+    )
+
+    assert abs(first_sung - 8.0) < 1e-9
+
+    assert not is_rest(parts["Three Blind Mice"].pitches[0])
 
 
 def test_no_partner_song_note_clashes_with_its_chord():
     """
     Checked with chord_semitones rather than by ear or by
-    memory: every note landing on a strong beat is a tone
-    of whatever chord the chart has sounding there.
+    memory: every note landing on a beat is a tone of
+    whatever chord the chart has sounding there.
     """
 
     from examples import load_partner_songs
@@ -533,20 +516,22 @@ def test_no_partner_song_note_clashes_with_its_chord():
 
         for pitch, length in zip(piece.pitches, piece.durations):
 
-            on_strong_beat = (
-                abs(beat % 4) < 1e-9 or abs(beat % 4 - 2) < 1e-9
-            )
+            # Six-eight beats accumulate thirds; round before
+            # asking which chord is sounding, or 15.9999 lands
+            # in the previous bar.
+            here = round(beat, 6)
+            on_beat = abs(here - round(here)) < 1e-6
 
-            if not is_rest(pitch) and on_strong_beat:
+            if not is_rest(pitch) and on_beat:
 
-                chord = piece.chord_at(beat)
+                chord = piece.chord_at(round(here))
 
                 assert chord is not None, (
-                    f"{name}: no chord under beat {beat}"
+                    f"{name}: no chord under beat {here}"
                 )
 
                 assert note_to_midi(pitch) % 12 in chord_semitones(chord), (
-                    f"{name}: {pitch} on beat {beat} clashes with {chord}"
+                    f"{name}: {pitch} on beat {here} clashes with {chord}"
                 )
 
             beat += length

@@ -604,29 +604,46 @@ def separate_layers(
     chart_text="",
     harmony_style="Thirds, chord-corrected",
     lyric_text="",
-    phrase_label=None
+    phrase_label=None,
+    part_label=None
 ):
     """
     Every part of the music, unmixed and at full level.
 
     play_music scales these by their levels and adds them
     together, which is what a finished recording needs. A
-    mixer needs them apart: six sounds playing together,
-    each with its own control, so a level can move while
-    they are sounding instead of asking for the whole
-    thing to be made again.
+    mixer needs them apart: several sounds playing
+    together, each with its own control, so a level can
+    move while they are sounding instead of asking for the
+    whole thing to be made again.
 
     Returns (sample_rate, layers) where layers is a
-    dictionary keyed by LAYER_NAMES. A part the music
-    cannot sound - bass or chords with no chart - is
-    absent rather than silent, so a mixer can say why a
-    fader does nothing.
+    dictionary. A song with several tunes in it gets one
+    layer per tune, named as the divider names it, so a
+    group can hear all of them and mute the ones that are
+    not theirs; a song with one tune gets a single layer
+    called "Melody", exactly as before. The derived layers
+    (harmony, bass, chords, metronome) are built from
+    whichever tune is yours, since they exist to accompany
+    the line being sung.
+
+    A part the music cannot sound - bass or chords with no
+    chart - is absent rather than silent, so a mixer can
+    say why a fader does nothing.
     """
 
-    piece = selected_piece(
-        pitch_text, duration_text, lyric_text, key,
-        chart_text, phrase_label
+    from piece import Piece
+
+    parts = Piece.read_parts(
+        pitch_text, duration_text, lyric_text, key, chart_text
     )
+
+    number = phrase_chosen(phrase_label)
+
+    piece = part_chosen(parts, part_label)
+
+    if number is not None:
+        piece = piece.phrase(number)
 
     pitches = piece.pitches
     durations = piece.durations
@@ -642,7 +659,26 @@ def separate_layers(
         pitches, durations, bpm
     )
 
-    layers["Melody"] = melody_track
+    # One sound per tune. A single, undivided song has one
+    # unnamed tune, and it keeps the name every caller and
+    # every test has always known it by.
+    named_parts = [name for name, _ in parts]
+
+    if named_parts == [None]:
+        layers["Melody"] = melody_track
+
+    else:
+
+        for name, part_piece in parts:
+
+            if number is not None:
+                part_piece = part_piece.phrase(number)
+
+            sample_rate, track = make_melody(
+                part_piece.pitches, part_piece.durations, bpm
+            )
+
+            layers[name] = track
 
     for name, steps in (
         ("Harmony above", 2),
@@ -1149,6 +1185,13 @@ def analyse_performance(
     against. No loop selected there, or no mixer built yet,
     and phrase_label decides it exactly as before.
 
+    In a song with several tunes, the mixer also reports
+    which tune is being sung, and that is what is judged.
+    The tune chosen there wins over `part` for the same
+    reason the loop does: it is the choice the person made
+    most recently, on the thing they were actually singing
+    along to.
+
     Returns a written summary and two charts.
     """
 
@@ -1157,18 +1200,37 @@ def analyse_performance(
             "Record or upload a performance first."
         )
 
-    from mixer_data import loop_notes
+    from mixer_data import loop_notes, part_selected
+
+    tunes = part_names(pitch_text, duration_text, lyric_text)
+
+    chosen_tune = part_selected(mixer_value)
+
+    if tunes:
+
+        if chosen_tune not in tunes:
+            chosen_tune = tunes[0]
+
+        # The tune is which music is being sung; `part` is
+        # still which line of it (the tune itself, or a
+        # harmony built from it), so the two stay separate
+        # rather than one overwriting the other.
+        if part in tunes:
+            part = "Melody"
+
+    else:
+        chosen_tune = None
 
     looped = loop_notes(
         pitch_text, duration_text, lyric_text, key,
-        chart_text, mixer_value
+        chart_text, mixer_value, chosen_tune
     )
 
     judged_on_loop = looped is not None
 
     piece = looped if judged_on_loop else selected_piece(
         pitch_text, duration_text, lyric_text, key,
-        chart_text, phrase_label
+        chart_text, phrase_label, chosen_tune
     )
 
     pitches = piece.pitches
@@ -1448,15 +1510,38 @@ def make_practice_guide(
     if guide_choice == "No guide":
         return None
 
-    pitches, durations = read_music(
-        pitch_text,
-        duration_text
-    )
+    from mixer_data import loop_notes, part_selected
 
-    from mixer_data import loop_notes
+    # In a song with several tunes the guide follows the one
+    # being sung, the same as judging does - a guide track
+    # for somebody else's tune would be worse than none.
+    tunes = part_names(pitch_text, duration_text)
+
+    chosen_tune = part_selected(mixer_value)
+
+    if tunes and chosen_tune not in tunes:
+        chosen_tune = tunes[0]
+
+    if tunes:
+        tune = selected_piece(
+            pitch_text, duration_text, "", key, chart_text,
+            None, chosen_tune
+        )
+
+        pitches = tune.pitches
+        durations = tune.durations
+
+    else:
+        chosen_tune = None
+
+        pitches, durations = read_music(
+            pitch_text,
+            duration_text
+        )
 
     looped = loop_notes(
-        pitch_text, duration_text, "", key, chart_text, mixer_value
+        pitch_text, duration_text, "", key, chart_text,
+        mixer_value, chosen_tune
     )
 
     if looped is not None:
@@ -2079,7 +2164,7 @@ WHOLE_PART = "Whole part"
 WHOLE_TRACK = "Whole track"
 
 
-def list_phrases(pitch_text, duration_text, lyric_text):
+def list_phrases(pitch_text, duration_text, lyric_text, part_label=None):
     """
     The phrases the music in the boxes divides into.
 
@@ -2087,15 +2172,35 @@ def list_phrases(pitch_text, duration_text, lyric_text):
     the boxes are what the player has been correcting. A
     line break added to the lyrics adds a phrase here the
     moment it is typed.
+
+    In a song with several tunes the phrases are the ones
+    in your own tune: each has its own words, so each
+    divides into its own lines.
     """
 
-    from piece import Piece
+    from piece import Piece, split_parts
 
     try:
-        piece = Piece.read(pitch_text, duration_text, lyric_text)
+        parts = Piece.read_parts(
+            pitch_text, duration_text, lyric_text
+        )
+
+        piece = part_chosen(parts, part_label)
+
+        sections = split_parts(pitch_text, duration_text, lyric_text)
 
     except MusicInputError:
         return [WHOLE_PART]
+
+    # The labels come from the lyric box's own lines, so
+    # they have to be read from this tune's section of it.
+    for name, _, _, section_lyrics in sections:
+
+        if name == part_label or (
+            part_label is None and name == sections[0][0]
+        ):
+            lyric_text = section_lyrics
+            break
 
     found = piece.phrases()
 
@@ -2151,7 +2256,8 @@ def selected_piece(
     lyric_text="",
     key="C",
     chart_text="",
-    phrase_label=None
+    phrase_label=None,
+    part_label=None
 ):
     """
     The music being worked on: the whole part, or one
@@ -2161,13 +2267,23 @@ def selected_piece(
     through here, so that the notes, the words under them
     and the chords over them are always cut to the same
     place.
+
+    A song with several tunes in it (PLAN-multi-part.md)
+    resolves to whichever one is yours before anything
+    else happens, so every caller downstream receives a
+    plain one-tune Piece exactly as it always has. A song
+    with no dividers has one tune, and part_label is
+    ignored - which is every song that existed before
+    several-tune songs did.
     """
 
     from piece import Piece
 
-    piece = Piece.read(
+    parts = Piece.read_parts(
         pitch_text, duration_text, lyric_text, key, chart_text
     )
+
+    piece = part_chosen(parts, part_label)
 
     number = phrase_chosen(phrase_label)
 
@@ -2175,6 +2291,58 @@ def selected_piece(
         return piece
 
     return piece.phrase(number)
+
+
+def part_names(pitch_text, duration_text, lyric_text=""):
+    """
+    What the tunes in this song are called, for a chooser.
+
+    An undivided song has one unnamed tune, and gets an
+    empty list rather than a list of one: there is nothing
+    to choose between, and a chooser showing a single
+    option is worse than no chooser at all.
+    """
+
+    from piece import split_parts
+
+    try:
+        sections = split_parts(pitch_text, duration_text, lyric_text)
+
+    except MusicInputError:
+        return []
+
+    names = [name for name, _, _, _ in sections]
+
+    if names == [None]:
+        return []
+
+    return names
+
+
+def part_chosen(parts, part_label):
+    """
+    Which tune of a several-tune song is yours.
+
+    `parts` is what Piece.read_parts returns. An unknown or
+    missing label falls back to the first tune rather than
+    raising: the chooser is a view, the same way the phrase
+    dropdown is, and a stale label left over from another
+    song must never stop the music being read.
+    """
+
+    if not parts:
+        raise MusicInputError(
+            "Enter some notes first, such as C4 D4 E4."
+        )
+
+    if part_label:
+
+        for name, piece in parts:
+
+            if name == part_label:
+                return piece
+
+    return parts[0][1]
 
 
 

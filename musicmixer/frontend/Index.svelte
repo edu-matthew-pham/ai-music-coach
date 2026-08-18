@@ -60,6 +60,16 @@
 	const timeline = $derived(gradio.props.value?.timeline ?? []);
 	const notes = $derived(gradio.props.value?.notes ?? []);
 	const phrases = $derived(gradio.props.value?.phrases ?? []);
+
+	// The tunes of a several-tune song, and which one this
+	// person is singing. Both come straight from Python;
+	// an ordinary song sends an empty list, and everything
+	// below that reads `parts.length` stays hidden.
+	const parts = $derived(gradio.props.value?.parts ?? []);
+
+	const singing = $derived(
+		gradio.props.value?.part ?? (parts.length ? parts[0] : null)
+	);
 	const diagrams = $derived(
 		gradio.props.value?.diagrams ??
 			{ structure: {}, scale: {}, chords: {}, shapes: {} }
@@ -213,6 +223,18 @@
 		if (gradio.props.value) {
 			gradio.props.value.loop_start = engine.loopFrom;
 			gradio.props.value.loop_end = engine.loopTo;
+		}
+		gradio.dispatch("change");
+	}
+
+	// Picking another tune is a change of who is singing,
+	// not of the music: every tune's sound and notes are
+	// already here, so this only tells Python which one to
+	// judge and which words to show. Nothing is rebuilt and
+	// the engine keeps playing underneath.
+	function chooseTune(name: string): void {
+		if (gradio.props.value) {
+			gradio.props.value.part = name;
 		}
 		gradio.dispatch("change");
 	}
@@ -419,6 +441,29 @@
 			<Transport onTogglePlay={togglePlay} onStop={stopPlayback} />
 		</div>
 
+		<!-- Which tune is yours, in a song made of several.
+		     Hidden entirely for an ordinary song, where there
+		     is nothing to choose between. Clicking one does
+		     not rebuild anything: every tune is already
+		     loaded and playing, so this only changes whose
+		     words show and who gets judged. -->
+		{#if parts.length > 1}
+			<div class="header-row part-chooser" role="group" aria-label="Your part">
+				<span class="part-label">Singing</span>
+				{#each parts as tune (tune)}
+					<button
+						type="button"
+						class="part-button"
+						class:chosen={tune === singing}
+						aria-pressed={tune === singing}
+						onclick={() => chooseTune(tune)}
+					>
+						{tune}
+					</button>
+				{/each}
+			</div>
+		{/if}
+
 		<SeekBar {playhead} {totalDuration} {timeline} onSeek={seek} />
 
 		<div class="header-row header-views">
@@ -544,12 +589,12 @@
 				<div class="lyrics-and-notes singstar" class:preview-wide={singstarPreviewWide}>
 					{#if panels.notes}
 						<div class="notes-cell">
-							<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} />
+							<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} {singing} />
 						</div>
 					{/if}
 					{#if panels.lyrics}
 						<div class="lyrics-cell">
-							<LyricsPanel {notes} {timeline} {phrases} {playhead} mode={lyricsMode} />
+							<LyricsPanel {notes} {timeline} {phrases} {playhead} mode={lyricsMode} {singing} {parts} />
 						</div>
 					{/if}
 				</div>
@@ -557,12 +602,12 @@
 				<div class="lyrics-and-notes">
 					{#if panels.lyrics}
 						<div class="lyrics-cell">
-							<LyricsPanel {notes} {timeline} {phrases} {playhead} mode={lyricsMode} />
+							<LyricsPanel {notes} {timeline} {phrases} {playhead} mode={lyricsMode} {singing} {parts} />
 						</div>
 					{/if}
 					{#if panels.notes}
 						<div class="notes-cell">
-							<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} />
+							<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} {singing} />
 						</div>
 					{/if}
 				</div>
@@ -714,6 +759,32 @@
 	.header-views {
 		justify-content: space-between;
 	}
+	.part-chooser {
+		gap: 0.4rem;
+		align-items: center;
+		flex-wrap: wrap;
+	}
+
+	.part-label {
+		font-size: 0.85rem;
+		opacity: 0.7;
+	}
+
+	.part-button {
+		padding: 0.25rem 0.7rem;
+		border: 1px solid var(--border-color-primary, #ccc);
+		border-radius: 999px;
+		background: transparent;
+		cursor: pointer;
+		font-size: 0.9rem;
+	}
+
+	.part-button.chosen {
+		background: var(--color-accent, #2e7d32);
+		color: #fff;
+		border-color: transparent;
+	}
+
 	.settings-toggle {
 		font: inherit;
 		font-size: var(--mixer-text-sm);

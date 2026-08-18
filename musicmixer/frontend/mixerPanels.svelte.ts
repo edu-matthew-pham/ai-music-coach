@@ -56,6 +56,18 @@ export const noteLayers: Record<string, boolean> = $state({
 	Bass: false
 });
 
+// A song with several tunes names its own layers, so the
+// four above cannot be the whole list any more. Same fix
+// diagramInstruments already got: the real set is derived
+// from the data Python sends, and a name never seen before
+// gets a toggle the first time it appears. Adding a tune to
+// a song needs no matching edit here.
+export function ensureNoteLayer(name: string, showing: boolean): void {
+	if (!(name in noteLayers)) {
+		noteLayers[name] = showing;
+	}
+}
+
 // Whether the note view shows a dimmed preview of the next
 // phrase below the current one - lives here rather than as
 // component state for the usual reason: it should survive

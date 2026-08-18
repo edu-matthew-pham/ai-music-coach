@@ -114,7 +114,10 @@ class MusicMixer(Component):
                 BPM box has since changed. loop_start /
                 loop_end are normally left unset here, so a
                 freshly built mixer opens with nothing
-                looped.
+                looped. parts names the tunes in a several-
+                tune song (empty for an ordinary one) and
+                part is whichever is being sung; the browser
+                sends part back when a person picks another.
         Returns:
             The dict sent to the browser.
         """
@@ -128,6 +131,8 @@ class MusicMixer(Component):
             "phrases": value.get("phrases", []),
             "diagrams": value.get("diagrams", {}),
             "bpm": value.get("bpm"),
+            "parts": value.get("parts", []),
+            "part": value.get("part"),
             "loop_start": value.get("loop_start"),
             "loop_end": value.get("loop_end"),
         }
@@ -158,6 +163,13 @@ class MusicMixer(Component):
                 "bpm": {
                     "anyOf": [{"type": "number"}, {"type": "null"}]
                 },
+                "parts": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "part": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}]
+                },
                 "loop_start": {
                     "anyOf": [{"type": "number"}, {"type": "null"}]
                 },
@@ -168,7 +180,7 @@ class MusicMixer(Component):
         }
 
     def example_payload(self) -> Any:
-        return {"layers": [], "timeline": [], "notes": [], "phrases": [], "diagrams": {}, "bpm": None, "loop_start": None, "loop_end": None}
+        return {"layers": [], "timeline": [], "notes": [], "phrases": [], "diagrams": {}, "bpm": None, "parts": [], "part": None, "loop_start": None, "loop_end": None}
 
     def example_value(self) -> Any:
-        return {"layers": [], "timeline": [], "notes": [], "phrases": [], "diagrams": {}, "bpm": None, "loop_start": None, "loop_end": None}
+        return {"layers": [], "timeline": [], "notes": [], "phrases": [], "diagrams": {}, "bpm": None, "parts": [], "part": None, "loop_start": None, "loop_end": None}

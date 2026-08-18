@@ -37,6 +37,7 @@ from examples import (
     load_wellerman_phrase,
     load_twinkle,
     load_wellerman,
+    load_partner_songs,
 )
 
 
@@ -223,6 +224,10 @@ with gr.Blocks(
 
                 wellerman_button = gr.Button(
                     "Load Wellerman"
+                )
+
+                partner_button = gr.Button(
+                    "Load partner songs"
                 )
 
             midi_upload = gr.File(
@@ -613,7 +618,8 @@ with gr.Blocks(
         )
 
     def build_mixer(pitch_text, duration_text, key, bpm,
-                    chart_text, harmony_style, lyric_text):
+                    chart_text, harmony_style, lyric_text,
+                    mixer_value=None):
         """
         Build the live mixer for the whole piece.
 
@@ -627,11 +633,22 @@ with gr.Blocks(
         would jump outside what had actually been sent.
         Always building the whole part is what the Wellerman
         demo does too, for the same reason.
+
+        A song with several tunes keeps whichever tune was
+        being sung across a rebuild, when that tune is still
+        one of this song's own - otherwise editing a box
+        would silently put a singer back on the first part.
+        mixer_data falls back to the first tune when the
+        name means nothing here, so a different song loading
+        cannot leave a stale choice in charge.
         """
+
+        from mixer_data import part_selected
 
         return mixer_data(
             pitch_text, duration_text, key, bpm, chart_text,
-            harmony_style, lyric_text, phrase_label="Whole part"
+            harmony_style, lyric_text, phrase_label="Whole part",
+            part_label=part_selected(mixer_value)
         )
 
     def phrases_now(pitch_text, duration_text, lyric_text,
@@ -785,6 +802,10 @@ with gr.Blocks(
     # can trigger the same rebuild via .then(), rather than
     # leaving the mixer showing whatever it last had, or
     # nothing, until Generate Playback is pressed separately.
+    # The mixer's own current value is the last input: a
+    # rebuild reads which tune was being sung out of it, so
+    # editing a box does not put a singer back on the first
+    # part of a several-tune song.
     mixer_inputs = [
         pitch_input,
         duration_input,
@@ -792,7 +813,8 @@ with gr.Blocks(
         bpm_input,
         chart_input,
         harmony_style_input,
-        lyric_input
+        lyric_input,
+        mixer_output
     ]
 
     example_button.click(
@@ -806,6 +828,18 @@ with gr.Blocks(
 
     wellerman_button.click(
         fn=load_example("the Wellerman", load_wellerman),
+        outputs=example_outputs
+    ).then(
+        fn=guard(build_mixer),
+        inputs=mixer_inputs,
+        outputs=mixer_output
+    )
+
+    partner_button.click(
+        fn=load_example(
+            "Three Blind Mice and Frere Jacques",
+            load_partner_songs
+        ),
         outputs=example_outputs
     ).then(
         fn=guard(build_mixer),

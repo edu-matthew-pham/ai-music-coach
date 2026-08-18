@@ -70,6 +70,13 @@ export interface MixerValue {
 	notes: MixerNote[];
 	phrases: MixerPhrase[];
 	diagrams: MixerDiagrams;
+	bpm?: number | null;
+	// The tunes a several-tune song is made of, and which
+	// one this person is singing. Empty and null for an
+	// ordinary song, which is how the chooser knows to stay
+	// hidden - a chooser with one option is worse than none.
+	parts?: string[];
+	part?: string | null;
 	loop_start: number | null;
 	loop_end: number | null;
 }

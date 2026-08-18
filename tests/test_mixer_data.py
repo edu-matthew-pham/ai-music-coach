@@ -338,8 +338,15 @@ def test_mixer_data_has_the_shape_the_component_expects():
 
     assert set(value.keys()) == {
         "layers", "timeline", "notes", "phrases", "diagrams",
-        "bpm", "loop_start", "loop_end"
+        "bpm", "parts", "part", "loop_start", "loop_end"
     }
+
+    # An ordinary, undivided song has no tunes of its own to
+    # choose between, and says so with an empty list rather
+    # than a list of one - which is how the browser knows
+    # not to offer a chooser at all.
+    assert value["parts"] == []
+    assert value["part"] is None
 
     assert value["loop_start"] is None
     assert value["loop_end"] is None
@@ -585,3 +592,137 @@ def test_loop_notes_is_none_without_a_selection():
 
     assert loop_notes(pitches, durations, lyrics, key, chart, value) is None
     assert loop_notes(pitches, durations, lyrics, key, chart, None) is None
+
+# Several tunes in one song - PLAN-multi-part.md stage 1.
+
+def test_a_several_tune_song_sends_a_layer_per_tune():
+    """
+    Each tune is its own sound, named as the divider names
+    it, so a group can hear all of them and mute the ones
+    that are not theirs. The derived layers follow after.
+    """
+
+    from examples import load_partner_songs
+
+    pitches, durations, lyrics, key, chart, tempo = load_partner_songs()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, part_label="Three Blind Mice"
+    )
+
+    names = [layer["name"] for layer in value["layers"]]
+
+    assert names[:2] == [
+        "Three Blind Mice", "Frere Jacques"
+    ]
+
+    for derived in ("Harmony above", "Bass", "Chords", "Metronome"):
+        assert derived in names
+
+    # The tunes come first, before anything derived from them.
+    assert names.index("Frere Jacques") < names.index("Harmony above")
+
+
+def test_the_chosen_tune_rides_on_the_value_both_ways():
+    """
+    parts says what there is to choose between; part says
+    which is being sung. The browser sends part back when a
+    person picks another, so both have to be there.
+    """
+
+    from examples import load_partner_songs
+
+    pitches, durations, lyrics, key, chart, tempo = load_partner_songs()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, part_label="Frere Jacques"
+    )
+
+    assert value["parts"] == [
+        "Three Blind Mice", "Frere Jacques"
+    ]
+    assert value["part"] == "Frere Jacques"
+
+
+def test_a_stale_tune_name_falls_back_rather_than_failing():
+    """
+    A name left over from another song must never stop the
+    music being read - the chooser is a view, the same way
+    the phrase dropdown is.
+    """
+
+    from examples import load_partner_songs
+
+    pitches, durations, lyrics, key, chart, tempo = load_partner_songs()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, part_label="Some Other Song"
+    )
+
+    assert value["part"] == "Three Blind Mice"
+
+
+def test_every_tune_carries_its_own_words():
+    """
+    Unlike the generated harmony and bass, each tune of a
+    several-tune song is really sung and really has lyrics.
+    """
+
+    from examples import load_partner_songs
+
+    pitches, durations, lyrics, key, chart, tempo = load_partner_songs()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, part_label="Frere Jacques"
+    )
+
+    for tune in ("Three Blind Mice", "Frere Jacques"):
+
+        worded = [
+            note for note in value["notes"]
+            if note["layer"] == tune and note.get("word")
+        ]
+
+        assert worded, f"{tune} sent no words"
+
+    # The derived lines still carry none.
+    for derived in ("Harmony above", "Bass"):
+
+        assert not [
+            note for note in value["notes"]
+            if note["layer"] == derived and note.get("word")
+        ]
+
+
+def test_phrases_follow_the_tune_being_sung():
+    """
+    Each tune has its own words and so its own lines to
+    sing; the phrase strip must follow the one being sung
+    rather than the first one written.
+    """
+
+    from examples import load_partner_songs
+
+    pitches, durations, lyrics, key, chart, tempo = load_partner_songs()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, part_label="Frere Jacques"
+    )
+
+    labels = [phrase["label"] for phrase in value["phrases"]]
+
+    assert labels
+    assert "Fre" in labels[0]
+
+
+def test_part_selected_reads_the_browsers_choice():
+    from mixer_data import part_selected
+
+    assert part_selected(None) is None
+    assert part_selected({}) is None
+    assert part_selected({"part": "Three Blind Mice"}) == "Three Blind Mice"

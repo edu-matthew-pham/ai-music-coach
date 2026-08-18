@@ -57,6 +57,33 @@ LAYER_COLOURS = {
     "Metronome": "#90a4ae"
 }
 
+# A song with several tunes in it needs a colour per tune,
+# not just for the one "Melody". The first is Melody's own
+# green, so a single-tune song and the first part of a
+# several-tune song look the same; the rest are chosen to
+# stay apart from each other and from the derived layers'
+# colours above.
+PART_COLOURS = [
+    "#2e7d32",
+    "#1565c0",
+    "#ad1457",
+    "#ef6c00",
+    "#4527a0",
+    "#00838f"
+]
+
+
+def part_colour(index):
+    """
+    The colour for the nth tune of a several-tune song.
+
+    Wraps rather than running out: a song with more parts
+    than colours repeats them, which is worse than having
+    more colours but better than drawing nothing.
+    """
+
+    return PART_COLOURS[index % len(PART_COLOURS)]
+
 
 def as_wav_data(track, sample_rate):
     """
@@ -336,7 +363,8 @@ def _diagrams(key, timeline):
 
 
 def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,
-                    harmony_style, lyric_text, phrase_label):
+                    harmony_style, lyric_text, phrase_label,
+                    part_label=None):
     """
     Every note, in seconds, pitch-placed and layer-tagged.
 
@@ -346,26 +374,32 @@ def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,
     audio for them, so the picture and the sound can never
     disagree about what the harmony or bass actually is.
 
-    Melody carries the words underneath it, same as
-    tuning_plot.py draws them. The generated harmony and
-    bass lines never have their own lyrics - they are not
-    independent sung parts, they are voices derived from
-    the melody. A second, independently sung melody line
-    (a duet, say) would be a different feature - another
-    imported voice with its own words - not something this
-    reads from what is here.
+    Every sung tune carries its own words underneath it,
+    same as tuning_plot.py draws them: a song with several
+    tunes (PLAN-multi-part.md) has real, different lyrics
+    on each, and all of them are sent. The generated
+    harmony and bass lines still never have their own
+    lyrics - they are not independent sung parts, they are
+    voices derived from whichever tune is yours.
     """
 
     from music import (
-        selected_piece, harmony_line, bass_line, mark_unsung_holds,
-        UNSUNG_HOLD
+        harmony_line, bass_line, mark_unsung_holds,
+        phrase_chosen, part_chosen, UNSUNG_HOLD
     )
+    from piece import Piece
     from notes import note_to_midi, is_rest
 
-    piece = selected_piece(
-        pitch_text, duration_text, lyric_text, key,
-        chart_text, phrase_label
+    parts = Piece.read_parts(
+        pitch_text, duration_text, lyric_text, key, chart_text
     )
+
+    number = phrase_chosen(phrase_label)
+
+    piece = part_chosen(parts, part_label)
+
+    if number is not None:
+        piece = piece.phrase(number)
 
     per_beat = 60.0 / float(bpm)
 
@@ -428,14 +462,47 @@ def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,
 
     all_notes = []
 
-    # The Melody layer always shows every note - nothing is
-    # ever hidden from view or from editing. Only its word
-    # label changes, "*" instead of "_", which is the guess
+    # Every sung tune shows every note - nothing is ever
+    # hidden from view or from editing. Only its word label
+    # changes, "*" instead of "_", which is the guess
     # itself, sitting where it can be corrected.
-    all_notes += walk(
-        piece.pitches, piece.durations, LAYER_COLOURS["Melody"],
-        "Melody", words=marked_words
-    )
+    #
+    # A single, undivided song has one tune and it is still
+    # called "Melody", so every existing test and every
+    # existing reader of that name keeps working. A song
+    # with dividers sends each tune under its own name,
+    # with its own words.
+    named_parts = [name for name, _ in parts]
+
+    if named_parts == [None]:
+
+        all_notes += walk(
+            piece.pitches, piece.durations, LAYER_COLOURS["Melody"],
+            "Melody", words=marked_words
+        )
+
+    else:
+
+        for index, (name, part_piece) in enumerate(parts):
+
+            if number is not None:
+                part_piece = part_piece.phrase(number)
+
+            if name == (part_label or named_parts[0]):
+                part_words = marked_words
+
+            else:
+                part_marked = (
+                    mark_unsung_holds(part_piece.lyrics)
+                    if part_piece.lyrics else part_piece.lyrics
+                )
+
+                part_words = part_marked.split() if part_marked else None
+
+            all_notes += walk(
+                part_piece.pitches, part_piece.durations,
+                part_colour(index), name, words=part_words
+            )
 
     for name, steps in (("Harmony above", 2), ("Harmony below", -2)):
 
@@ -466,7 +533,8 @@ def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,
     return all_notes
 
 
-def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text):
+def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
+                      part_label=None):
     """
     Where each phrase starts and ends, in seconds, with a
     label to click on.
@@ -480,17 +548,39 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text):
     Falls back to treating the whole piece as one phrase
     when there is no more than one - matching the dropdown,
     which showed only "Whole part" in that case.
+
+    Phrases belong to whichever tune is yours: in a song
+    with several tunes each has its own words and so its
+    own lines to sing, and the strip should follow the one
+    being sung rather than the first one written.
     """
 
-    from piece import Piece
-    from music import MusicInputError
+    from piece import Piece, split_parts
+    from music import MusicInputError, part_chosen
     from midi_import import join_syllables
 
     try:
-        piece = Piece.read(pitch_text, duration_text, lyric_text)
+        parts = Piece.read_parts(
+            pitch_text, duration_text, lyric_text
+        )
+
+        piece = part_chosen(parts, part_label)
+
+        sections = split_parts(pitch_text, duration_text, lyric_text)
 
     except MusicInputError:
         return []
+
+    # The labels below are read off the lyric box's own
+    # lines, so they have to come from this tune's section
+    # of it rather than the whole box.
+    for name, _, _, section_lyrics in sections:
+
+        if name == part_label or (
+            part_label is None and name == sections[0][0]
+        ):
+            lyric_text = section_lyrics
+            break
 
     found = piece.phrases()
 
@@ -536,7 +626,8 @@ def mixer_data(
     chart_text="",
     harmony_style="Thirds, chord-corrected",
     lyric_text="",
-    phrase_label=None
+    phrase_label=None,
+    part_label=None
 ):
     """
     The dictionary a MusicMixer component's value expects.
@@ -544,18 +635,53 @@ def mixer_data(
     loop_start and loop_end are left unset here: those are
     the browser's to fill in, and a freshly built mixer
     should open with nothing looped.
+
+    `parts` and `part` carry a several-tune song's own
+    division: what the tunes are called, and which one is
+    yours. Both are sent every time - `parts` is empty for
+    an undivided song, which is how the browser knows not
+    to offer a chooser at all.
     """
 
-    sample_rate, parts = separate_layers(
+    from music import part_names
+
+    tunes = part_names(pitch_text, duration_text, lyric_text)
+
+    if tunes and part_label not in tunes:
+        part_label = tunes[0]
+
+    sample_rate, tracks = separate_layers(
         pitch_text, duration_text, key, bpm, chart_text,
-        harmony_style, lyric_text, phrase_label
+        harmony_style, lyric_text, phrase_label, part_label
     )
 
     layers = []
 
+    # The tunes come first, in the order they are written,
+    # then the derived layers in their long-standing order.
+    # An undivided song has no tunes of its own and falls
+    # straight through to LAYER_NAMES, which still starts
+    # with "Melody" - so its fader list is unchanged.
+    for index, name in enumerate(tunes):
+
+        track = tracks.get(name)
+
+        if track is None:
+            continue
+
+        layers.append({
+            "name": name,
+            "level": 1.0,
+            "colour": part_colour(index),
+            "wav": as_wav_data(track, sample_rate)
+        })
+
     for name in LAYER_NAMES:
 
-        track = parts.get(name)
+        if name in tunes:
+            continue
+
+        track = tracks.get(name)
 
         if track is None:
             continue
@@ -574,11 +700,12 @@ def mixer_data(
 
     notes = _note_timeline(
         pitch_text, duration_text, key, bpm, chart_text,
-        harmony_style, lyric_text, phrase_label
+        harmony_style, lyric_text, phrase_label, part_label
     )
 
     phrases = _phrase_timeline(
-        pitch_text, duration_text, key, bpm, lyric_text
+        pitch_text, duration_text, key, bpm, lyric_text,
+        part_label
     )
 
     diagrams = _diagrams(key, timeline)
@@ -590,6 +717,8 @@ def mixer_data(
         "phrases": phrases,
         "diagrams": diagrams,
         "bpm": float(bpm),
+        "parts": tunes,
+        "part": part_label,
         "loop_start": None,
         "loop_end": None
     }
@@ -617,8 +746,25 @@ def loop_region(mixer_value):
     return start, end
 
 
+def part_selected(mixer_value):
+    """
+    Which tune the person is singing, as the mixer reports
+    it - or None when there is no mixer yet, or the song
+    has only one tune.
+
+    The same shape loop_region has, and read at the same
+    moment: the browser owns this choice, because switching
+    tunes there must not rebuild anything.
+    """
+
+    if not mixer_value:
+        return None
+
+    return mixer_value.get("part")
+
+
 def loop_notes(pitch_text, duration_text, lyric_text, key,
-               chart_text, mixer_value):
+               chart_text, mixer_value, part_label=None):
     """
     The stretch of the music a selected loop covers, as a
     Piece - or None if nothing is usably selected.
@@ -638,6 +784,7 @@ def loop_notes(pitch_text, duration_text, lyric_text, key,
     """
 
     from piece import Piece
+    from music import part_chosen
 
     region = loop_region(mixer_value)
 
@@ -650,8 +797,15 @@ def loop_notes(pitch_text, duration_text, lyric_text, key,
     if not bpm:
         return None
 
-    piece = Piece.read(
-        pitch_text, duration_text, lyric_text, key, chart_text
+    # The loop's seconds are measured against whichever
+    # tune is being sung, not against the first one written:
+    # in a several-tune song the parts run the same length
+    # but their notes fall in different places.
+    piece = part_chosen(
+        Piece.read_parts(
+            pitch_text, duration_text, lyric_text, key, chart_text
+        ),
+        part_label
     )
 
     per_beat = 60.0 / float(bpm)

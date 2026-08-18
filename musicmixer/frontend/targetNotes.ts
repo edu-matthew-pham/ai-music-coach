@@ -48,7 +48,13 @@
 
 import type { MixerNote } from "./types";
 
-const TARGET_LAYER = "Melody";
+// Which layer is the one being sung. An ordinary song has
+// a single sung line, always called "Melody"; a song with
+// several tunes in it names them itself and reports which
+// one the person picked, so the target follows that choice
+// rather than a name fixed here. Falling back to "Melody"
+// keeps every ordinary song judging exactly as before.
+const DEFAULT_TARGET_LAYER = "Melody";
 
 // What Python marks a held note as once a run of them stops
 // reading as a real, confirmed melisma - see
@@ -56,9 +62,14 @@ const TARGET_LAYER = "Melody";
 // it lives there rather than here.
 const UNSUNG_HOLD = "*";
 
-export function targetNotes(notes: MixerNote[]): MixerNote[] {
+export function targetNotes(
+	notes: MixerNote[],
+	part?: string | null
+): MixerNote[] {
+
+	const target = part || DEFAULT_TARGET_LAYER;
 
 	return notes.filter(
-		(note) => note.layer === TARGET_LAYER && note.word !== UNSUNG_HOLD
+		(note) => note.layer === target && note.word !== UNSUNG_HOLD
 	);
 }
