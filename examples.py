@@ -385,7 +385,7 @@ _FRERE_LYRICS = (
     "Fre- re Jac- ques Fre- re Jac- ques\n"
     "Dor- mez vous Dor- mez vous\n"
     "Son- nez les ma- tin- nes Son- nez les ma- tin- nes\n"
-    "Din dan don Din dan don\n"
+    "Ding dang dong Ding dang dong\n"
 )
 
 

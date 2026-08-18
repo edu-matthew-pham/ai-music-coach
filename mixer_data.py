@@ -539,24 +539,30 @@ def _continue_with_other_parts(own_phrases, part_label, phrases_by_part):
     yours have finished.
 
     While your part is singing, its own phrases set the pages
-    - nothing here touches them. But a part can finish before
-    the piece does (a round's first voice ends bars ahead of
-    the last), and its final phrase used to swallow every bar
-    of that tail: drawn several times the length of its other
-    lines, and the whole page's scale with it. Trimming that
-    phrase to the last sung note (music.py's _last_phrase_end)
-    fixed the scale but then hid the tail entirely - the other
-    voices were still singing there with nowhere to appear.
+    - nothing here touches them; a page break inside one of
+    your phrases would cut you mid-line, and three staggered
+    voices cannot all be whole on one page (checked: any page
+    holding one voice's phrase whole cuts the others' - the
+    only way round it is not to page at all). So exactly one
+    voice's phrasing wins at a time, and while you sing it is
+    yours.
 
-    So once your part is done, the pages follow whoever is
-    still singing: every other part's phrases still going
-    when yours ended are appended, in time order, each
-    labelled with the part it belongs to. One that had
-    already begun is clipped to start where yours finished
-    rather than skipped, so there is never a hole between
-    your last page and the next. Nothing of yours is cut
-    short, and nothing of anyone's is left unshown.
+    Once you have stopped, that objection is gone: every break
+    any remaining voice makes becomes a page break, and the
+    pages after yours are the UNION of the remaining parts'
+    phrase boundaries - as fine as any of them cuts it. Each
+    page is labelled and tagged with the part whose phrase
+    begins there. An earlier version picked ONE remaining
+    part's phrase list and dropped the others' - which needed
+    a tie-break rule between them, and every rule tried
+    (shorter first, part order) turned out to measure the
+    wrong thing on a synthetic three-way stagger: preferring
+    a part because its FIRST carried-on phrase was short
+    could pick the COARSER overall phrasing. The union has no
+    such choice to make.
 
+    Nothing of yours is cut, nothing of anyone's is unshown,
+    and there is no hole between your last page and the next.
     Ordinary single-tune songs have no other parts and pass
     straight through unchanged.
     """
@@ -566,7 +572,10 @@ def _continue_with_other_parts(own_phrases, part_label, phrases_by_part):
 
     finished_at = own_phrases[-1]["end"]
 
-    tail = []
+    # Every moment after yours where ANY remaining part starts
+    # or ends a phrase, plus your own end (the first page's
+    # start) - these are the only places a page may break.
+    cuts = {finished_at}
 
     for name, theirs in phrases_by_part.items():
 
@@ -578,51 +587,71 @@ def _continue_with_other_parts(own_phrases, part_label, phrases_by_part):
             if phrase["end"] <= finished_at:
                 continue
 
-            # A phrase that had already begun when yours ended
-            # is not skipped - that would leave a hole between
-            # your last page and the next one - but picks up
-            # from where yours finished, so it never reaches
-            # back into a page of yours.
-            tail.append({
-                **phrase,
-                "start": max(phrase["start"], finished_at),
-                "label": f"{name}: {phrase['label']}",
-                # Whose phrase this is, so a panel that draws
-                # words can fetch that part's rather than yours
-                # (which has none here - you have finished).
-                "part": name
-            })
+            cuts.add(max(phrase["start"], finished_at))
+            cuts.add(phrase["end"])
 
-    # Several parts may still be going; interleave their
-    # phrases by when each starts, so the pages read in the
-    # order they happen rather than one part's whole tail
-    # then the next's. Where two start at the same moment,
-    # the SHORTER goes first - a deliberate rule, not sort
-    # luck: it means the pages that follow yours are cut as
-    # finely as any remaining part cuts them, which is the
-    # closest thing to "your phrasing" once you have stopped.
-    # (Checked against a synthetic three-part stagger where
-    # Alto's one long phrase and Tenor's two short ones both
-    # began the moment Lead finished: Tenor's win, so the
-    # tail is two pages, not one.)
-    tail.sort(key=lambda phrase: (phrase["start"], phrase["end"]))
+    cuts = sorted(cuts)
 
-    # The same stretch of time may be a phrase for two parts
-    # at once (a round's voices two bars apart, say). Keep the
-    # first one that covers it; a second page over the same
-    # seconds would just be the same notes drawn again. The
-    # part whose phrase is dropped is still heard and still
-    # drawn - only its page break is not used.
-    merged = []
+    tail = []
 
-    for phrase in tail:
+    for start, end in zip(cuts, cuts[1:]):
 
-        if merged and phrase["start"] < merged[-1]["end"]:
+        # Which part's phrase begins here (or is going here,
+        # for a stretch inside someone's phrase). Prefer one
+        # that BEGINS at this cut - it named the break; fall
+        # back to any part sounding through it, so a stretch
+        # is never unlabelled. Part order breaks a genuine tie
+        # (two parts beginning a phrase at the same instant),
+        # the order the singer already sees everywhere else.
+        owner = None
+        owner_label = None
+
+        for name in phrases_by_part:
+
+            if name == part_label:
+                continue
+
+            for phrase in phrases_by_part[name]:
+
+                # A phrase already over by this cut cannot own
+                # it - without this, clipping every phrase's
+                # start up to `finished_at` made all of them
+                # "begin" there and the first in the list won,
+                # labelling the tail with a line sung long ago
+                # (a real bug: "Voice 2: 1. Row row row" over
+                # what was in fact its "Life is but a dream").
+                if phrase["end"] <= start + 1e-9:
+                    continue
+
+                begins_here = abs(max(phrase["start"], finished_at) - start) < 1e-9
+                sounding = phrase["start"] <= start + 1e-9 and phrase["end"] > start + 1e-9
+
+                if begins_here:
+                    owner, owner_label = name, phrase["label"]
+                    break
+
+                if sounding and owner is None:
+                    owner, owner_label = name, phrase["label"]
+
+            if owner is not None and begins_here:
+                break
+
+        if owner is None:
+            # A stretch no remaining part is singing through
+            # (a rest all of them share). Not a page.
             continue
 
-        merged.append(phrase)
+        tail.append({
+            "start": start,
+            "end": end,
+            "label": f"{owner}: {owner_label}",
+            # Whose phrase this is, so a panel that draws
+            # words can fetch that part's rather than yours
+            # (which has none here - you have finished).
+            "part": owner
+        })
 
-    return own_phrases + merged
+    return own_phrases + tail
 
 
 def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
@@ -691,6 +720,8 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
         if line.strip()
     ]
 
+    from notes import is_rest
+
     phrases = []
 
     for position, (first, last) in enumerate(found):
@@ -701,9 +732,27 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
         else:
             label = " ".join(piece.pitches[first:first + 5])
 
+        # A page is the singing, not the silence after it.
+        # Piece.phrases() hands a phrase every note up to the
+        # next line's first - which for a practice slice
+        # (Compare, the guide track) is what you want, since
+        # the rest is where the take ends. For a PAGE it is
+        # wrong: a rest between phrases is nobody's, and a
+        # trailing bar of rest in a several-tune song is not
+        # silence at all but another voice still going. Cut
+        # the page at the last sung note; the gap up to the
+        # next page's start is left unowned, and the panels
+        # already cope with that (a page's notes are filtered
+        # by its own window, and the next page begins at its
+        # own first note).
+        last_sung = last
+
+        while last_sung > first and is_rest(piece.pitches[last_sung]):
+            last_sung -= 1
+
         phrases.append({
             "start": time_at(first),
-            "end": time_at(last + 1),
+            "end": time_at(last_sung + 1),
             "label": f"{position + 1}. {label}"
         })
 

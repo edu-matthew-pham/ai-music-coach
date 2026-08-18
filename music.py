@@ -405,54 +405,12 @@ def phrases_from_lyrics(pitches, durations, lyric_text):
             last = starts[position + 1] - 1
 
         else:
-            last = _last_phrase_end(pitches, first)
+            last = len(pitches) - 1
 
         if last >= first:
             phrases.append((first, last))
 
     return phrases
-
-
-def _last_phrase_end(pitches, first):
-    """
-    Where the final phrase ends.
-
-    Every phrase but the last ends where the next begins,
-    which puts a rest between two lines with the line before
-    it - the breath at the end of a phrase is part of that
-    phrase. The last phrase has no next line to stop it, and
-    used to run to the piece's final note, rests included.
-    That was harmless when a piece's own trailing rest meant
-    silence. In a song with several tunes (PLAN-multi-part.md)
-    it means "another voice is still going": a round's first
-    voice ends four bars before the piece does, and its last
-    line was swallowing all four - drawn three times the
-    length of its other lines, and the whole page's scale
-    with it.
-
-    So the last phrase now ends at its last sung note, plus
-    one closing rest if there is one - the same breath every
-    other phrase keeps - and no more. A piece with no trailing
-    rest at all is unchanged, and so is a piece with exactly
-    one; only a run of trailing rests is cut, and only to its
-    first.
-    """
-
-    last = len(pitches) - 1
-
-    # Walk back over the trailing run of rests, if any.
-    end_of_singing = last
-
-    while end_of_singing >= first and is_rest(pitches[end_of_singing]):
-        end_of_singing -= 1
-
-    if end_of_singing < first:
-        # Nothing sung in the last phrase at all (a lyric-
-        # less tail); leave it exactly as it was.
-        return last
-
-    # Keep one closing rest as the breath, when there is one.
-    return min(end_of_singing + 1, last)
 
 
 def read_lyrics(lyric_text, note_count):

@@ -791,8 +791,10 @@ def test_pages_carry_on_with_other_parts_once_yours_has_finished():
         assert ph["part"] != "Voice 1"
         assert ph["label"].startswith(ph["part"] + ":")
 
-    # No hole between pages, and coverage right to the end.
-    for earlier, later in zip(phrases, phrases[1:]):
+    # No hole from your last page into the tail, none within
+    # it, and coverage right to the end.
+    joined = [own[-1]] + carried
+    for earlier, later in zip(joined, joined[1:]):
         assert abs(later["start"] - earlier["end"]) < 1e-6, (
             f"gap between {earlier['label']!r} and {later['label']!r}"
         )
@@ -926,12 +928,11 @@ def test_a_middle_finisher_carries_on_with_both_remaining_voices():
     own = [ph for ph in phrases if not ph.get("part")]
     carried = [ph for ph in phrases if ph.get("part")]
 
-    # Lead's own four lines, ending where its singing does
-    # (one closing rest kept - beat 16 is where the last
-    # sung note ends, so the phrase ends at the next rest,
-    # 4 beats = 2s at 120bpm on).
+    # Lead's own four lines, each ending where its singing
+    # does - beat 16 for the last, no rest glued on.
     assert len(own) == 4
     lead_end = own[-1]["end"]
+    assert abs(lead_end - 16 * (60.0 / tempo)) < 1e-6
 
     assert carried, "nothing carried on after Lead finished"
 
@@ -940,19 +941,26 @@ def test_a_middle_finisher_carries_on_with_both_remaining_voices():
     # earlier), and not with a hole.
     assert abs(carried[0]["start"] - lead_end) < 1e-6
 
-    # Alto and Tenor both start a phrase the moment Lead
-    # finishes: Alto one long line to the end, Tenor two
-    # shorter ones. The stated rule is that the finer cut
-    # wins the pages (closest thing to your phrasing once you
-    # have stopped) - so the tail is Tenor's two pages, and
-    # Alto's single long phrase is not used as a page break.
-    # Alto is still heard and drawn throughout; only its
-    # break is not taken.
-    assert [ph["part"] for ph in carried] == ["Tenor", "Tenor"]
-    assert len(carried) == 2
+    # After Lead's last sung note (beat 16 = 8.0s at 120bpm)
+    # the pages are the UNION of Alto's and Tenor's phrase
+    # boundaries: Alto breaks at 20 and 24 beats, Tenor at 24
+    # only, so the tail is cut at 16, 20, 24 and the piece's
+    # end - three pages, as fine as either part cuts it. Each
+    # is owned by the part whose phrase begins at its cut.
+    spb = 60.0 / tempo
+    assert [(round(ph["start"] / spb), round(ph["end"] / spb), ph["part"])
+            for ph in carried] == [
+        (16, 20, "Alto"),
+        (20, 24, "Alto"),
+        (24, 32, "Tenor"),
+    ]
 
-    # No gaps, full coverage.
-    for earlier, later in zip(phrases, phrases[1:]):
+    # No hole from your last page into the tail, none within
+    # the tail, and coverage to the piece's end. (Gaps between
+    # your OWN pages are allowed - a rest between two of your
+    # lines belongs to neither page.)
+    joined = [own[-1]] + carried
+    for earlier, later in zip(joined, joined[1:]):
         assert abs(later["start"] - earlier["end"]) < 1e-6, (
             f"gap between {earlier['label']!r} and {later['label']!r}"
         )
