@@ -604,7 +604,7 @@
 				<div class="lyrics-and-notes singstar" class:preview-wide={singstarPreviewWide}>
 					{#if panels.notes}
 						<div class="notes-cell">
-							<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} {singing} />
+							<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} {singing} {parts} />
 						</div>
 					{/if}
 					{#if panels.lyrics}
@@ -622,7 +622,7 @@
 					{/if}
 					{#if panels.notes}
 						<div class="notes-cell">
-							<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} {singing} />
+							<NotesPanel {notes} {timeline} {phrases} {playhead} {narrow} {singing} {parts} />
 						</div>
 					{/if}
 				</div>

@@ -67,7 +67,6 @@ export function ensureNoteLayer(name: string, showing: boolean): void {
 		noteLayers[name] = showing;
 	}
 }
-
 // Whether the note view shows a dimmed preview of the next
 // phrase below the current one - lives here rather than as
 // component state for the usual reason: it should survive

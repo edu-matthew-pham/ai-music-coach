@@ -31,10 +31,12 @@
 		playhead: number;
 		narrow?: boolean;
 		singing?: string | null;
+		parts?: string[];
 	}
 
 	let {
-		notes, timeline, phrases, playhead, narrow = false, singing = null
+		notes, timeline, phrases, playhead, narrow = false, singing = null,
+		parts = []
 	}: Props = $props();
 
 	// Whichever tunes this song actually has get a toggle
@@ -51,6 +53,7 @@
 		if (singing && singing in noteLayers && !noteLayers[singing]) {
 			noteLayers[singing] = true;
 		}
+
 	});
 
 	const ROW_HEIGHT = 14;
@@ -213,6 +216,78 @@
 		return (time - page.phrase.start) * page.pxPerSecond;
 	}
 
+	// A word label's font-size scales with --notes-scale (see
+	// the .note-word rule below), but the row geometry these
+	// functions place it against does not - boxes stay a fixed
+	// ROW_HEIGHT regardless of scale, by design, so pitch stays
+	// meaningful at any zoom. That mismatch is exactly what let
+	// a label collide with content two rows away at 140%+ zoom:
+	// a bigger label needs more of the fixed rows below it
+	// before it is actually clear, not just one. LABEL_OFFSET is
+	// the same 10px the layout always used, now scaled the same
+	// way the text itself is; rowsNeeded is how many ROW_HEIGHT-
+	// sized rows that scaled offset actually reaches into.
+	const LABEL_OFFSET = 10;
+
+	function labelOffset(): number {
+		return LABEL_OFFSET * notesScale.value;
+	}
+
+	function labelRow(page: Page, note: MixerNote, pageNotes: MixerNote[]): number {
+		const rowsNeeded = Math.max(1, Math.ceil(labelOffset() / ROW_HEIGHT));
+		let row = note.midi - rowsNeeded;
+		let pushes = 0;
+
+		while (
+			pushes < 3 &&
+			rangeOccupied(row, row + rowsNeeded - 1, note.start, note.length, pageNotes)
+		) {
+			row -= rowsNeeded;
+			pushes += 1;
+		}
+
+		return row;
+	}
+
+	// Every row the label's own height actually spans, not just
+	// the one it lands in - a label two rows tall at 2x zoom
+	// that only checked its lowest row could still collide with
+	// something in the row just above that, same mistake in a
+	// different place.
+	function rangeOccupied(
+		lowMidi: number,
+		highMidi: number,
+		start: number,
+		length: number,
+		pageNotes: MixerNote[]
+	): boolean {
+		return pageNotes.some(
+			(other) =>
+				other.midi >= lowMidi &&
+				other.midi <= highMidi &&
+				other.start < start + length &&
+				other.start + other.length > start
+		);
+	}
+
+	// The actual pixel y for a word label, given the row
+	// labelRow found - +labelOffset(), not +ROW_HEIGHT+
+	// labelOffset(), because labelRow already names the row
+	// closest to the note's own (see its own comment): the
+	// label sits labelOffset() into whichever row that is.
+	function labelY(page: Page, note: MixerNote, pageNotes: MixerNote[]): number {
+		return y(page, labelRow(page, note, pageNotes)) + labelOffset();
+	}
+
+	// Split-cell labels (two different tunes' words at the
+	// same pitch and moment) start from the same collision-
+	// avoided row as an ordinary label, then stack by index
+	// within the group - also scaled, for the same reason as
+	// labelOffset() above.
+	function stackLineHeight(): number {
+		return 9 * notesScale.value;
+	}
+
 	// Hz to the same vertical scale the boxes use, as a
 	// continuous value - a quarter-tone sharp draws a
 	// quarter of a row high, which is the whole point of a
@@ -258,6 +333,75 @@
 		}
 		if (current) paths.push(current);
 		return paths;
+	}
+
+	// Two DIFFERENT sung tunes landing on the same pitch at
+	// overlapping times - the exact shape a partner song's
+	// harmonised moments produce - drew as two identical,
+	// fully-overlapping rects with no way to tell one from
+	// the other. Same fix as the violin's split-position
+	// marks: a note belonging to more than one tune splits
+	// its box into equal horizontal bands, one per tune,
+	// rather than either box winning by drawing last.
+	// Deliberately cross-tune only: two consecutive notes of
+	// the SAME tune sitting on the same pitch (an ordinary
+	// repeated note) are not a collision and must render as
+	// two separate, ordinary boxes, not a split one - caught
+	// by checking against the real example data, where
+	// Three Blind Mice's own back-to-back repeated notes
+	// were wrongly grouping with each other before the
+	// candidate.layer === note.layer check was added.
+	interface NoteGroup {
+		notes: MixerNote[];
+		start: number;
+		length: number;
+		midi: number;
+	}
+
+	function collisionGroups(pageNotes: MixerNote[]): NoteGroup[] {
+		const tuneNotes = parts.length > 1
+			? pageNotes.filter((note) => parts.includes(note.layer))
+			: [];
+		const others = parts.length > 1
+			? pageNotes.filter((note) => !parts.includes(note.layer))
+			: pageNotes;
+
+		const used = new Set<MixerNote>();
+		const groups: NoteGroup[] = [];
+
+		for (const note of tuneNotes) {
+			if (used.has(note)) continue;
+
+			const cluster = [note];
+			used.add(note);
+
+			for (const candidate of tuneNotes) {
+				if (
+					used.has(candidate) ||
+					candidate.midi !== note.midi ||
+					candidate.layer === note.layer
+				) continue;
+
+				const overlaps = candidate.start < note.start + note.length &&
+					candidate.start + candidate.length > note.start;
+
+				if (overlaps) {
+					cluster.push(candidate);
+					used.add(candidate);
+				}
+			}
+
+			const start = Math.min(...cluster.map((n) => n.start));
+			const end = Math.max(...cluster.map((n) => n.start + n.length));
+
+			groups.push({ notes: cluster, start, length: end - start, midi: note.midi });
+		}
+
+		for (const note of others) {
+			groups.push({ notes: [note], start: note.start, length: note.length, midi: note.midi });
+		}
+
+		return groups;
 	}
 </script>
 
@@ -307,39 +451,92 @@
 			{/each}
 		{/if}
 
-		{#each page.notes as note}
-			<g>
-				<rect
-					class="note-box"
-					x={x(page, note.start)}
-					y={y(page, note.midi) + 1}
-					width={Math.max(note.length * page.pxPerSecond - 1, 2)}
-					height={ROW_HEIGHT - 2}
-					fill={note.colour}
-					fill-opacity={note.layer === "Melody" ? 0.22 : 0.14}
-					stroke={note.colour}
-				/>
-				{#if note.length * page.pxPerSecond > 20}
-					<text
-						class="note-label"
-						x={x(page, note.start) + (note.length * page.pxPerSecond) / 2}
-						y={y(page, note.midi) + ROW_HEIGHT / 2}
+		{#each collisionGroups(page.notes) as group}
+			{#if group.notes.length === 1}
+				{@const note = group.notes[0]}
+				<g>
+					<rect
+						class="note-box"
+						x={x(page, note.start)}
+						y={y(page, note.midi) + 1}
+						width={Math.max(note.length * page.pxPerSecond - 1, 2)}
+						height={ROW_HEIGHT - 2}
 						fill={note.colour}
-					>
-						{noteName(note.midi)}
-					</text>
-				{/if}
-				{#if note.word && notesShowLabels.value}
-					<text
-						class="note-word"
-						x={x(page, note.start) + (note.length * page.pxPerSecond) / 2}
-						y={y(page, note.midi) + ROW_HEIGHT + 10}
-					>
-						{note.word}
-					</text>
-				{/if}
-			</g>
+						fill-opacity={note.layer === "Melody" ? 0.22 : 0.14}
+						stroke={note.colour}
+					/>
+					{#if note.length * page.pxPerSecond > 20}
+						<text
+							class="note-label"
+							x={x(page, note.start) + (note.length * page.pxPerSecond) / 2}
+							y={y(page, note.midi) + ROW_HEIGHT / 2}
+							fill={note.colour}
+						>
+							{noteName(note.midi)}
+						</text>
+					{/if}
+					{#if note.word && notesShowLabels.value}
+						<text
+							class="note-word"
+							x={x(page, note.start) + (note.length * page.pxPerSecond) / 2}
+							y={labelY(page, note, page.notes)}
+						>
+							{note.word}
+						</text>
+					{/if}
+				</g>
+			{:else}
+				<!-- Several sung tunes share this pitch at this
+				     moment - split-circle's own rule, applied to
+				     a box instead of a mark: each tune keeps its
+				     own true timing (its own x and width), but
+				     the row's height divides into equal bands so
+				     both draw fully rather than one overlapping
+				     the other. -->
+				{@const bandHeight = (ROW_HEIGHT - 2) / group.notes.length}
+				{@const groupLabelY = labelY(page, group.notes[0], page.notes)}
+				<g>
+					{#each group.notes as note, bandIndex}
+						<rect
+							class="note-box note-box-split"
+							x={x(page, note.start)}
+							y={y(page, note.midi) + 1 + bandIndex * bandHeight}
+							width={Math.max(note.length * page.pxPerSecond - 1, 2)}
+							height={bandHeight}
+							fill={note.colour}
+							fill-opacity={0.32}
+							stroke={note.colour}
+						/>
+						{#if note.word && notesShowLabels.value}
+							<!-- Two different tunes' words, stacked
+							     one above the other rather than
+							     printed on top of each other - the
+							     row-avoided position above is the
+							     first line; each further tune in the
+							     group takes the next line down. -->
+							<text
+								class="note-word"
+								x={x(page, note.start) + (note.length * page.pxPerSecond) / 2}
+								y={groupLabelY + bandIndex * stackLineHeight()}
+								style="fill: {note.colour}"
+							>
+								{note.word}
+							</text>
+						{/if}
+					{/each}
+					{#if group.length * page.pxPerSecond > 20}
+						<text
+							class="note-label note-label-split"
+							x={x(page, group.start) + (group.length * page.pxPerSecond) / 2}
+							y={y(page, group.midi) + ROW_HEIGHT / 2}
+						>
+							{noteName(group.midi)}
+						</text>
+					{/if}
+				</g>
+			{/if}
 		{/each}
+
 
 		{#if showPlayhead && showLiveTrace.value}
 			{#each tracePaths(page) as segment}
@@ -580,6 +777,17 @@
 		stroke-width: 1;
 		rx: 2;
 	}
+	.note-box-split {
+		/* A thin gap between bands (rather than a stroke,
+		   which would draw around all four sides of each
+		   band and read as two boxes stacked with a border
+		   between, not one cell shared two ways) is what a
+		   split violin-position mark also relies on for the
+		   same reason - the division should read as one
+		   thing split, not two things touching. */
+		rx: 0;
+		stroke-width: 0.5;
+	}
 	.note-label {
 		/* The pitch-box letter/number, plus chord-name and
 		   note-word below - the three read-from-a-distance
@@ -595,6 +803,11 @@
 		text-anchor: middle;
 		dominant-baseline: middle;
 		pointer-events: none;
+	}
+	.note-label-split {
+		/* No per-tune colour on purpose - a shared pitch
+		   label over a split box belongs to neither tune. */
+		fill: var(--body-text-color);
 	}
 	.chord-name {
 		font-size: calc(11px * var(--notes-scale, 1));
