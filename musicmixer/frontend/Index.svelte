@@ -473,7 +473,7 @@
 					{/each}
 					<label class="mixer-toggle parts-toggle">
 						<input type="checkbox" bind:checked={partsSideBySide.value} />
-						Show both parts
+						Show all parts
 					</label>
 				</div>
 			{/if}

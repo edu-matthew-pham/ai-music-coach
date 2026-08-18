@@ -38,6 +38,7 @@ from examples import (
     load_twinkle,
     load_wellerman,
     load_partner_songs,
+    load_row_your_boat,
 )
 
 
@@ -228,6 +229,10 @@ with gr.Blocks(
 
                 partner_button = gr.Button(
                     "Load partner songs"
+                )
+
+                round_button = gr.Button(
+                    "Load Row Your Boat"
                 )
 
             midi_upload = gr.File(
@@ -839,6 +844,17 @@ with gr.Blocks(
         fn=load_example(
             "Three Blind Mice and Frere Jacques",
             load_partner_songs
+        ),
+        outputs=example_outputs
+    ).then(
+        fn=guard(build_mixer),
+        inputs=mixer_inputs,
+        outputs=mixer_output
+    )
+
+    round_button.click(
+        fn=load_example(
+            "Row Row Row Your Boat", load_row_your_boat
         ),
         outputs=example_outputs
     ).then(

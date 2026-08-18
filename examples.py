@@ -426,3 +426,107 @@ def load_partner_songs():
     )
 
     return pitches, durations, lyrics, "F", chart, 66
+
+
+# Row Row Row Your Boat, as a round - three voices on the
+# same tune, each entering two bars behind the last.
+# Traditional, English, long out of copyright.
+#
+# Transcribed directly from a real four-part MusicXML
+# arrangement rather than from memory or a photo of a score -
+# an earlier pass here guessed wrong twice (4/4 instead of the
+# real 3/4, then a dotted rhythm for "Merrily" that wasn't in
+# the real file either) before the actual source settled it.
+# The fourth part in that arrangement is a D/A bass drone with
+# no lyrics - real, but not a sung voice, so it isn't one of
+# the parts here.
+#
+# Every note lands on a beat that is a tone of D major - true
+# throughout, checked directly, which is what lets any number
+# of voices enter on the same tune with no chord change needed
+# between them.
+
+_ROW_PITCHES = (
+    "D4 D4 D4 E4 F#4 F#4 E4 F#4 G4 A4 "
+    "D5 D5 D5 A4 A4 A4 F#4 F#4 F#4 D4 D4 D4 "
+    "A4 G4 F#4 E4 D4"
+)
+
+_ROW_DURATIONS = (
+    "1.5 1.5 1.0 0.5 1.5 1.0 0.5 1.0 0.5 3.0 "
+    "0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 "
+    "1.0 0.5 1.0 0.5 3.0"
+)
+
+_ROW_LYRICS = (
+    "Row row row your boat\n"
+    "Gent- ly down the stream.\n"
+    "Mer- ri- ly, mer- ri- ly, mer- ri- ly, mer- ri- ly,\n"
+    "Life is but a dream."
+)
+
+
+def _row_padded(before, after):
+    """
+    The round's own eight-bar tune (three beats a bar), with
+    bars of rest before and after it - invariant 9, long
+    silence is bars of rest, not one oversized length.
+    """
+
+    lead_pitches = " ".join(["R"] * before)
+    lead_durations = " ".join(["3"] * before)
+
+    tail_pitches = " ".join(["R"] * after)
+    tail_durations = " ".join(["3"] * after)
+
+    return (
+        " ".join(
+            part for part in (lead_pitches, _ROW_PITCHES, tail_pitches) if part
+        ),
+        " ".join(
+            part for part in
+            (lead_durations, _ROW_DURATIONS, tail_durations) if part
+        )
+    )
+
+
+def load_row_your_boat():
+    """
+    Row Row Row Your Boat, as a three-voice round.
+
+    Every voice sings the same eight-bar tune; each enters
+    two bars behind the last, so the song runs twelve bars in
+    total - the same offset the real four-part source uses
+    between its own three vocal lines. A round needs no
+    independent second melody - it is the same tune offset
+    against itself, so this is the divider mechanism's
+    simplest possible case, and a good one to check the
+    mechanism against before trusting it on anything more
+    complex.
+    """
+
+    voice_one_pitches, voice_one_durations = _row_padded(0, 4)
+    voice_two_pitches, voice_two_durations = _row_padded(2, 2)
+    voice_three_pitches, voice_three_durations = _row_padded(4, 0)
+
+    pitches = (
+        "=== Voice 1 ===\n" + voice_one_pitches + "\n"
+        "=== Voice 2 ===\n" + voice_two_pitches + "\n"
+        "=== Voice 3 ===\n" + voice_three_pitches
+    )
+
+    durations = (
+        "=== Voice 1 ===\n" + voice_one_durations + "\n"
+        "=== Voice 2 ===\n" + voice_two_durations + "\n"
+        "=== Voice 3 ===\n" + voice_three_durations
+    )
+
+    lyrics = (
+        "=== Voice 1 ===\n" + _ROW_LYRICS + "\n"
+        "=== Voice 2 ===\n" + _ROW_LYRICS + "\n"
+        "=== Voice 3 ===\n" + _ROW_LYRICS
+    )
+
+    chart = "| " + " | ".join(["D . ."] * 12) + " |"
+
+    return pitches, durations, lyrics, "D", chart, 120

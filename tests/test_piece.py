@@ -535,3 +535,53 @@ def test_no_partner_song_note_clashes_with_its_chord():
                 )
 
             beat += length
+
+
+# Row Row Row Your Boat, as a round - three voices on the
+# same tune, offset - the divider mechanism's simplest case.
+# Values pinned here are transcribed from a real four-part
+# MusicXML source, not guessed.
+
+def test_row_your_boat_is_three_voices_of_the_same_tune():
+    from examples import load_row_your_boat
+
+    pitches, durations, lyrics, key, chart, tempo = load_row_your_boat()
+
+    parts = dict(Piece.read_parts(
+        pitches, durations, lyrics, key, chart, tempo
+    ))
+
+    assert set(parts) == {"Voice 1", "Voice 2", "Voice 3"}
+
+    sung = {
+        name: [p for p in piece.pitches if p != "R"]
+        for name, piece in parts.items()
+    }
+
+    assert abs(parts["Voice 1"].beats() - 36.0) < 1e-9
+    assert abs(parts["Voice 2"].beats() - 36.0) < 1e-9
+    assert abs(parts["Voice 3"].beats() - 36.0) < 1e-9
+
+    # Same tune - identical once rests are discounted.
+    assert sung["Voice 1"] == sung["Voice 2"] == sung["Voice 3"]
+
+
+def test_each_voice_enters_two_bars_behind_the_last():
+    from examples import load_row_your_boat
+    from notes import is_rest
+
+    pitches, durations, lyrics, key, chart, tempo = load_row_your_boat()
+
+    parts = dict(Piece.read_parts(
+        pitches, durations, lyrics, key, chart, tempo
+    ))
+
+    def first_sung(piece):
+        return next(
+            start for start, pitch in zip(piece.starts(), piece.pitches)
+            if not is_rest(pitch)
+        )
+
+    assert first_sung(parts["Voice 1"]) == 0.0
+    assert abs(first_sung(parts["Voice 2"]) - 6.0) < 1e-9
+    assert abs(first_sung(parts["Voice 3"]) - 12.0) < 1e-9
