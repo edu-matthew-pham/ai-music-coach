@@ -228,7 +228,7 @@ with gr.Blocks(
                 )
 
                 partner_button = gr.Button(
-                    "Load partner songs"
+                    "Load Frere Jacques / 3BM"
                 )
 
                 round_button = gr.Button(
