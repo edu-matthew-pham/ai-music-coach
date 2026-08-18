@@ -53,7 +53,7 @@
 		</span>
 	</label>
 	{#if engine.loopFrom !== null && engine.loopTo !== null}
-		<label class="repeat">
+		<label class="mixer-toggle repeat">
 			<input
 				type="checkbox"
 				bind:checked={engine.repeat}
@@ -62,7 +62,7 @@
 			Repeat
 		</label>
 	{/if}
-	<label class="repeat">
+	<label class="mixer-toggle repeat">
 		<input
 			type="checkbox"
 			checked={mic.state === "on" || mic.state === "starting"}
@@ -75,7 +75,7 @@
 	{:else if mic.state === "error"}
 		<span class="mic-note">Mic could not start</span>
 	{:else if mic.state === "on"}
-		<label class="repeat">
+		<label class="mixer-toggle repeat">
 			<input type="checkbox" bind:checked={mic.recordingEnabled} />
 			Record
 		</label>
@@ -86,7 +86,7 @@
 		{/if}
 	{/if}
 	{#if hasTimeline}
-		<label class="repeat">
+		<label class="mixer-toggle repeat">
 			<input type="checkbox" bind:checked={follow} />
 			Follow
 		</label>
@@ -110,12 +110,12 @@
 		font-size: 11px;
 		color: var(--body-text-color-subdued);
 	}
+	/* Base layout comes from .mixer-toggle (Index.svelte);
+	   kept its own larger checkbox and font, and the fix
+	   noted below, since those look like deliberate choices
+	   for this row rather than accidental drift. */
 	.repeat {
 		font-size: 13px;
-		display: flex;
-		align-items: center;
-		gap: 4px;
-		cursor: pointer;
 	}
 	.repeat input[type="checkbox"] {
 		/* Gradio's theme resets input appearance broadly
@@ -124,7 +124,6 @@
 		   left to render once checked. Forced back on and
 		   given an explicit colour rather than an inherited
 		   one that might match its own background. */
-		appearance: auto;
 		accent-color: #2e7d32;
 		width: 15px;
 		height: 15px;

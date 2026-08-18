@@ -375,7 +375,7 @@
 <div class="notes-panel" style="--notes-scale: {notesScale.value}">
 	<div class="notes-toggles">
 		{#each Object.keys(noteLayers) as name}
-			<label class="layer-toggle">
+			<label class="mixer-toggle layer-toggle">
 				<input type="checkbox" bind:checked={noteLayers[name]} />
 				{name}
 			</label>
@@ -385,7 +385,7 @@
 			Preview next phrase
 		</label>
 		{#if showNextPreview.value}
-			<label class="layer-toggle" class:disabled={narrow}>
+			<label class="mixer-toggle layer-toggle" class:disabled={narrow}>
 				<input
 					type="checkbox"
 					bind:checked={previewSideBySide.value}
@@ -394,16 +394,16 @@
 				Side by side
 			</label>
 		{/if}
-		<label class="layer-toggle">
+		<label class="mixer-toggle layer-toggle">
 			<input type="checkbox" bind:checked={notesShowLabels.value} />
 			Word labels
 		</label>
-		<label class="layer-toggle">
+		<label class="mixer-toggle layer-toggle">
 			<input type="checkbox" bind:checked={notesShowChords.value} />
 			Chords
 		</label>
 		{#if mic.state === "on" || mic.trace.length}
-			<label class="layer-toggle">
+			<label class="mixer-toggle layer-toggle">
 				<input type="checkbox" bind:checked={showLiveTrace.value} />
 				Live pitch
 			</label>
@@ -475,19 +475,10 @@
 		gap: 12px;
 		margin: 4px 0;
 	}
-	.layer-toggle {
-		font-size: 11px;
-		color: var(--body-text-color-subdued);
-		display: flex;
-		align-items: center;
-		gap: 3px;
-		cursor: pointer;
-	}
+	/* Base layout comes from .mixer-toggle (Index.svelte);
+	   this keeps only what's genuinely this panel's own. */
 	.layer-toggle input[type="checkbox"] {
-		appearance: auto;
 		accent-color: #607d8b;
-		width: 12px;
-		height: 12px;
 	}
 	.preview-toggle {
 		margin-left: auto;

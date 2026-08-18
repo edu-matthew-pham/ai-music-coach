@@ -42,15 +42,16 @@
 		notes: MixerNote[];
 		timeline: MixerBar[];
 		phrases: MixerPhrase[];
+		phrasesByPart?: Record<string, MixerPhrase[]>;
 		playhead: number;
-		mode?: "paired" | "windowed" | "tab" | "singstar";
+		mode?: "paired" | "windowed" | "tab" | "singstar" | "parts";
 		singing?: string | null;
 		parts?: string[];
 	}
 
 	let {
-		notes, timeline, phrases, playhead, mode = "paired",
-		singing = null, parts = []
+		notes, timeline, phrases, phrasesByPart = {}, playhead,
+		mode = "paired", singing = null, parts = []
 	}: Props = $props();
 
 	// Whose words these are. An ordinary song has one sung
@@ -77,6 +78,55 @@
 		if (!effectivePhrases.length) return -1;
 		const found = effectivePhrases.findIndex((phrase) => playhead < phrase.end);
 		return found === -1 ? effectivePhrases.length - 1 : found;
+	});
+
+	// One column per tune, each following the same rule the
+	// single-tune path above does: its own words, its own
+	// phrase list (Python's phrases_by_part when it has one,
+	// falling back to "whole tune" the same way effectivePhrases
+	// does), its own current line by the same playhead, sung
+	// lines dropping off the top exactly as paired's do. This
+	// is deliberately the same shape as the single-tune block
+	// above rather than a generalisation of it - parts mode is
+	// only reachable when there is more than one tune, so the
+	// ordinary path never pays for this.
+	interface PartColumn {
+		name: string;
+		words: MixerNote[];
+		visible: MixerPhrase[];
+		current: MixerPhrase | null;
+	}
+
+	const partColumns = $derived.by((): PartColumn[] => {
+		return parts.map((name) => {
+
+			const tuneWords = notes.filter(
+				(note) => note.layer === name && note.word
+			);
+
+			let tunePhrases = phrasesByPart[name] ?? [];
+
+			if (!tunePhrases.length && tuneWords.length) {
+				const end = tuneWords.reduce(
+					(max, note) => Math.max(max, note.start + note.length), 0
+				);
+				tunePhrases = [{ start: 0, end, label: name }];
+			}
+
+			const foundIndex = tunePhrases.length
+				? (() => {
+					const found = tunePhrases.findIndex((phrase) => playhead < phrase.end);
+					return found === -1 ? tunePhrases.length - 1 : found;
+				})()
+				: -1;
+
+			return {
+				name,
+				words: tuneWords,
+				visible: foundIndex >= 0 ? tunePhrases.slice(foundIndex) : [],
+				current: foundIndex >= 0 ? tunePhrases[foundIndex] : null
+			};
+		});
 	});
 
 	const currentPhrase = $derived(
@@ -442,9 +492,12 @@
 		}
 	});
 
-	function wordsIn(phrase: MixerPhrase | null): MixerNote[] {
+	function wordsIn(
+		phrase: MixerPhrase | null,
+		source: MixerNote[] = words
+	): MixerNote[] {
 		if (!phrase) return [];
-		return words.filter(
+		return source.filter(
 			(note) => note.start >= phrase.start && note.start < phrase.end
 		);
 	}
@@ -570,12 +623,15 @@
 	// once per phrase inside the {#each} below via {@const},
 	// so nothing computes for a phrase that isn't being
 	// rendered.
-	function lineFor(phrase: MixerPhrase): {
+	function lineFor(
+		phrase: MixerPhrase,
+		source: MixerNote[] = words
+	): {
 		words: MixerNote[];
 		split: { leadIn: RhythmEvent[]; rest: RhythmEvent[] };
 		eventsByWord: Map<number, RhythmEvent[]>;
 	} {
-		const phraseWords = wordsIn(phrase);
+		const phraseWords = wordsIn(phrase, source);
 		const split = splitLeadIn(allEvents(phrase), phraseWords);
 		return { words: phraseWords, split, eventsByWord: eventsByWord(phraseWords, split.rest) };
 	}
@@ -583,9 +639,8 @@
 
 {#snippet wordSpan(note: MixerNote, i: number, eventsMap: Map<number, RhythmEvent[]>, showSung: boolean)}<span class="word-unit">{#if eventsMap.get(i)}<span class="chord-tags">{#each eventsMap.get(i) as event}{#if event.type === "bar"}<span class="bar-tick">|</span>{:else}<span class="chord-tag">{event.name}</span>{/if}{/each}</span>{/if}<span class="sentence-word" class:sung={showSung && note.start <= playhead}>{note.word}</span></span>{separatorAfter(note.word)}{/snippet}
 
-{#snippet lyricsLine(phrase: MixerPhrase)}
-	{@const isCurrent = phrase === currentPhrase}
-	{@const line = lineFor(phrase)}
+{#snippet lyricsLine(phrase: MixerPhrase, isCurrent: boolean, source: MixerNote[] = words)}
+	{@const line = lineFor(phrase, source)}
 	<div class="lyrics-line" class:current={isCurrent}>
 		{#if line.split.leadIn.length}
 			<p class="lead-in-line" class:plain={!isCurrent}>
@@ -598,22 +653,23 @@
 	</div>
 {/snippet}
 
-{#if currentPhrase}
+{#if currentPhrase || (mode === "parts" && partColumns.some((column) => column.current))}
 	<div
 		class="lyrics-panel"
 		class:mode-windowed={mode === "windowed"}
 		class:mode-tab={mode === "tab"}
 		class:tab-single={mode === "tab" && tabLayout === "single"}
 		class:mode-singstar={mode === "singstar"}
+		class:mode-parts={mode === "parts"}
 		style="--lyrics-scale: {lyricsScale.value}"
 		bind:this={panelElement}
 	>
 		<div class="lyrics-toggles">
-			<label class="chords-toggle">
+			<label class="mixer-toggle chords-toggle">
 				<input type="checkbox" bind:checked={lyricsShowChords.value} />
 				Chords
 			</label>
-			<label class="chords-toggle">
+			<label class="mixer-toggle chords-toggle">
 				<input type="checkbox" bind:checked={lyricsShowBars.value} />
 				Bars
 			</label>
@@ -648,7 +704,24 @@
 			</div>
 		</div>
 
-		{#if mode === "tab" && tabLayout === "columns"}
+		{#if mode === "parts"}
+			<!-- One column per tune, each running paired's own
+			     rule independently: its own words, its own
+			     current line by the same playhead, sung lines
+			     dropping off the top. Reuses lyricsLine exactly
+			     as every other mode does - only which words and
+			     which phrase list feed it differs. -->
+			<div class="lyrics-columns lyrics-parts">
+				{#each partColumns as column (column.name)}
+					<div class="lyrics-column" class:my-part={column.name === singing}>
+						<p class="part-column-label">{column.name}</p>
+						{#each column.visible as phrase (phrase.start)}
+							{@render lyricsLine(phrase, phrase === column.current, column.words)}
+						{/each}
+					</div>
+				{/each}
+			</div>
+		{:else if mode === "tab" && tabLayout === "columns"}
 			<!-- bind:this on the columns box gives measure() the
 			     box's position for the height budget, and a root
 			     to query a typical rendered line from - see the
@@ -662,7 +735,7 @@
 						bind:this={columnElements[colIndex]}
 					>
 						{#each column as phrase (phrase.start)}
-							{@render lyricsLine(phrase)}
+							{@render lyricsLine(phrase, phrase === currentPhrase)}
 						{/each}
 					</div>
 				{/each}
@@ -681,7 +754,7 @@
 			<div class="lyrics-list" class:mode-windowed={mode === "windowed"}>
 				{#each displayPhrases as phrase, index (phrase.start)}
 					<div bind:this={phraseElements[index]} animate:flip={{ duration: 220 }}>
-						{@render lyricsLine(phrase)}
+						{@render lyricsLine(phrase, phrase === currentPhrase)}
 					</div>
 				{/each}
 			</div>
@@ -796,20 +869,13 @@
 	.panel-scale-value:disabled {
 		cursor: default;
 	}
+	/* Base layout comes from .mixer-toggle (Index.svelte);
+	   this keeps only what's genuinely this panel's own. */
 	.chords-toggle {
-		font-size: 11px;
-		color: var(--body-text-color-subdued);
-		display: flex;
-		align-items: center;
-		gap: 3px;
-		cursor: pointer;
 		width: fit-content;
 	}
 	.chords-toggle input[type="checkbox"] {
-		appearance: auto;
 		accent-color: #607d8b;
-		width: 12px;
-		height: 12px;
 	}
 	.sentence {
 		font-size: calc(20px * var(--lyrics-scale, 1));
@@ -934,6 +1000,35 @@
 		flex-direction: column;
 		gap: 10px;
 		flex: 0 0 auto;
+	}
+
+	/* Parts mode wants the opposite trade-off from Tab's
+	   columns above: a handful of short columns sharing the
+	   available width evenly and wrapping to a new row on a
+	   narrow screen, rather than fixed-width columns that
+	   horizontally scroll. Scoped so Tab's own column sizing
+	   is untouched. */
+	.lyrics-parts {
+		flex-wrap: wrap;
+		width: auto;
+		min-width: 0;
+		overflow-x: visible;
+	}
+	.lyrics-parts .lyrics-column {
+		flex: 1 1 220px;
+		min-width: 180px;
+	}
+	.part-column-label {
+		margin: 0 0 4px;
+		font-size: 0.8rem;
+		font-weight: 600;
+		opacity: 0.65;
+		text-transform: uppercase;
+		letter-spacing: 0.02em;
+	}
+	.lyrics-column.my-part .part-column-label {
+		opacity: 1;
+		color: var(--color-accent, #2e7d32);
 	}
 	.lyrics-line {
 		/* No fixed width, no nowrap - a long line WRAPS across

@@ -69,6 +69,10 @@ export interface MixerValue {
 	timeline: MixerBar[];
 	notes: MixerNote[];
 	phrases: MixerPhrase[];
+	// Every tune's own phrases, by name - empty for an
+	// ordinary song. Lets the Lyrics panel show several
+	// singers' words side by side without a round trip.
+	phrases_by_part?: Record<string, MixerPhrase[]>;
 	diagrams: MixerDiagrams;
 	bpm?: number | null;
 	// The tunes a several-tune song is made of, and which

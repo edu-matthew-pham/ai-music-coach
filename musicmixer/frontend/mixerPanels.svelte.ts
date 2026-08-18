@@ -129,6 +129,14 @@ export const lyricsShowChords = $state({ value: true });
 // on purpose rather than duplicating it.
 export const lyricsShowBars = $state({ value: true });
 
+// Whether the Lyrics panel shows every tune's words at
+// once, one column per tune, in Tab and SingStar view - for
+// two singers reading off one screen. Only ever offered
+// when a song has more than one tune; off by default, so a
+// solo singer sees exactly what they saw before. Module-
+// scoped for the usual remount-survival reason.
+export const partsSideBySide = $state({ value: false });
+
 // Which instrument names exist is Python's to say, not this
 // file's: instrument_diagrams.py's INSTRUMENTS list is the
 // one home for that, sent every time as the keys of

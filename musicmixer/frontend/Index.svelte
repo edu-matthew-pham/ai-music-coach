@@ -17,7 +17,8 @@
 		viewPreset,
 		applyPreset,
 		showNextPreview,
-		previewSideBySide
+		previewSideBySide,
+		partsSideBySide
 	} from "./mixerPanels.svelte";
 	import Transport from "./Transport.svelte";
 	import TransportSettings from "./TransportSettings.svelte";
@@ -60,6 +61,7 @@
 	const timeline = $derived(gradio.props.value?.timeline ?? []);
 	const notes = $derived(gradio.props.value?.notes ?? []);
 	const phrases = $derived(gradio.props.value?.phrases ?? []);
+	const phrasesByPart = $derived(gradio.props.value?.phrases_by_part ?? {});
 
 	// The tunes of a several-tune song, and which one this
 	// person is singing. Both come straight from Python;
@@ -117,7 +119,14 @@
 	// showing at all. Replaces separately computed solo/
 	// tabView booleans, which let the same state be implied
 	// two different places and drift out of sync.
-	const lyricsMode = $derived.by((): "paired" | "windowed" | "tab" | "singstar" => {
+	const lyricsMode = $derived.by((): "paired" | "windowed" | "tab" | "singstar" | "parts" => {
+		// An explicit choice, same standing as the view
+		// presets below - only ever reachable when there is
+		// more than one tune to show side by side, so turning
+		// it on for one song and then loading a solo song
+		// cannot silently strand the panel in a mode with
+		// nothing to show.
+		if (partsSideBySide.value && parts.length > 1) return "parts";
 		if (viewPreset.value === "tab") return "tab";
 		if (viewPreset.value === "singstar") return "singstar";
 		return panels.notes ? "paired" : "windowed";
@@ -439,30 +448,36 @@
 		     open, unchanged from before. -->
 		<div class="header-row header-transport">
 			<Transport onTogglePlay={togglePlay} onStop={stopPlayback} />
-		</div>
 
-		<!-- Which tune is yours, in a song made of several.
-		     Hidden entirely for an ordinary song, where there
-		     is nothing to choose between. Clicking one does
-		     not rebuild anything: every tune is already
-		     loaded and playing, so this only changes whose
-		     words show and who gets judged. -->
-		{#if parts.length > 1}
-			<div class="header-row part-chooser" role="group" aria-label="Your part">
-				<span class="part-label">Singing</span>
-				{#each parts as tune (tune)}
-					<button
-						type="button"
-						class="part-button"
-						class:chosen={tune === singing}
-						aria-pressed={tune === singing}
-						onclick={() => chooseTune(tune)}
-					>
-						{tune}
-					</button>
-				{/each}
-			</div>
-		{/if}
+			<!-- Which tune is yours, in a song made of several.
+			     Folded into the same row as play/stop rather
+			     than a row of its own - hidden entirely for an
+			     ordinary song, where there is nothing to choose
+			     between. Clicking one does not rebuild
+			     anything: every tune is already loaded and
+			     playing, so this only changes whose words show
+			     and who gets judged. -->
+			{#if parts.length > 1}
+				<div class="part-chooser" role="group" aria-label="Your part">
+					<span class="part-label">Singing</span>
+					{#each parts as tune (tune)}
+						<button
+							type="button"
+							class="part-button"
+							class:chosen={tune === singing}
+							aria-pressed={tune === singing}
+							onclick={() => chooseTune(tune)}
+						>
+							{tune}
+						</button>
+					{/each}
+					<label class="mixer-toggle parts-toggle">
+						<input type="checkbox" bind:checked={partsSideBySide.value} />
+						Show both parts
+					</label>
+				</div>
+			{/if}
+		</div>
 
 		<SeekBar {playhead} {totalDuration} {timeline} onSeek={seek} />
 
@@ -594,7 +609,7 @@
 					{/if}
 					{#if panels.lyrics}
 						<div class="lyrics-cell">
-							<LyricsPanel {notes} {timeline} {phrases} {playhead} mode={lyricsMode} {singing} {parts} />
+							<LyricsPanel {notes} {timeline} {phrases} {phrasesByPart} {playhead} mode={lyricsMode} {singing} {parts} />
 						</div>
 					{/if}
 				</div>
@@ -602,7 +617,7 @@
 				<div class="lyrics-and-notes">
 					{#if panels.lyrics}
 						<div class="lyrics-cell">
-							<LyricsPanel {notes} {timeline} {phrases} {playhead} mode={lyricsMode} {singing} {parts} />
+							<LyricsPanel {notes} {timeline} {phrases} {phrasesByPart} {playhead} mode={lyricsMode} {singing} {parts} />
 						</div>
 					{/if}
 					{#if panels.notes}
@@ -618,6 +633,30 @@
 </Block>
 
 <style>
+	/* Shared by every checkbox toggle across the mixer -
+	   NotesPanel, LyricsPanel, TransportSettings, and the
+	   parts toggle below - so the four copies that used to
+	   exist can't quietly drift apart the way they had
+	   (13px/11px font, 15px/12px box, 3px/4px gap). Global
+	   because Svelte's scoped styles don't cross component
+	   files; Index.svelte is always mounted, so this is
+	   always available. Colour and box size stay a per-use
+	   override where a panel wants its own accent, rather
+	   than forced to one value here. */
+	:global(.mixer-toggle) {
+		font-size: 11px;
+		color: var(--body-text-color-subdued);
+		display: flex;
+		align-items: center;
+		gap: 3px;
+		cursor: pointer;
+	}
+	:global(.mixer-toggle input[type="checkbox"]) {
+		appearance: auto;
+		width: 12px;
+		height: 12px;
+	}
+
 	.mixer-container {
 		/* The size query container. This is a SEPARATE element
 		   from .mixer, and that separation is the whole point:
@@ -760,9 +799,14 @@
 		justify-content: space-between;
 	}
 	.part-chooser {
+		display: flex;
 		gap: 0.4rem;
 		align-items: center;
 		flex-wrap: wrap;
+	}
+
+	.parts-toggle {
+		margin-left: 0.6rem;
 	}
 
 	.part-label {

@@ -708,6 +708,16 @@ def mixer_data(
         part_label
     )
 
+    # Every tune's phrases, by name, for showing several
+    # singers' words side by side. Empty for an ordinary
+    # song, which has no tunes to name.
+    phrases_by_part = {
+        name: _phrase_timeline(
+            pitch_text, duration_text, key, bpm, lyric_text, name
+        )
+        for name in tunes
+    }
+
     diagrams = _diagrams(key, timeline)
 
     return {
@@ -715,6 +725,7 @@ def mixer_data(
         "timeline": timeline,
         "notes": notes,
         "phrases": phrases,
+        "phrases_by_part": phrases_by_part,
         "diagrams": diagrams,
         "bpm": float(bpm),
         "parts": tunes,

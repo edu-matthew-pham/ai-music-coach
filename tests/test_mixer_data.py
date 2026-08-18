@@ -337,8 +337,8 @@ def test_mixer_data_has_the_shape_the_component_expects():
     )
 
     assert set(value.keys()) == {
-        "layers", "timeline", "notes", "phrases", "diagrams",
-        "bpm", "parts", "part", "loop_start", "loop_end"
+        "layers", "timeline", "notes", "phrases", "phrases_by_part",
+        "diagrams", "bpm", "parts", "part", "loop_start", "loop_end"
     }
 
     # An ordinary, undivided song has no tunes of its own to
@@ -347,6 +347,7 @@ def test_mixer_data_has_the_shape_the_component_expects():
     # not to offer a chooser at all.
     assert value["parts"] == []
     assert value["part"] is None
+    assert value["phrases_by_part"] == {}
 
     assert value["loop_start"] is None
     assert value["loop_end"] is None
@@ -726,3 +727,28 @@ def test_part_selected_reads_the_browsers_choice():
     assert part_selected(None) is None
     assert part_selected({}) is None
     assert part_selected({"part": "Three Blind Mice"}) == "Three Blind Mice"
+
+
+def test_every_tunes_phrases_are_sent_by_name():
+    """
+    Showing two singers' words side by side needs each
+    tune's own lines, not just the chosen one's.
+    """
+
+    from examples import load_partner_songs
+
+    pitches, durations, lyrics, key, chart, tempo = load_partner_songs()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, part_label="Three Blind Mice"
+    )
+
+    by_part = value["phrases_by_part"]
+
+    assert set(by_part) == {"Three Blind Mice", "Frere Jacques"}
+    assert "Three blind mice" in by_part["Three Blind Mice"][0]["label"]
+    assert "Fre" in by_part["Frere Jacques"][0]["label"]
+
+    # The chosen tune's own list is the same list as before.
+    assert value["phrases"] == by_part["Three Blind Mice"]
