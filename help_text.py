@@ -51,12 +51,41 @@ A syllable that continues a word ends in a hyphen, as in
 once, with `_` under the notes that carry it on. Rests
 take no syllable.
 
-## Bringing in a MIDI file
+## Songs with several parts
 
-Drop a file in and the boxes fill themselves. If the file
-has several tracks, a dropdown lets you choose which part
-to sing: a choral file will have one track per voice, and
-often a piano reduction as well.
+A song can carry more than one tune sung at once - a
+partner song, a round, a duet with an answering line.
+Write each tune one after another in the pitch, length
+and lyric boxes, with a divider line between them, the
+same names in the same order in all three:
+
+    === Three Blind Mice ===
+    E4 D4 C4 ...
+    === Frere Jacques ===
+    C4 D4 E4 ...
+
+A part that comes in late, or drops out early, is written
+with bars of rest where it is silent; the parts do not
+have to be the same length. Key, chords and tempo are
+shared - a round has one chart. The buttons
+**Load Frere Jacques / 3BM** and **Load Row Your Boat**
+are both written this way, and a song without dividers is
+one tune, exactly as before.
+
+## Bringing in a file
+
+Drop a MIDI or MusicXML file in and the boxes fill
+themselves. If the file has several tracks, a dropdown
+lets you choose which part to sing: a choral file will
+have one track per voice, and often a piano reduction as
+well.
+
+A MusicXML score with several sung parts lands with all
+of them together, written out with dividers as above, and
+you pick which is yours in the mixer. Two voices sharing
+one staff arrive as "Voice 1" and "Voice 2"; several sung
+staves arrive under their own names. The dropdown still
+offers each part alone if you want only one.
 
 A whole piece is more than anyone practises at once, so
 it arrives divided into phrases of about eight seconds,
@@ -124,6 +153,15 @@ Chords, Metronome - each with its own level, mixed live in
 the browser so moving a fader changes only loudness rather
 than remaking anything. Edit the boxes and press the
 button again to rebuild.
+
+A song with several parts shows a **Singing** row above
+the strip, one button per tune. Every tune is already
+loaded and playing, so clicking one rebuilds nothing - it
+only changes whose words show and whose line you are
+judged on. **Show all parts** puts every tune's words side
+by side. Rebuilding with Generate Playback keeps the part
+you chose; loading a different song starts you on its
+first part.
 
 Click a bar on the chord strip to jump there. Shift-click
 a second bar to loop that stretch, and **Repeat** decides
