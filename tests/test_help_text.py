@@ -49,21 +49,25 @@ def test_the_example_in_the_guide_is_real_music():
     assert len(pitch_list) == len(duration_list)
 
 
-# The controls a newcomer has to find to record a take.
+# The controls a newcomer has to find to hear a song and
+# sing along to it. The record-then-Compare flow (Part,
+# Guide while recording, Compare) is hidden for now - the
+# mixer's own live mic covers it - so the guide names the
+# live controls instead, and the screen check below only
+# looks at what is actually rendered.
 CONTROLS = [
     "Detect key",
-    "Part",
-    "Guide while recording",
-    "Octave",
+    "Octave down",
     "Generate Playback",
-    "Compare"
+    "Mic",
+    "Record",
 ]
 
 
 def test_the_guide_covers_the_main_controls():
     """
     Someone reading this should meet every control they
-    will have to touch to record and compare a take.
+    will have to touch to hear a song and sing along.
     """
 
     for control in CONTROLS:
@@ -76,23 +80,26 @@ def test_the_guide_calls_the_controls_what_the_screen_does():
     on screen sends people looking for something that is
     not there. This is the failure that documentation
     normally suffers in silence.
+
+    The mixer's own controls (Mic, Record) live in the
+    frontend, not main.py, so both are checked: a control
+    the guide names must appear in one of the two places a
+    user could actually see it.
     """
 
     import os
 
-    interface = open(
+    here = os.path.dirname(__file__)
+    interface = open(os.path.join(here, "..", "main.py")).read()
+    transport = open(
         os.path.join(
-            os.path.dirname(__file__), "..", "main.py"
+            here, "..", "musicmixer", "frontend",
+            "TransportSettings.svelte"
         )
     ).read()
 
     for control in CONTROLS:
-        assert control in interface, control
-
-
-def test_the_guide_explains_the_tuning_numbers():
-    assert "cents" in HELP_TEXT
-    assert "fifteen" in HELP_TEXT
+        assert control in interface or control in transport, control
 
 
 def test_the_interface_ignores_events_with_no_file():

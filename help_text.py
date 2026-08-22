@@ -15,16 +15,17 @@ from harmony import MAJOR_SCALES
 HELP_TEXT = f"""
 ## What this does
 
-You give it a line of music. It plays the line, records
-you singing it, and shows you what you sang against what
-was written: which notes you hit, how far off you were in
-cents, and where you came in early or late.
+You give it a line of music. It plays the line and draws
+your singing as a live pitch line over the written notes,
+so you can see where you are landing on the tune and where
+you are drifting off it, as you sing.
 
 ## Getting started
 
-Press **Load Twinkle**, then **Generate Playback**
-to hear it. Press record, sing along with the count-in,
-then press **Compare** to see how it went.
+Press **Load Twinkle**, then **Generate Playback** to hear
+it. Tick **Mic** and allow the microphone when the browser
+asks; sing along, and your pitch draws over the notes as
+you go.
 
 ## Writing music by hand
 
@@ -157,8 +158,8 @@ button again to rebuild.
 A song with several parts shows a **Singing** row above
 the strip, one button per tune. Every tune is already
 loaded and playing, so clicking one rebuilds nothing - it
-only changes whose words show and whose line you are
-judged on. **Show all parts** puts every tune's words side
+only changes whose words show and whose line your pitch
+draws against. **Show all parts** puts every tune's words side
 by side. Rebuilding with Generate Playback keeps the part
 you chose; loading a different song starts you on its
 first part.
@@ -238,6 +239,13 @@ sound like, with the runners up and how close they are.
 Short melodies often genuinely fit several keys, so it
 names more than one rather than guessing.
 
+**Octave down** and **Octave up** move the whole written
+line a full octave, for when a song sits too high or low
+to sing comfortably. This changes the notation itself, so
+playback and the mixer follow it; it is not the same as
+the Notes panel's Down / As written / Up, which only shifts
+how the notes are drawn while you sing.
+
 The key you choose is used to build the harmony line.
 Each of the {len(MAJOR_SCALES)} settings is named twice,
 as in `F major / D minor`, because a key signature belongs
@@ -245,39 +253,31 @@ to both equally: a piece in D minor uses the notes of F
 major. A note outside the chosen key is still harmonised,
 at the nearest note in the scale.
 
-## Singing
+## Singing along
 
-**Part** is the line you are performing: melody, harmony
-or bass. The bass sings the root of each chord and holds
-it while the tune moves, so it needs a chord chart. It decides both what the guide plays and what
-your recording is judged against, so a harmony singer is
-not marked wrong for singing the harmony.
+Tick **Mic** in the mixer and your voice draws as a line
+over the notes: on a box when you are on the note, above
+or below it when you are sharp or flat. Gaps in the line
+are breaths and consonants, not mistakes. Nothing is
+scored yet - seeing the line against the notes is the
+whole point, and it is enough to hear yourself land or
+drift.
 
-**Guide while recording** is what you hear as you sing.
-*The other part* plays the opposite line, which is how
-harmony is usually practised: the melody in your ears and
-your own line in your voice.
+**Follow** scrolls the notes to keep up with the playhead;
+**Repeat** loops a stretch you have selected, so you can
+sing an awkward phrase over and over. If the notes sit in
+a different octave from your voice, the **Notes** panel's
+**Down / As written / Up** buttons move the drawn notes to
+meet you rather than making you jump.
 
-Every recording begins with four counted-in beats.
-
-## Reading the result
-
-The **piano roll** shows the written notes as boxes and
-your singing as a line through them. A note begun below
-and slid up to appears as exactly that. Gaps in the line
-are breaths and consonants, not mistakes.
-
-The **tuning chart** shows how far each note was from
-where it should be, in cents. A hundred cents is a
-semitone; within fifteen counts as in tune.
-
-If you sang in a different octave from the written music,
-choose it under **Octave** and the comparison follows you
-there.
+**Record** keeps a copy of what the microphone heard;
+**Download recording** saves it once there is something to
+save, which is useful for listening back or for reporting
+a detection problem.
 
 ## When something looks wrong
 
-Notes reported an octave below what you sang usually mean
+A line drawn an octave below what you sang usually means
 the microphone is losing the bottom of your voice, which
 laptop and webcam microphones do. Brief spikes at the ends
 of notes are the detector being confused by consonants,
