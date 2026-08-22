@@ -13,6 +13,7 @@ from music import (
     MusicInputError,
     import_music_file,
     list_music_parts,
+    default_music_part,
     transpose_music,
     describe_transpose,
     semitones_between,
@@ -948,12 +949,18 @@ with gr.Blocks(
 
         tracks = list_music_parts(file_path)
 
-        results = import_track(file_path, tracks[0])
+        # Not the first part listed: a score lands with all
+        # its sung parts together, and which one is yours
+        # is chosen in the mixer, as the built-in partner
+        # songs and rounds already do.
+        chosen = default_music_part(file_path)
+
+        results = import_track(file_path, chosen)
 
         return results + (
             gr.update(
                 choices=tracks,
-                value=tracks[0],
+                value=chosen,
                 visible=len(tracks) > 1
             ),
         )

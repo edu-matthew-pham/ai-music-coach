@@ -2514,6 +2514,24 @@ def list_music_parts(file_path):
     return list_midi_tracks(file_path)
 
 
+def default_music_part(file_path):
+    """
+    The part that lands on upload, before anyone chooses.
+
+    A score lands with every sung part together, the way
+    the built-in partner songs and rounds open - which one
+    is yours is picked in the mixer. A MIDI file keeps its
+    likeliest tune, listed first.
+    """
+
+    if is_score_file(file_path):
+        from musicxml_import import default_part_in
+
+        return default_part_in(file_path)
+
+    return list_midi_tracks(file_path)[0]
+
+
 def import_midi_file(
     file_path,
     track_label=None

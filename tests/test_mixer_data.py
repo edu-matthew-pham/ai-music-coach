@@ -729,6 +729,35 @@ def test_part_selected_reads_the_browsers_choice():
     assert part_selected({"part": "Three Blind Mice"}) == "Three Blind Mice"
 
 
+def test_a_stale_part_name_does_not_survive_into_a_one_tune_song():
+    """
+    build_mixer carries the tune being sung across a rebuild,
+    so a singer editing a box is not bounced back to part 1.
+    Load the partner song, sing "Three Blind Mice", then load
+    the Wellerman: that name means nothing here, and an
+    undivided song has no names at all, so it must come back
+    as None rather than reach the browser. Left in, the
+    Lyrics panel looked for words on a tune the song did not
+    contain and showed nothing, while the Notes panel (which
+    does not filter by that name) still showed every word -
+    the exact split seen on a real screenshot.
+    """
+
+    pitches, durations, lyrics, key, chart, tempo = load_wellerman()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart,
+        lyric_text=lyrics, part_label="Three Blind Mice"
+    )
+
+    assert value["parts"] == []
+    assert value["part"] is None
+
+    # What the Lyrics panel would then read, by its own rule.
+    mine = value["part"] or "Melody"
+    assert [n for n in value["notes"] if n["layer"] == mine and n.get("word")]
+
+
 def test_every_tunes_phrases_are_sent_by_name():
     """
     Showing two singers' words side by side needs each

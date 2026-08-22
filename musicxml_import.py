@@ -408,7 +408,7 @@ def _voice_parts(part):
 
     ordinals = ["first", "second", "third", "fourth", "fifth"]
 
-    return [
+    singles = [
         (
             voice,
             None if index == 0 else
@@ -416,6 +416,47 @@ def _voice_parts(part):
         )
         for index, voice in enumerate(lyric_voices)
     ]
+
+    # The voices together, as one divided song - the second
+    # half of what a two-voice staff needs. Splitting the
+    # voices apart (above) only ever gave a choice between
+    # them; this entry lands them side by side, the way the
+    # hand-typed partner songs are. Its part slot is a list,
+    # and every reader of this list branches on that.
+    together = (
+        lyric_voices,
+        "both voices" if len(lyric_voices) == 2
+        else f"all {len(lyric_voices)} voices"
+    )
+
+    return singles + [together]
+
+
+def _is_combined(entry_part):
+    """
+    Whether a logical part's part slot is several parts to
+    land together rather than one.
+    """
+
+    return isinstance(entry_part, list)
+
+
+def _members(entry_part):
+    """
+    The parts behind a logical part - the one part itself,
+    or every part of a combined entry.
+    """
+
+    return entry_part if _is_combined(entry_part) else [entry_part]
+
+
+def _carries_words(part):
+    """
+    Whether any note of a part has a lyric at all - the test
+    for "a part someone sings", as opposed to accompaniment.
+    """
+
+    return any(note.lyrics for note in _sung(part.flatten().notes))
 
 
 def _logical_parts(score):
@@ -428,15 +469,71 @@ def _logical_parts(score):
 
     Ordinarily one entry per score part. A part with more
     than one genuinely sung voice contributes one entry per
-    voice instead - see _voice_parts.
+    voice, then one for the voices together - see
+    _voice_parts. And where more than one score part carries
+    words, a last entry lands every sung part together, as
+    one divided song: a partner song or a choir written on
+    separate staves. Accompaniment (a staff with no words)
+    stays out of it.
+
+    Combined entries are always appended after the single
+    ones, so every existing label and its index stay exactly
+    where they were.
     """
 
     logical = []
+    sung_staves = []
+    staves_with_words = 0
 
     for part in score.parts:
-        logical.extend(_voice_parts(part))
+
+        entries = _voice_parts(part)
+        logical.extend(entries)
+
+        if _carries_words(part):
+            staves_with_words += 1
+            sung_staves.extend(
+                voice for voice, extra in entries
+                if not _is_combined(voice)
+            )
+
+    # More than one staff, not more than one voice: a single
+    # staff's voices together is already the entry above.
+    if staves_with_words > 1:
+        logical.append((sung_staves, "all sung parts"))
 
     return logical
+
+
+def _tune_names(parts):
+    """
+    A name for each tune of a combined entry, for the
+    "=== name ===" dividers.
+
+    Voices of one staff have no name of their own beyond
+    their order, so they are "Voice 1", "Voice 2" - the same
+    convention the hand-typed round uses. Separate staves
+    keep the score's own part names; a repeated name (two
+    staves both called "Piano") is numbered so the dividers
+    stay distinct, which Piece.read requires.
+    """
+
+    raw = [part.partName for part in parts]
+
+    if len(set(raw)) == 1:
+        return [f"Voice {index + 1}" for index in range(len(parts))]
+
+    names = []
+    seen = {}
+
+    for name in raw:
+        name = name or "Part"
+        seen[name] = seen.get(name, 0) + 1
+        names.append(
+            name if raw.count(name) == 1 else f"{name} {seen[name]}"
+        )
+
+    return names
 
 
 def parts_in(path):
@@ -448,30 +545,74 @@ def parts_in(path):
     a part with lyrics is a part someone sings.
     """
 
-    score = _read(path)
+    return [label for label, _ in _described(_read(path))]
+
+
+def default_part_in(path):
+    """
+    The part that lands when nothing has been chosen yet.
+
+    The most inclusive one: every sung staff together when
+    the score has several, a staff's voices together when
+    one staff carries two, the first part otherwise. The
+    built-in partner songs and rounds open with all their
+    tunes loaded and let the singer pick theirs in the
+    mixer; an imported score should arrive the same way,
+    so "which part" is a question about who is singing,
+    not about what got read.
+    """
+
+    described = _described(_read(path))
+
+    if not described:
+        return None
+
+    combined = [label for label, together in described if together]
+
+    return combined[-1] if combined else described[0][0]
+
+
+def _described(score):
+    """
+    Every part worth listing, as (label, combined) pairs.
+
+    Shared by parts_in and default_part_in so the two can
+    never disagree about what is on offer. Combined entries
+    are listed after the parts they combine, and every sung
+    staff together comes last, so the last combined entry
+    is always the most inclusive.
+    """
 
     described = []
 
     for index, (part, extra) in enumerate(_logical_parts(score)):
 
-        notes = _sung(part.flatten().notes)
+        notes = [
+            note
+            for member in _members(part)
+            for note in _sung(member.flatten().notes)
+        ]
 
         if not notes:
             continue
 
         sung = len([note for note in notes if note.lyric])
 
-        name = part.partName or f"Part {index + 1}"
+        if _is_combined(part) and extra == "all sung parts":
+            name = "All sung parts"
 
-        if extra:
-            name += f", {extra}"
+        else:
+            name = _members(part)[0].partName or f"Part {index + 1}"
+
+            if extra:
+                name += f", {extra}"
 
         label = f"{index}  {name}, {len(notes)} notes"
 
         if sung:
             label += f", {sung} with words"
 
-        described.append(label)
+        described.append((label, _is_combined(part)))
 
     return described
 
@@ -678,11 +819,18 @@ def _rests_as_bars(length, beats_per_bar):
 
     pieces = []
 
+    # Kept as a Fraction throughout: the metre arrives as a
+    # float, and subtracting that from a Fraction silently
+    # turns the remainder into a float the boxes cannot
+    # write. Never bitten before a part first entered
+    # partway through a bar after a long silence.
+    bar = Fraction(beats_per_bar)
+
     remaining = length
 
-    while remaining > beats_per_bar:
-        pieces.append(Fraction(beats_per_bar))
-        remaining -= beats_per_bar
+    while remaining > bar:
+        pieces.append(bar)
+        remaining -= bar
 
     if remaining > 0:
         pieces.append(remaining)
@@ -703,7 +851,10 @@ def verses_in(path, part_label=None):
 
     parts = [
         part for part, extra in _logical_parts(score)
-        if _sung(part.flatten().notes)
+        if any(
+            _sung(member.flatten().notes)
+            for member in _members(part)
+        )
     ]
 
     if not parts:
@@ -713,10 +864,11 @@ def verses_in(path, part_label=None):
 
     numbers = set()
 
-    for item in _sung(part.flatten().notes):
-        for lyric in item.lyrics:
-            if lyric.number:
-                numbers.add(lyric.number)
+    for member in _members(part):
+        for item in _sung(member.flatten().notes):
+            for lyric in item.lyrics:
+                if lyric.number:
+                    numbers.add(lyric.number)
 
     return sorted(numbers)
 
@@ -1174,105 +1326,90 @@ def _chosen_lyric(item, verse):
     return None
 
 
-def import_musicxml(path, part_label=None, verse=1):
+def _verse_for(part, verse):
     """
-    A score into the boxes.
+    Which verse to read from a part: the one asked for,
+    unless most of this part's words are in another.
 
-    Returns the same eight things the MIDI importer does,
-    so the two are interchangeable to everything above:
-    pitches, durations, lyrics, tempo, feedback, chart,
-    the polyphony behind the chart, and the key.
+    A second voice on a staff often carries its words under
+    a different verse number from the main line - in a real
+    file (Mulan's bridge) the chorus's "Be a man" sits in
+    verse 2 while the melody's words sit in verse 1, so
+    reading every voice at verse 1 would land the chorus as
+    a line of held-note marks and nothing else. The feedback
+    names the verse taken wherever it differs from the one
+    asked for, so the inference is visible.
     """
 
-    score = _read(path)
+    words = {}
 
-    # What the printed score says about its shape, and the
-    # word ends the file writes as trailing spaces - both
-    # read from the raw score, before it is unfolded, because
-    # both are printed once and played many times.
-    printed_marks, printed_beats = _structure(score)
+    for note in _sung(part.flatten().notes):
+        for lyric in note.lyrics:
+            if lyric.number and (lyric.text or "").strip():
+                words[lyric.number] = words.get(lyric.number, 0) + 1
 
-    _stamp_word_ends(score, path)
+    if not words:
+        return verse
 
-    score, unfolded = _unfold(score)
+    # The verse most of this part's words are in; the one
+    # asked for wins a tie. "Any words at all" was tried
+    # first and picked verse 1 for Mulan's chorus on the
+    # strength of a single stray syllable.
+    best = max(words.values())
 
-    left, played_beats = _structure(score)
+    if words.get(verse, 0) == best:
+        return verse
 
-    # A D.C. or D.S. the expander honoured is consumed by the
-    # unfolding; one it could not place is left in the score
-    # untouched, with no error - checked on real files both
-    # ways. So whatever navigation is still there afterwards
-    # was dropped, and the feedback names it.
-    dropped = _has_navigation(left)
+    return min(number for number, count in words.items() if count == best)
 
-    first_bar = (
-        _first_marked_bar(score)
-        if unfolded is None or dropped else None
-    )
 
-    index = part_number_from(part_label)
+def _read_voice(part, beats_per_bar, verse, positioned):
+    """
+    One part's notes, lengths and syllables, as the boxes
+    hold them.
 
-    # Two different lists, on purpose. Choosing which part to
-    # sing needs voices split apart - Mulan's bridge is real
-    # polyphony sharing one staff, and reading it as one part
-    # garbles it (see _voice_parts). Reading the chart and the
-    # polyphony behind it needs the opposite: every voice
-    # sounding together is exactly what a chord chart and a
-    # second opinion are made from, and both already read each
-    # note's own true offset rather than assuming one voice at
-    # a time, so splitting would only risk losing a chord
-    # symbol some file happens to print inside a Voice.
-    singing_parts = [
-        part for part, extra in _logical_parts(score)
-        if _sung(part.flatten().notes)
-    ]
+    `positioned` says whether a note lands where the score
+    places it (rests written for every gap and for the
+    silence before its first note) or simply after the note
+    before it. A part imported to sing on its own needs only
+    the second - and it is how every single-part import has
+    always read, so it stays that way. Parts landed together
+    need the first, or a voice that first enters at bar 12
+    would start singing at bar 1: checked on a real file,
+    where music21's voice splitting hands back only the bars
+    a voice actually sounds in, with the silences between
+    them missing rather than written as rests.
 
-    parts = [
-        part for part in score.parts
-        if _sung(part.flatten().notes)
-    ]
-
-    if not singing_parts:
-        raise ValueError(
-            "This score has no notes in any part."
-        )
-
-    index = min(index, len(singing_parts) - 1)
-
-    part = singing_parts[index]
-
-    # The metre, as stated rather than inferred - and read
-    # from the library rather than worked out from the
-    # numerator. Six eight is six eighth notes, which is
-    # three beats, not six: taking the numerator drew every
-    # bar line at twice its width, and only in compound
-    # time, where four four hid it.
-    signatures = list(
-        part.recurse().getElementsByClass("TimeSignature")
-    )
-
-    beats_per_bar = 4
-    metre = None
-
-    if signatures:
-        metre = signatures[0]
-        beats_per_bar = float(metre.barDuration.quarterLength)
-
-    # The tempo, if the score carries one. A mark can be
-    # words alone - "Moderately", with no number - and a
-    # wordy mark says nothing a BPM box can hold.
-    marks = [
-        mark for mark in score.recurse().getElementsByClass(
-            "MetronomeMark"
-        )
-        if mark.number is not None
-    ]
-
-    bpm = int(round(marks[0].number)) if marks else 100
+    Returns a dict; the loop that fills it is the same loop
+    the single-part import has always run.
+    """
 
     items = _sung(part.flatten().notesAndRests)
 
     merged = _merge_ties(items)
+
+    if positioned:
+
+        placed = []
+        position = 0.0
+
+        for is_rest, length, item in merged:
+
+            start = float(item.offset)
+
+            # A gap is written as its own rest, never folded
+            # into a neighbouring one: the part's own rests
+            # keep exactly the tokens they have when the part
+            # is imported alone, so a tune reads the same
+            # whether it lands by itself or beside others.
+            if start > position + 1e-6:
+                placed.append([True, _round(start - position), None])
+
+            placed.append([is_rest, length, item])
+
+            position = start + float(length)
+
+        merged = placed
 
     # The file's own marking first. Only a score that marks
     # every syllable "single" needs the trailing-space
@@ -1368,113 +1505,72 @@ def import_musicxml(path, part_label=None, verse=1):
 
         sung += 1
 
-    if not pitches:
-        raise ValueError(
-            "That part has no notes to import."
-        )
+    return {
+        "pitches": pitches,
+        "durations": durations,
+        "pitch_beats": pitch_beats,
+        "syllables": syllables,
+        "sung_spans": sung_spans,
+        "sung": sung,
+        "merged": merged,
+        "marked": marked,
+        "stamped": stamped,
+        "verses": verses,
+    }
 
-    # Every voice sounding together, for the chart. All on
-    # one clock by construction here: the score states the
-    # divisions, so nothing has to be rescaled onto
-    # anything else.
-    polyphony = []
 
-    for other in parts:
+def _pad_to(read, total, beats_per_bar):
+    """
+    Trailing bars of rest on a tune, so it ends where the
+    longest tune does.
+    """
 
-        for item in _sung(other.flatten().notes):
+    short = total - sum(read["durations"])
 
-            start = float(item.offset)
-            length = float(item.quarterLength)
+    if short <= 0:
+        return
 
-            for pitch in item.pitches:
-                polyphony.append((start, length, pitch.midi))
+    position = sum(float(length) for length in read["durations"])
 
-    total = sum(durations)
+    for piece in _rests_as_bars(Fraction(short), beats_per_bar):
+        read["pitches"].append(REST)
+        read["durations"].append(piece)
+        read["pitch_beats"].append(position)
+        position += float(piece)
 
-    # A key signature states a flat/sharp count, not a
-    # tonic - four flats is A flat major or its relative,
-    # F minor, and the file does not say which. But the key
-    # box only ever names a signature, never a tonic with a
-    # mode (the same reading the MIDI importer does: a minor
-    # piece is set to its relative major) - so the count
-    # alone already answers the only question the box asks,
-    # with nothing left to guess. This is what the module's
-    # own reason for existing says to do: the file already
-    # states its key, the same as its lengths and its metre.
-    #
-    # Found on a real score: the note-based guess, with no
-    # signature to check against, picked C minor - three
-    # flats - for a piece whose own header states four. The
-    # notes it was guessing from were real; the signature it
-    # never looked at was the actual answer.
-    key = _stated_key(score) or spelling_key([
-        (0, float(length), number)
-        for number, length in zip(pitches, durations)
-        if number != REST
-    ]) or "C"
 
-    # Every key the score itself states, opening key first -
-    # a piece with only one signature (or none) gets a list
-    # of at most one entry, so _key_at falls straight back to
-    # `key` for every note, unchanged from before. A piece
-    # that genuinely modulates spells its notes in whichever
-    # key was actually in force when each one sounds, rather
-    # than the opening key's dialect for the whole piece -
-    # the key box itself still only ever holds the opening
-    # key (invariant 1's boxes stay single-valued until the
-    # box itself learns to hold a timeline; see the design
-    # note on multi-key support).
-    key_signatures = _key_signatures(score.parts, part)
+def _lyric_lines(read, bpm):
+    """
+    One voice's syllables as lyric text, with phrase breaks
+    written as line breaks where they can be corrected.
 
-    chart = _printed_chart(parts, float(total), beats_per_bar)
+    A score does not say where a singer breathes, so this is
+    a guess like any other and is demoted the same way:
+    Enter and Backspace fix it in a keystroke.
 
-    chart_source = "printed" if chart else None
+    The words themselves are the primary evidence, when
+    they carry it: a line of print usually opens with a
+    capital and closes with a full stop, and that says
+    where a phrase falls more reliably than a rest does -
+    a rest only says a singer paused, not that the line
+    ended, which is why a run of short breaths inside one
+    sentence (a real score in this app's own fixtures)
+    used to be cut into three lines instead of one, and a
+    long unbroken sentence with rests only at its very end
+    (another real fixture) used to arrive as one crowded
+    line holding several sentences at once.
 
-    if not chart and polyphony:
-        chart = chart_from_notes(
-            polyphony, float(total), beats_per_bar, key
-        )
-        chart_source = "detected" if chart else None
+    A rule-based splitter combining several kinds of
+    evidence by score was tried once, for the MIDI path,
+    tuned, and reverted - every threshold that fixed one
+    file broke another. This does not repeat that: the
+    words are used alone, only where they are confirmed
+    usable, and the rest-rule below is the fallback for
+    everything else, not a second vote combined with it.
+    """
 
-    pitch_text = " ".join(
-        REST if number == REST
-        else midi_to_note(
-            number, _key_at(beat, key_signatures, key)
-        )
-        for number, beat in zip(pitches, pitch_beats)
-    )
+    syllables = read["syllables"]
 
-    duration_text = " ".join(
-        str(length) if length.denominator == 1
-        else f"{length.numerator}/{length.denominator}"
-        for length in durations
-    )
-
-    # Phrases, written as line breaks in the lyrics where
-    # they can be corrected. A score does not say where a
-    # singer breathes, so this is a guess like any other
-    # and is demoted the same way: Enter and Backspace fix
-    # it in a keystroke.
-    #
-    # The words themselves are the primary evidence, when
-    # they carry it: a line of print usually opens with a
-    # capital and closes with a full stop, and that says
-    # where a phrase falls more reliably than a rest does -
-    # a rest only says a singer paused, not that the line
-    # ended, which is why a run of short breaths inside one
-    # sentence (a real score in this app's own fixtures)
-    # used to be cut into three lines instead of one, and a
-    # long unbroken sentence with rests only at its very end
-    # (another real fixture) used to arrive as one crowded
-    # line holding several sentences at once.
-    #
-    # A rule-based splitter combining several kinds of
-    # evidence by score was tried once, for the MIDI path,
-    # tuned, and reverted - every threshold that fixed one
-    # file broke another. This does not repeat that: the
-    # words are used alone, only where they are confirmed
-    # usable, and the rest-rule below is the fallback for
-    # everything else, not a second vote combined with it.
     lyric_text = " ".join(syllables)
 
     breaks = _lyric_phrase_breaks(syllables)
@@ -1490,7 +1586,7 @@ def import_musicxml(path, part_label=None, verse=1):
 
         spoken = 0
 
-        for is_rest, length, item in merged:
+        for is_rest, length, item in read["merged"]:
 
             if is_rest:
 
@@ -1508,7 +1604,7 @@ def import_musicxml(path, part_label=None, verse=1):
         # here - see _drop_short_lyric_breaks for why seconds
         # rather than bars or notes.
         breaks = _drop_short_lyric_breaks(
-            breaks, syllables, sung_spans, bpm
+            breaks, syllables, read["sung_spans"], bpm
         )
 
     if breaks:
@@ -1530,10 +1626,287 @@ def import_musicxml(path, part_label=None, verse=1):
             line for line in lines if line.strip()
         )
 
-    feedback = (
-        f"Read {sung} notes from "
-        f"{part.partName or 'part ' + str(index + 1)}, "
-        f"written in {metre.ratioString if metre else '4/4'}. "
+    return lyric_text
+
+
+def import_musicxml(path, part_label=None, verse=1):
+    """
+    A score into the boxes.
+
+    Returns the same eight things the MIDI importer does,
+    so the two are interchangeable to everything above:
+    pitches, durations, lyrics, tempo, feedback, chart,
+    the polyphony behind the chart, and the key.
+
+    A combined entry from parts_in() (a staff's voices
+    together, or every sung staff together) lands as one
+    divided song: each box holds every tune in turn, under
+    "=== name ===" divider lines, exactly the shape the
+    hand-typed partner songs and rounds are written in, so
+    Piece.read takes it without knowing where it came from.
+    """
+
+    score = _read(path)
+
+    # What the printed score says about its shape, and the
+    # word ends the file writes as trailing spaces - both
+    # read from the raw score, before it is unfolded, because
+    # both are printed once and played many times.
+    printed_marks, printed_beats = _structure(score)
+
+    _stamp_word_ends(score, path)
+
+    score, unfolded = _unfold(score)
+
+    left, played_beats = _structure(score)
+
+    # A D.C. or D.S. the expander honoured is consumed by the
+    # unfolding; one it could not place is left in the score
+    # untouched, with no error - checked on real files both
+    # ways. So whatever navigation is still there afterwards
+    # was dropped, and the feedback names it.
+    dropped = _has_navigation(left)
+
+    first_bar = (
+        _first_marked_bar(score)
+        if unfolded is None or dropped else None
+    )
+
+    index = part_number_from(part_label)
+
+    # Two different lists, on purpose. Choosing which part to
+    # sing needs voices split apart - Mulan's bridge is real
+    # polyphony sharing one staff, and reading it as one part
+    # garbles it (see _voice_parts). Reading the chart and the
+    # polyphony behind it needs the opposite: every voice
+    # sounding together is exactly what a chord chart and a
+    # second opinion are made from, and both already read each
+    # note's own true offset rather than assuming one voice at
+    # a time, so splitting would only risk losing a chord
+    # symbol some file happens to print inside a Voice.
+    singing_parts = [
+        part for part, extra in _logical_parts(score)
+        if any(
+            _sung(member.flatten().notes)
+            for member in _members(part)
+        )
+    ]
+
+    parts = [
+        part for part in score.parts
+        if _sung(part.flatten().notes)
+    ]
+
+    if not singing_parts:
+        raise ValueError(
+            "This score has no notes in any part."
+        )
+
+    index = min(index, len(singing_parts) - 1)
+
+    part = singing_parts[index]
+
+    combined = _is_combined(part)
+
+    members = _members(part)
+
+    # The part everything score-wide is read against: the
+    # metre, the key signatures. For a combined entry that is
+    # its first tune - every tune shares one metre and one
+    # key timeline by design, the same as the hand-typed
+    # examples, and checked to agree on the real files.
+    lead = members[0]
+
+    # The metre, as stated rather than inferred - and read
+    # from the library rather than worked out from the
+    # numerator. Six eight is six eighth notes, which is
+    # three beats, not six: taking the numerator drew every
+    # bar line at twice its width, and only in compound
+    # time, where four four hid it.
+    signatures = list(
+        lead.recurse().getElementsByClass("TimeSignature")
+    )
+
+    beats_per_bar = 4
+    metre = None
+
+    if signatures:
+        metre = signatures[0]
+        beats_per_bar = float(metre.barDuration.quarterLength)
+
+    # The tempo, if the score carries one. A mark can be
+    # words alone - "Moderately", with no number - and a
+    # wordy mark says nothing a BPM box can hold.
+    marks = [
+        mark for mark in score.recurse().getElementsByClass(
+            "MetronomeMark"
+        )
+        if mark.number is not None
+    ]
+
+    bpm = int(round(marks[0].number)) if marks else 100
+
+    # Each tune read on its own. A single part reads exactly
+    # as it always has: one tune, placed after itself, the
+    # verse asked for. Combined tunes are placed where the
+    # score puts them, and each takes the verse its own words
+    # are in.
+    verses_taken = [
+        _verse_for(member, verse) if combined else verse
+        for member in members
+    ]
+
+    reads = [
+        _read_voice(member, beats_per_bar, taken, positioned=combined)
+        for member, taken in zip(members, verses_taken)
+    ]
+
+    if not any(read["pitches"] for read in reads):
+        raise ValueError(
+            "That part has no notes to import."
+        )
+
+    # Every voice sounding together, for the chart. All on
+    # one clock by construction here: the score states the
+    # divisions, so nothing has to be rescaled onto
+    # anything else.
+    polyphony = []
+
+    for other in parts:
+
+        for item in _sung(other.flatten().notes):
+
+            start = float(item.offset)
+            length = float(item.quarterLength)
+
+            for pitch in item.pitches:
+                polyphony.append((start, length, pitch.midi))
+
+    # Every tune runs to the longest one's end, padded with
+    # bars of rest - the shape the hand-typed round is
+    # written in, and what Piece.read requires, since one
+    # shared chart has to cover each tune exactly. A single
+    # part is its own longest tune and is left untouched.
+    total = max(sum(read["durations"]) for read in reads)
+
+    if combined:
+        for read in reads:
+            _pad_to(read, total, beats_per_bar)
+
+    # A key signature states a flat/sharp count, not a
+    # tonic - four flats is A flat major or its relative,
+    # F minor, and the file does not say which. But the key
+    # box only ever names a signature, never a tonic with a
+    # mode (the same reading the MIDI importer does: a minor
+    # piece is set to its relative major) - so the count
+    # alone already answers the only question the box asks,
+    # with nothing left to guess. This is what the module's
+    # own reason for existing says to do: the file already
+    # states its key, the same as its lengths and its metre.
+    #
+    # Found on a real score: the note-based guess, with no
+    # signature to check against, picked C minor - three
+    # flats - for a piece whose own header states four. The
+    # notes it was guessing from were real; the signature it
+    # never looked at was the actual answer.
+    key = _stated_key(score) or spelling_key([
+        (0, float(length), number)
+        for read in reads
+        for number, length in zip(read["pitches"], read["durations"])
+        if number != REST
+    ]) or "C"
+
+    # Every key the score itself states, opening key first -
+    # a piece with only one signature (or none) gets a list
+    # of at most one entry, so _key_at falls straight back to
+    # `key` for every note, unchanged from before. A piece
+    # that genuinely modulates spells its notes in whichever
+    # key was actually in force when each one sounds, rather
+    # than the opening key's dialect for the whole piece -
+    # the key box itself still only ever holds the opening
+    # key (invariant 1's boxes stay single-valued until the
+    # box itself learns to hold a timeline; see the design
+    # note on multi-key support).
+    key_signatures = _key_signatures(score.parts, lead)
+
+    chart = _printed_chart(parts, float(total), beats_per_bar)
+
+    chart_source = "printed" if chart else None
+
+    if not chart and polyphony:
+        chart = chart_from_notes(
+            polyphony, float(total), beats_per_bar, key
+        )
+        chart_source = "detected" if chart else None
+
+    def pitch_text_of(read):
+        return " ".join(
+            REST if number == REST
+            else midi_to_note(
+                number, _key_at(beat, key_signatures, key)
+            )
+            for number, beat in zip(read["pitches"], read["pitch_beats"])
+        )
+
+    def duration_text_of(read):
+        return " ".join(
+            str(length) if length.denominator == 1
+            else f"{length.numerator}/{length.denominator}"
+            for length in read["durations"]
+        )
+
+    if not combined:
+
+        read = reads[0]
+
+        pitch_text = pitch_text_of(read)
+        duration_text = duration_text_of(read)
+        lyric_text = _lyric_lines(read, bpm)
+
+        feedback = (
+            f"Read {read['sung']} notes from "
+            f"{lead.partName or 'part ' + str(index + 1)}, "
+            f"written in {metre.ratioString if metre else '4/4'}. "
+        )
+
+    else:
+
+        names = _tune_names(members)
+
+        def divided(texts):
+            return "\n".join(
+                f"=== {name} ===\n{text}"
+                for name, text in zip(names, texts)
+            )
+
+        pitch_text = divided(pitch_text_of(read) for read in reads)
+        duration_text = divided(duration_text_of(read) for read in reads)
+        lyric_text = divided(_lyric_lines(read, bpm) for read in reads)
+
+        counted = ", ".join(
+            f"{read['sung']} from {name}"
+            for name, read in zip(names, reads)
+        )
+
+        feedback = (
+            f"Read {len(reads)} parts together: {counted}, "
+            f"written in {metre.ratioString if metre else '4/4'}. "
+        )
+
+        took = [
+            f"{name} (verse {taken})"
+            for name, taken in zip(names, verses_taken)
+            if taken != verse
+        ]
+
+        if took:
+            feedback += (
+                f"Words for {', '.join(took)} were taken from "
+                f"a different verse from the one asked for, "
+                f"since that is where that part's words are. "
+            )
+
+    feedback += (
         f"The lengths are the score's own, so nothing was "
         f"repaired or rounded to a grid. "
         f"This sounds like {key} major."
@@ -1591,15 +1964,22 @@ def import_musicxml(path, part_label=None, verse=1):
             f"after the change are already spelled correctly."
         )
 
+    # The lyric sentences describe the lead tune - for a
+    # single part, the only one; for a combined entry, its
+    # first, which is as much as one sentence can say.
+    lead_read = reads[0]
+
+    syllables = lead_read["syllables"]
+
     if syllables and any(token != "_" for token in syllables):
 
-        if marked:
+        if lead_read["marked"]:
             feedback += (
                 " Lyrics were found, with the words joined "
                 "as the score marks them."
             )
 
-        elif stamped:
+        elif lead_read["stamped"]:
             feedback += (
                 " Lyrics were found, with the words joined "
                 "from where they end in the printed text."
@@ -1613,9 +1993,9 @@ def import_musicxml(path, part_label=None, verse=1):
                 "correct them."
             )
 
-        if verses > 1:
+        if lead_read["verses"] > 1 and not combined:
             feedback += (
-                f" The score has {verses} verses; verse "
+                f" The score has {lead_read['verses']} verses; verse "
                 f"{verse} was taken."
             )
 

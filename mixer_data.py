@@ -788,8 +788,14 @@ def mixer_data(
 
     tunes = part_names(pitch_text, duration_text, lyric_text)
 
-    if tunes and part_label not in tunes:
-        part_label = tunes[0]
+    # A name carried over from the previous song means
+    # nothing if this song does not have it - and an
+    # undivided song has no names at all, so a stale
+    # "Voice 1" from the song before must not reach the
+    # browser, whose Lyrics panel would look for words on
+    # a tune this song does not contain and find none.
+    if part_label not in tunes:
+        part_label = tunes[0] if tunes else None
 
     sample_rate, tracks = separate_layers(
         pitch_text, duration_text, key, bpm, chart_text,

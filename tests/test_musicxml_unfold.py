@@ -371,20 +371,25 @@ def test_the_mulan_gate():
     assert key == "G, Ab from beat 208"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Pre-existing, unrelated to unfolding: a length in "
-        "this file reaches the duration writer as a float, "
-        "not a Fraction. Its own item; this pins that it is "
-        "still open."
-    ),
-)
 def test_a_real_transposing_part_imports():
     """
-    Weber, Concertino for clarinet: a real Bb part (M2). The
-    fixture is here for the read path; the import currently
-    raises on it before anything about repeats runs.
+    Weber, Concertino for clarinet: a real Bb part (M2).
+
+    This used to raise before anything about repeats ran: a
+    length reached the duration writer as a float, not a
+    Fraction, because _rests_as_bars subtracted the metre (a
+    float) from a Fraction remainder. Fixed as a side effect
+    of the combined-parts work, which made _rests_as_bars keep
+    a Fraction throughout; this pins that it stays fixed and
+    that every written length is one the boxes can read.
     """
 
-    imported("weber_concertino_clarinet.mxl")
+    pitches, durations, lyrics, bpm, feedback, chart, poly, key = (
+        imported("weber_concertino_clarinet.mxl")
+    )
+
+    assert pitches and durations
+    assert len(pitches.split()) == len(durations.split())
+    assert "." not in durations, durations
+    assert bpm == 60
+    assert key == "F"
