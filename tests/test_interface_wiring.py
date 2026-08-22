@@ -307,3 +307,75 @@ def test_every_handler_is_given_as_many_inputs_as_it_takes():
     # show_target_music) is retired - suggest_chords,
     # make_practice_guide and analyse_performance remain.
     assert checked >= 3
+
+def _mixer_builders_by_trigger():
+    """
+    Which builder each `.then(fn=guard(...))` and `.click(
+    fn=guard(...))` that feeds the mixer is wired to, keyed
+    by the control it hangs off. Read from the source, not
+    the running app, the same way every other check here is.
+    """
+
+    tree = parsed_interface()
+    wired = {}
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+
+        fn = next(
+            (k.value for k in node.keywords if k.arg == "fn"), None
+        )
+        if not (
+            isinstance(fn, ast.Call)
+            and isinstance(fn.func, ast.Name)
+            and fn.func.id == "guard"
+            and fn.args
+            and isinstance(fn.args[0], ast.Name)
+            and fn.args[0].id in ("build_mixer", "build_mixer_fresh")
+        ):
+            continue
+
+        # Walk back down the chain to the control this
+        # .click()/.upload()/.change() started from.
+        head = node.func
+        while isinstance(head, ast.Attribute):
+            if isinstance(head.value, ast.Call):
+                head = head.value.func
+            else:
+                head = head.value
+        control = head.id if isinstance(head, ast.Name) else "?"
+
+        wired[control] = fn.args[0].id
+
+    return wired
+
+
+def test_only_open_mixer_carries_the_singers_part():
+    """
+    A new song starts on its default part. Every way new
+    music lands in the boxes - example buttons, an upload, a
+    different part of the same file - builds the mixer fresh.
+    Only Open Mixer, which rebuilds what is already in the
+    boxes, keeps whichever part was being sung.
+
+    The name check inside mixer_data is the backstop, not
+    the mechanism: two-voice imports all call their tunes
+    "Voice 1" and "Voice 2", so a stale "Voice 2" passes a
+    name check and lands a singer on a voice of a song they
+    have never seen. The wiring is what prevents that.
+    """
+
+    wired = _mixer_builders_by_trigger()
+
+    assert wired, "no mixer wiring found"
+    assert wired["open_mixer_button"] == "build_mixer"
+
+    fresh = {c for c, b in wired.items() if b == "build_mixer_fresh"}
+    assert fresh >= {
+        "example_button", "wellerman_button", "partner_button",
+        "round_button", "midi_upload", "track_input",
+    }
+    assert {c for c, b in wired.items() if b == "build_mixer"} == {
+        "open_mixer_button"
+    }

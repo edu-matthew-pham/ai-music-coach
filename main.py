@@ -657,6 +657,29 @@ with gr.Blocks(
             part_label=part_selected(mixer_value)
         )
 
+    def build_mixer_fresh(pitch_text, duration_text, key, bpm,
+                          chart_text, harmony_style, lyric_text):
+        """
+        Build the mixer for a song that has just arrived.
+
+        A new song starts on its default part, whatever was
+        being sung before. Every way new music lands in the
+        boxes - an example button, an upload, a different
+        part of the same file - is wired here; only Open
+        Mixer, which rebuilds the boxes as they stand, uses
+        build_mixer and keeps the singer's part. Carrying a
+        part across songs by name alone is not safe: every
+        two-voice import calls its tunes "Voice 1" and
+        "Voice 2", so a stale "Voice 2" would pass a name
+        check and land a singer on the second voice of a
+        song they have never seen.
+        """
+
+        return mixer_data(
+            pitch_text, duration_text, key, bpm, chart_text,
+            harmony_style, lyric_text, phrase_label="Whole part"
+        )
+
     def phrases_now(pitch_text, duration_text, lyric_text,
                     chosen):
         """
@@ -823,12 +846,16 @@ with gr.Blocks(
         mixer_output
     ]
 
+    # The same boxes, without the previous mixer value: a
+    # new song has nothing to carry over from the one before.
+    fresh_mixer_inputs = mixer_inputs[:-1]
+
     example_button.click(
         fn=load_example("Twinkle Twinkle", load_twinkle),
         outputs=example_outputs
     ).then(
-        fn=guard(build_mixer),
-        inputs=mixer_inputs,
+        fn=guard(build_mixer_fresh),
+        inputs=fresh_mixer_inputs,
         outputs=mixer_output
     )
 
@@ -836,8 +863,8 @@ with gr.Blocks(
         fn=load_example("the Wellerman", load_wellerman),
         outputs=example_outputs
     ).then(
-        fn=guard(build_mixer),
-        inputs=mixer_inputs,
+        fn=guard(build_mixer_fresh),
+        inputs=fresh_mixer_inputs,
         outputs=mixer_output
     )
 
@@ -848,8 +875,8 @@ with gr.Blocks(
         ),
         outputs=example_outputs
     ).then(
-        fn=guard(build_mixer),
-        inputs=mixer_inputs,
+        fn=guard(build_mixer_fresh),
+        inputs=fresh_mixer_inputs,
         outputs=mixer_output
     )
 
@@ -859,8 +886,8 @@ with gr.Blocks(
         ),
         outputs=example_outputs
     ).then(
-        fn=guard(build_mixer),
-        inputs=mixer_inputs,
+        fn=guard(build_mixer_fresh),
+        inputs=fresh_mixer_inputs,
         outputs=mixer_output
     )
 
@@ -970,8 +997,8 @@ with gr.Blocks(
         inputs=midi_upload,
         outputs=music_outputs + [phrase_input, track_input]
     ).then(
-        fn=guard(build_mixer),
-        inputs=mixer_inputs,
+        fn=guard(build_mixer_fresh),
+        inputs=fresh_mixer_inputs,
         outputs=mixer_output
     )
 
@@ -980,8 +1007,8 @@ with gr.Blocks(
         inputs=[midi_upload, track_input],
         outputs=music_outputs + [phrase_input]
     ).then(
-        fn=guard(build_mixer),
-        inputs=mixer_inputs,
+        fn=guard(build_mixer_fresh),
+        inputs=fresh_mixer_inputs,
         outputs=mixer_output
     )
 
