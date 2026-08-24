@@ -1306,3 +1306,175 @@ def test_a_gap_covered_by_the_other_voice_stays_unowned():
     for phrase in value["phrases_by_part"]["Voice 1"]:
         assert "(rest)" not in phrase["label"]
         assert "(instrumental)" not in phrase["label"]
+
+def test_a_gap_covered_by_the_other_voice_becomes_their_page():
+    """
+    The assembled view goes further than the per-tune list
+    above: "stays unowned" was the earlier, all-or-nothing
+    fix - if anyone sang anywhere in a gap, the WHOLE gap
+    was skipped, backwards from a plain rest (which got a
+    page). The real bug this produced: a duet's second
+    voice singing one word inside a ten-second gap made
+    that whole stretch vanish rather than the empty parts
+    around it showing "(instrumental)". Now the covered
+    moment is THEIR page, mid-song, tagged so the panels
+    fetch their words there.
+    """
+
+    pitches = (
+        "=== Voice 1 ===\n"
+        "C4 D4 E4 F4 " + "R " * 8 + "G4 A4 B4 C5\n"
+        "=== Voice 2 ===\n"
+        "R R R R " + "E4 " * 8 + "R R R R"
+    )
+    durations = (
+        "=== Voice 1 ===\n" + "1 " * 16 + "\n"
+        "=== Voice 2 ===\n" + "1 " * 16
+    )
+    lyrics = (
+        "=== Voice 1 ===\n"
+        "One two three four\nFive six sev'n eight\n"
+        "=== Voice 2 ===\n"
+        "Ah ah ah ah ah ah ah ah"
+    )
+
+    assembled = mixer_data(
+        pitches, durations, "C", 120, "",
+        lyric_text=lyrics, part_label="Voice 1"
+    )["phrases"]
+
+    theirs = [
+        phrase for phrase in assembled
+        if phrase.get("part") == "Voice 2"
+        and "Ah" in phrase["label"]
+    ]
+
+    assert theirs, [phrase["label"] for phrase in assembled]
+
+    # It sits between Voice 1's own two phrases, not after
+    # them - the fill is mid-song, not only the tail.
+    own_ends = [
+        phrase["end"] for phrase in assembled
+        if not phrase.get("part")
+    ]
+    assert theirs[0]["start"] < max(own_ends)
+
+
+def test_a_scrap_of_the_other_voice_rides_the_gap_page_beside_it():
+    """
+    The principle: nothing too small stands alone. The real
+    case: a duet's second voice sings one quarter-second
+    word inside ten dead seconds of the first voice. Shown
+    alone it is a blink between two blanks; skipped it is
+    lost (both real bugs, in that order). It rides the gap
+    page beside it instead - window widened, labels joined,
+    part tag kept so the panels fetch the right words.
+    """
+
+    # Voice 2's "hey" is a quarter of a beat, and its line
+    # starts AT that note (the word before it closes the
+    # previous line), so its phrase really is a scrap - the
+    # same tight boundary the hold-run splitting gives the
+    # real file's one-word voice. A one-line tune has no
+    # phrase list at all, hence the three lines.
+    pitches = (
+        "=== Voice 1 ===\n"
+        "C4 D4 E4 F4 " + "R " * 12 + "G4 A4 B4 C5\n"
+        "=== Voice 2 ===\n"
+        + "R " * 7 + "E4 E4 " + "R " * 10 + "G4"
+    )
+    durations = (
+        "=== Voice 1 ===\n" + "1 " * 20 + "\n"
+        "=== Voice 2 ===\n" + "1 " * 7 + "1 1/4 " + "1 " * 10 + "1"
+    )
+    lyrics = (
+        "=== Voice 1 ===\n"
+        "One two three four\nFive six sev'n eight\n"
+        "=== Voice 2 ===\n"
+        "la\nhey\nho"
+    )
+
+    phrases = mixer_data(
+        pitches, durations, "C", 120, "",
+        lyric_text=lyrics, part_label="Voice 1"
+    )["phrases"]
+
+    carrying = [
+        phrase for phrase in phrases
+        if phrase.get("part") == "Voice 2" and "hey" in phrase["label"]
+    ]
+
+    assert carrying, [phrase["label"] for phrase in phrases]
+
+    # Glued, not standing alone: the quarter-beat word rides
+    # a neighbouring page of readable length.
+    assert carrying[0]["end"] - carrying[0]["start"] > 1.0
+
+    # And the principle itself, directly: nothing in the
+    # whole assembled list stands alone under a second.
+    for phrase in phrases:
+        assert phrase["end"] - phrase["start"] >= 1.0, phrase["label"]
+
+
+def test_a_breath_between_own_lines_is_not_filled_with_the_other_voice():
+    """
+    While you sing, the pages are yours: a short rest
+    between two of your own sung lines stays yours even
+    when the other voice is sounding underneath it - their
+    part shows their line, and Show all parts shows
+    everyone. Only dead stretches and real holes get the
+    other voice's pages. The partner song pins it: every
+    part-tagged page sits at the tail, none between the
+    sung lines.
+    """
+
+    from examples import load_partner_songs
+
+    pitches, durations, lyrics, key, chart, tempo = load_partner_songs()
+
+    phrases = mixer_data(
+        pitches, durations, key, tempo, chart, lyric_text=lyrics
+    )["phrases"]
+
+    own_ends = [
+        phrase["end"] for phrase in phrases if not phrase.get("part")
+    ]
+
+    for phrase in phrases:
+        if phrase.get("part"):
+            assert phrase["start"] >= max(own_ends) - 1e-6, phrase["label"]
+
+
+def test_a_one_line_second_voice_still_gets_a_phrase_list():
+    """
+    A divided tune whose lyrics are a single line used to
+    return no phrase list at all - matching the "Whole
+    part" convention for an UNDIVIDED song, which is wrong
+    here: the fill and carry-on mechanisms above depend on
+    every tune having its real phrase, or a one-word second
+    voice (the real file this was found on) is invisible to
+    both.
+    """
+
+    pitches = (
+        "=== Voice 1 ===\n"
+        "C4 D4 E4 F4 " + "R " * 8 + "G4 A4 B4 C5\n"
+        "=== Voice 2 ===\n"
+        "R R R R " + "E4 " * 4 + "R R R R"
+    )
+    durations = (
+        "=== Voice 1 ===\n" + "1 " * 16 + "\n"
+        "=== Voice 2 ===\n" + "1 " * 12
+    )
+    lyrics = (
+        "=== Voice 1 ===\n"
+        "One two three four\nFive six sev'n eight\n"
+        "=== Voice 2 ===\n"
+        "Ah ah ah ah"
+    )
+
+    value = mixer_data(
+        pitches, durations, "C", 120, "", lyric_text=lyrics
+    )
+
+    assert value["phrases_by_part"]["Voice 2"]

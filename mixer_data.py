@@ -535,6 +535,76 @@ def _note_timeline(pitch_text, duration_text, key, bpm, chart_text,
     return all_notes
 
 
+def _glue_scraps(pages):
+    """
+    Nothing too small stands alone. A page shorter than a
+    second - the other voice's one word, a sliver of gap -
+    is unreadable on its own: it flashes past between two
+    blanks. It rides on a neighbour instead: window widened
+    to cover it, labels joined in time order, the part tag
+    kept so the panels still fetch the right voice's words.
+
+    Only gap pages and other-part pages ever merge or absorb.
+    This tune's own phrases are never touched - a scrap
+    glued onto one of yours would move a boundary the
+    carried-on paging depends on.
+    """
+
+    def mergeable(page):
+        return page.get("part") or page.get("kind") == "gap"
+
+    def scrap(page):
+        return (
+            page["end"] - page["start"] < 1.0 and mergeable(page)
+        )
+
+    def base(label):
+        # The label behind its page number: "10. (instrumental)"
+        # and "11. (instrumental)" are the same thing said
+        # twice, and joining them would read as nonsense.
+        return label.split(". ", 1)[-1]
+
+    def merge(host, other):
+        first, second = sorted(
+            (host, other), key=lambda page: page["start"]
+        )
+
+        if base(first["label"]) == base(second["label"]):
+            host["label"] = first["label"]
+        else:
+            host["label"] = f"{first['label']} — {second['label']}"
+
+        host["start"] = first["start"]
+        host["end"] = max(first["end"], second["end"])
+        if not host.get("part") and other.get("part"):
+            host["part"] = other["part"]
+
+    glued = []
+
+    for page in pages:
+
+        page = dict(page)
+
+        if scrap(page) and glued and mergeable(glued[-1]):
+            merge(glued[-1], page)
+        else:
+            glued.append(page)
+
+    # A scrap with nothing behind it to ride on takes the
+    # page ahead instead - the same forward direction a
+    # short gap already folds.
+    result = []
+
+    for page in reversed(glued):
+
+        if scrap(page) and result and mergeable(result[-1]):
+            merge(result[-1], page)
+        else:
+            result.append(page)
+
+    return list(reversed(result))
+
+
 def _continue_with_other_parts(own_phrases, part_label, phrases_by_part):
     """
     Your part's phrases, carried on by the other parts' once
@@ -572,88 +642,150 @@ def _continue_with_other_parts(own_phrases, part_label, phrases_by_part):
     if not phrases_by_part or not own_phrases:
         return own_phrases
 
-    finished_at = own_phrases[-1]["end"]
+    def pages_from_others(window_start, window_end):
+        """
+        The other parts' phrases inside one window of time
+        your part does not own - the stretch after your last
+        phrase (window_end None), or a hole between two of
+        your phrases. Same cuts, same owner preference, same
+        labelling either way: a moment someone else sings is
+        their page wherever in the song it falls, not only
+        at the end. (The one-word-second-voice bug: "bye."
+        sung by the other voice mid-song fell in a hole no
+        phrase owned, and the Notes panel - which shows only
+        what some phrase's window covers - never showed it
+        at all. Silence got a page; singing got skipped.)
+        """
 
-    # Every moment after yours where ANY remaining part starts
-    # or ends a phrase, plus your own end (the first page's
-    # start) - these are the only places a page may break.
-    cuts = {finished_at}
+        # Every moment in the window where ANY other part
+        # starts or ends a phrase, plus the window's own
+        # edges - these are the only places a page may break.
+        cuts = {window_start}
 
-    for name, theirs in phrases_by_part.items():
+        if window_end is not None:
+            cuts.add(window_end)
 
-        if name == part_label:
-            continue
-
-        for phrase in theirs:
-
-            if phrase["end"] <= finished_at:
-                continue
-
-            cuts.add(max(phrase["start"], finished_at))
-            cuts.add(phrase["end"])
-
-    cuts = sorted(cuts)
-
-    tail = []
-
-    for start, end in zip(cuts, cuts[1:]):
-
-        # Which part's phrase begins here (or is going here,
-        # for a stretch inside someone's phrase). Prefer one
-        # that BEGINS at this cut - it named the break; fall
-        # back to any part sounding through it, so a stretch
-        # is never unlabelled. Part order breaks a genuine tie
-        # (two parts beginning a phrase at the same instant),
-        # the order the singer already sees everywhere else.
-        owner = None
-        owner_label = None
-
-        for name in phrases_by_part:
+        for name, theirs in phrases_by_part.items():
 
             if name == part_label:
                 continue
 
-            for phrase in phrases_by_part[name]:
+            for phrase in theirs:
 
-                # A phrase already over by this cut cannot own
-                # it - without this, clipping every phrase's
-                # start up to `finished_at` made all of them
-                # "begin" there and the first in the list won,
-                # labelling the tail with a line sung long ago
-                # (a real bug: "Voice 2: 1. Row row row" over
-                # what was in fact its "Life is but a dream").
-                if phrase["end"] <= start + 1e-9:
+                if phrase["end"] <= window_start:
                     continue
 
-                begins_here = abs(max(phrase["start"], finished_at) - start) < 1e-9
-                sounding = phrase["start"] <= start + 1e-9 and phrase["end"] > start + 1e-9
+                if window_end is not None and phrase["start"] >= window_end:
+                    continue
 
-                if begins_here:
-                    owner, owner_label = name, phrase["label"]
+                cuts.add(max(phrase["start"], window_start))
+
+                if window_end is None:
+                    cuts.add(phrase["end"])
+                else:
+                    cuts.add(min(phrase["end"], window_end))
+
+        cuts = sorted(cuts)
+
+        pages = []
+
+        for start, end in zip(cuts, cuts[1:]):
+
+            # Which part's phrase begins here (or is going
+            # here, for a stretch inside someone's phrase).
+            # Prefer one that BEGINS at this cut - it named
+            # the break; fall back to any part sounding
+            # through it, so a stretch is never unlabelled.
+            # Part order breaks a genuine tie (two parts
+            # beginning a phrase at the same instant), the
+            # order the singer already sees everywhere else.
+            owner = None
+            owner_label = None
+
+            for name in phrases_by_part:
+
+                if name == part_label:
+                    continue
+
+                for phrase in phrases_by_part[name]:
+
+                    # A phrase already over by this cut cannot
+                    # own it - without this, clipping every
+                    # phrase's start up to the window made all
+                    # of them "begin" there and the first in
+                    # the list won, labelling the tail with a
+                    # line sung long ago (a real bug: "Voice 2:
+                    # 1. Row row row" over what was in fact its
+                    # "Life is but a dream").
+                    if phrase["end"] <= start + 1e-9:
+                        continue
+
+                    begins_here = abs(max(phrase["start"], window_start) - start) < 1e-9
+                    sounding = phrase["start"] <= start + 1e-9 and phrase["end"] > start + 1e-9
+
+                    if begins_here:
+                        owner, owner_label = name, phrase["label"]
+                        break
+
+                    if sounding and owner is None:
+                        owner, owner_label = name, phrase["label"]
+
+                if owner is not None and begins_here:
                     break
 
-                if sounding and owner is None:
-                    owner, owner_label = name, phrase["label"]
+            if owner is None:
+                # A stretch no other part is singing through
+                # (a rest all of them share). Not a page.
+                continue
 
-            if owner is not None and begins_here:
-                break
+            pages.append({
+                "start": start,
+                "end": end,
+                "label": f"{owner}: {owner_label}",
+                # Whose phrase this is, so a panel that draws
+                # words can fetch that part's rather than
+                # yours (which has none here).
+                "part": owner
+            })
 
-        if owner is None:
-            # A stretch no remaining part is singing through
-            # (a rest all of them share). Not a page.
-            continue
+        return pages
 
-        tail.append({
-            "start": start,
-            "end": end,
-            "label": f"{owner}: {owner_label}",
-            # Whose phrase this is, so a panel that draws
-            # words can fetch that part's rather than yours
-            # (which has none here - you have finished).
-            "part": owner
-        })
+    # Mid-song first: a hole between two of your phrases that
+    # another part sings through is their moment, and it gets
+    # their page - a duet's answer, the one word the second
+    # voice carries. Which holes: ones long enough to matter
+    # (over a second), and ones of ANY size that touch a gap
+    # page - those sit inside a genuinely dead stretch of
+    # yours, where the other voice's word would otherwise be
+    # invisible. A short breath between two of your own sung
+    # lines is neither: while you sing, the pages are yours,
+    # and whoever is sounding underneath your breath is not
+    # lost - their own part shows it, and Show all parts
+    # shows everyone's.
+    filled = [own_phrases[0]]
 
-    return own_phrases + tail
+    for previous, current in zip(own_phrases, own_phrases[1:]):
+
+        hole = current["start"] - previous["end"]
+
+        beside_dead_time = (
+            previous.get("kind") == "gap"
+            or current.get("kind") == "gap"
+        )
+
+        if hole > 1e-9 and (hole > 1.0 or beside_dead_time):
+            filled.extend(
+                pages_from_others(previous["end"], current["start"])
+            )
+
+        filled.append(current)
+
+    # Then the stretch after your last phrase, exactly as
+    # before - and one gluing pass over the whole assembled
+    # list, so no scrap of anyone's ever stands alone.
+    return _glue_scraps(
+        filled + pages_from_others(own_phrases[-1]["end"], None)
+    )
 
 
 def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
@@ -707,7 +839,16 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
 
     found = piece.phrases()
 
-    if len(found) <= 1:
+    undivided = len(sections) == 1 and sections[0][0] is None
+
+    # One line, one phrase: an undivided song shows no
+    # phrase strip for that, matching the old dropdown's
+    # "Whole part". But a DIVIDED tune's one line is still a
+    # real phrase the other singers' fills and carry-on need
+    # to see - returning [] made a one-line second voice
+    # invisible to every mechanism that shows one part's
+    # words to another.
+    if undivided and len(found) <= 1:
         return []
 
     # In a song with several tunes, one voice's rests are
@@ -719,7 +860,6 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
     # tune is silent or instrumental together is genuinely
     # nobody's, however many tunes the song has, and pages
     # the same way a solo song's dead time does.
-    undivided = len(sections) == 1 and sections[0][0] is None
 
     per_beat = 60.0 / float(bpm)
 
@@ -808,11 +948,42 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
 
                 beat += span
 
-    def anyone_else_sings(gap_start, gap_end):
-        return any(
-            s < gap_end - 1e-6 and e > gap_start + 1e-6
-            for s, e in others_sing
-        )
+    def uncovered(window_start, window_end):
+        """
+        The sub-stretches of a window no other voice sings
+        through - the window with every covered interval
+        subtracted, in order. For a solo song others_sing is
+        empty and the whole window comes back in one piece.
+        """
+
+        subs = []
+        cursor = window_start
+
+        for s, e in sorted(others_sing):
+
+            if e <= cursor or s >= window_end:
+                continue
+
+            if s > cursor:
+                subs.append((cursor, s))
+
+            cursor = max(cursor, e)
+
+        if cursor < window_end:
+            subs.append((cursor, window_end))
+
+        return subs
+
+    def note_at(beat):
+        """
+        The first note index at or after a beat position, so
+        a sub-stretch's instrumental-or-rest label reads the
+        notes actually inside it.
+        """
+
+        from bisect import bisect_left
+
+        return bisect_left(starts, beat - 1e-6)
 
     starts = [0.0]
     for length in durations:
@@ -913,10 +1084,10 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
             ]
             cut = max(cuts) if cuts else target
 
-            pages.append((cursor, cut, label))
+            pages.append((cursor, cut, label, "gap"))
             cursor = cut
 
-        pages.append((cursor, gap_end, label))
+        pages.append((cursor, gap_end, label, "gap"))
         return pages
 
     # Walk the sung phrases, deciding each gap's fate as it
@@ -933,12 +1104,7 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
 
         gap = phrase_start - previous_end
 
-        pageable = gap > FOLD_BARS * bar_len + EPSILON and (
-            undivided
-            or not anyone_else_sings(previous_end, phrase_start)
-        )
-
-        if pageable:
+        if undivided and gap > FOLD_BARS * bar_len + EPSILON:
 
             pages = gap_pages(
                 previous_end, phrase_start,
@@ -946,23 +1112,36 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
             )
 
             # A sliver left over after the full pages folds
-            # forward in a solo song, the same rule a short
-            # gap follows; in a divided song boundaries never
-            # move, so the sliver is left unowned instead.
-            tail_start, tail_end, tail_label = pages[-1]
+            # forward, the same rule a short gap follows.
+            tail_start, tail_end, tail_label, _ = pages[-1]
 
             if tail_end - tail_start <= FOLD_BARS * bar_len + EPSILON:
                 pages = pages[:-1]
-                if undivided:
-                    phrase_start = tail_start
+                phrase_start = tail_start
 
-            for page_start, page_end, page_label in pages:
-                built.append((page_start, page_end, page_label))
+            built.extend(pages)
 
-        elif gap > EPSILON and undivided:
+        elif undivided and gap > EPSILON:
             phrase_start = previous_end
 
-        built.append((phrase_start, phrase_end, entry["label"]))
+        elif gap > EPSILON:
+
+            # A divided song's gap is not all-or-nothing: the
+            # moments another voice sings belong to them (and
+            # are filled with their pages downstream), while
+            # the stretches nobody covers page here, chopped
+            # around the covered ones. Boundaries of this
+            # tune's own phrases never move.
+            for sub_start, sub_end in uncovered(
+                previous_end, phrase_start
+            ):
+                if sub_end - sub_start > FOLD_BARS * bar_len + EPSILON:
+                    built.extend(gap_pages(
+                        sub_start, sub_end,
+                        note_at(sub_start), note_at(sub_end)
+                    ))
+
+        built.append((phrase_start, phrase_end, entry["label"], None))
 
         previous_end = phrase_end
         previous_end_note = entry["last"] + 1
@@ -972,23 +1151,42 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
     # unowned when short, exactly as before this existed.
     song_end = beat_at(len(piece.pitches))
 
-    if song_end - previous_end > FOLD_BARS * bar_len + EPSILON and (
-        undivided or not anyone_else_sings(previous_end, song_end)
-    ):
-        for page_start, page_end, page_label in gap_pages(
-            previous_end, song_end,
-            previous_end_note, len(piece.pitches)
-        ):
-            built.append((page_start, page_end, page_label))
+    if undivided:
 
-    return [
-        {
+        if song_end - previous_end > FOLD_BARS * bar_len + EPSILON:
+            built.extend(gap_pages(
+                previous_end, song_end,
+                previous_end_note, len(piece.pitches)
+            ))
+
+    else:
+
+        for sub_start, sub_end in uncovered(previous_end, song_end):
+            if sub_end - sub_start > FOLD_BARS * bar_len + EPSILON:
+                built.extend(gap_pages(
+                    sub_start, sub_end,
+                    note_at(sub_start), note_at(sub_end)
+                ))
+
+    phrases = []
+
+    for number, (start, end, label, kind) in enumerate(built):
+
+        phrase = {
             "start": start * per_beat,
             "end": end * per_beat,
             "label": f"{number + 1}. {label}",
         }
-        for number, (start, end, label) in enumerate(built)
-    ]
+
+        # Marked so the scrap-gluing downstream can tell a
+        # gap page (mergeable) from one of this tune's own
+        # phrases (never touched).
+        if kind == "gap":
+            phrase["kind"] = "gap"
+
+        phrases.append(phrase)
+
+    return phrases
 
 
 def mixer_data(
