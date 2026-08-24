@@ -202,6 +202,20 @@
 		engine.loopTo = gradio.props.value.loop_end ?? null;
 	}
 
+	// The practice speed, seeded the same moment. Unlike
+	// loopFrom (which starts null and is only ever seeded
+	// once), rate always has a real value, so there is no
+	// "unset" state to guard on - setRate's own no-op guard
+	// (see mixerEngine.svelte.ts) makes running this on
+	// every remount safe regardless: build_mixer_fresh sends
+	// 1.0 for a song that has just arrived (a real reset,
+	// even mid-session), and build_mixer's carried value is
+	// always what chooseRate below last wrote into this same
+	// object, so re-seeding it is a harmless no-op.
+	if (gradio.props.value?.rate != null) {
+		engine.setRate(gradio.props.value.rate);
+	}
+
 	// This instance's own display loop. Destroyed with the
 	// instance; the engine and its sound are not.
 	let playhead = $state(engine.position());
@@ -246,6 +260,28 @@
 			gradio.props.value.part = name;
 		}
 		gradio.dispatch("change");
+	}
+
+	// Setting the practice speed, the same shape as
+	// chooseTune with one addition: engine.setRate() stops
+	// playback on its own (a mid-note buffer swap is the
+	// silent timing seam this engine has been burned by
+	// before - see mixerEngine.svelte.ts), so a rate change
+	// mid-song would otherwise leave the music dead until
+	// Play is pressed again. Resuming here, the same
+	// wasPlaying pattern selectBar already uses for a bar
+	// click, turns that into a brief pause rather than a
+	// silence someone has to notice and fix themselves.
+	function chooseRate(value: number): void {
+		const wasPlaying = engine.playing;
+		engine.setRate(value);
+		if (gradio.props.value) {
+			gradio.props.value.rate = engine.rate;
+		}
+		gradio.dispatch("change");
+		if (wasPlaying) {
+			engine.play(layers);
+		}
 	}
 
 	function selectBar(bar: MixerBar, event: MouseEvent | KeyboardEvent): void {
@@ -559,7 +595,7 @@
 					</div>
 				{/if}
 				{#if panels.faders}
-					<MixerModal {layers} onLevelChanged={levelChanged} />
+					<MixerModal {layers} onLevelChanged={levelChanged} onRateChanged={chooseRate} />
 				{/if}
 				<TransportSettings
 					bind:follow
@@ -567,6 +603,7 @@
 					onClearSelection={clearSelection}
 					onToggleRepeat={toggleRepeat}
 					onMasterVolumeChanged={masterVolumeChanged}
+					onRateChanged={chooseRate}
 				/>
 				<button
 					type="button"

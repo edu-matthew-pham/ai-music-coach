@@ -85,6 +85,13 @@ export interface MixerValue {
 	// hidden - a chooser with one option is worse than none.
 	parts?: string[];
 	part?: string | null;
+	// The practice speed the person last set, as a fraction
+	// of full speed (0.75 = 75%). Absent or null reads as
+	// full speed - a freshly built mixer's default. Rides
+	// the value the same way part does: the browser writes
+	// it whenever it changes, and a box-edit rebuild
+	// (Open Mixer) carries it back through rate_selected.
+	rate?: number | null;
 	loop_start: number | null;
 	loop_end: number | null;
 }

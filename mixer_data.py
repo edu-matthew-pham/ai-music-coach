@@ -1000,7 +1000,8 @@ def mixer_data(
     harmony_style="Thirds, chord-corrected",
     lyric_text="",
     phrase_label=None,
-    part_label=None
+    part_label=None,
+    rate=1.0
 ):
     """
     The dictionary a MusicMixer component's value expects.
@@ -1014,6 +1015,16 @@ def mixer_data(
     yours. Both are sent every time - `parts` is empty for
     an undivided song, which is how the browser knows not
     to offer a chooser at all.
+
+    `rate` is the practice speed as a fraction of full
+    speed - a third, purely playback-side fact alongside
+    the song's own tempo and the BPM box (DESIGN.md's tempo
+    invariant, extended). Unlike bpm, which the mixer was
+    built at and cannot itself change, rate is set live in
+    the browser and rides back on the value the same way
+    part does - build_mixer carries it across a box-edit
+    rebuild, build_mixer_fresh leaves it at the default
+    here, 1.0, for a song that has just arrived.
     """
 
     from music import part_names
@@ -1114,6 +1125,7 @@ def mixer_data(
         "bpm": float(bpm),
         "parts": tunes,
         "part": part_label,
+        "rate": float(rate),
         "loop_start": None,
         "loop_end": None
     }
@@ -1156,6 +1168,26 @@ def part_selected(mixer_value):
         return None
 
     return mixer_value.get("part")
+
+
+def rate_selected(mixer_value):
+    """
+    The practice speed the person last set, as the mixer
+    reports it - or 1.0 (full speed) when there is no mixer
+    yet.
+
+    Same shape as part_selected, read at the same moment by
+    build_mixer so a box-edit rebuild keeps whatever speed
+    was chosen. build_mixer_fresh does not call this - a
+    song that has just arrived always starts at full speed,
+    the same fresh-vs-carry rule the part choice already
+    settled.
+    """
+
+    if not mixer_value:
+        return 1.0
+
+    return mixer_value.get("rate") or 1.0
 
 
 def loop_notes(pitch_text, duration_text, lyric_text, key,

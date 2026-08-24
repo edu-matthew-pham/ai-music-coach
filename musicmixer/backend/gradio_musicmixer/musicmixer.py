@@ -49,9 +49,9 @@ class MusicMixer(Component):
         """
         Parameters:
             value: a dict with `layers`, `timeline`,
-                `loop_start` and `loop_end`. If a function is
-                provided, it is called each time the app
-                loads to set the initial value.
+                `loop_start`, `loop_end`, `part` and `rate`.
+                If a function is provided, it is called each
+                time the app loads to set the initial value.
             label: shown above the component if show_label
                 is True.
             every: recalculates `value` on a timer if `value`
@@ -118,6 +118,9 @@ class MusicMixer(Component):
                 tune song (empty for an ordinary one) and
                 part is whichever is being sung; the browser
                 sends part back when a person picks another.
+                rate is the practice speed the person last
+                set (1.0 is full speed); the browser sends
+                it back the same way as part.
         Returns:
             The dict sent to the browser.
         """
@@ -134,6 +137,7 @@ class MusicMixer(Component):
             "bpm": value.get("bpm"),
             "parts": value.get("parts", []),
             "part": value.get("part"),
+            "rate": value.get("rate"),
             "loop_start": value.get("loop_start"),
             "loop_end": value.get("loop_end"),
         }
@@ -174,6 +178,9 @@ class MusicMixer(Component):
                 "part": {
                     "anyOf": [{"type": "string"}, {"type": "null"}]
                 },
+                "rate": {
+                    "anyOf": [{"type": "number"}, {"type": "null"}]
+                },
                 "loop_start": {
                     "anyOf": [{"type": "number"}, {"type": "null"}]
                 },
@@ -184,7 +191,7 @@ class MusicMixer(Component):
         }
 
     def example_payload(self) -> Any:
-        return {"layers": [], "timeline": [], "notes": [], "phrases": [], "phrases_by_part": {}, "diagrams": {}, "bpm": None, "parts": [], "part": None, "loop_start": None, "loop_end": None}
+        return {"layers": [], "timeline": [], "notes": [], "phrases": [], "phrases_by_part": {}, "diagrams": {}, "bpm": None, "parts": [], "part": None, "rate": 1.0, "loop_start": None, "loop_end": None}
 
     def example_value(self) -> Any:
-        return {"layers": [], "timeline": [], "notes": [], "phrases": [], "phrases_by_part": {}, "diagrams": {}, "bpm": None, "parts": [], "part": None, "loop_start": None, "loop_end": None}
+        return {"layers": [], "timeline": [], "notes": [], "phrases": [], "phrases_by_part": {}, "diagrams": {}, "bpm": None, "parts": [], "part": None, "rate": 1.0, "loop_start": None, "loop_end": None}

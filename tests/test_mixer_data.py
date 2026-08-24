@@ -324,9 +324,10 @@ def test_a_fader_wears_the_colour_of_its_part():
 def test_mixer_data_has_the_shape_the_component_expects():
     """
     The dictionary the MusicMixer component's value is set
-    from - layers, timeline, notes, phrases, diagrams, and
-    an open loop_start/loop_end that a freshly built mixer
-    starts without one.
+    from - layers, timeline, notes, phrases, diagrams, an
+    open loop_start/loop_end that a freshly built mixer
+    starts without one, and rate at its default of full
+    speed.
     """
 
     pitches, durations, lyrics, key, chart, tempo = song()
@@ -338,7 +339,8 @@ def test_mixer_data_has_the_shape_the_component_expects():
 
     assert set(value.keys()) == {
         "layers", "timeline", "notes", "phrases", "phrases_by_part",
-        "diagrams", "bpm", "parts", "part", "loop_start", "loop_end"
+        "diagrams", "bpm", "parts", "part", "rate", "loop_start",
+        "loop_end"
     }
 
     # An ordinary, undivided song has no tunes of its own to
@@ -351,6 +353,7 @@ def test_mixer_data_has_the_shape_the_component_expects():
 
     assert value["loop_start"] is None
     assert value["loop_end"] is None
+    assert value["rate"] == 1.0
 
     layer_names = {layer["name"] for layer in value["layers"]}
     assert layer_names <= set(LAYER_NAMES)
@@ -727,6 +730,22 @@ def test_part_selected_reads_the_browsers_choice():
     assert part_selected(None) is None
     assert part_selected({}) is None
     assert part_selected({"part": "Three Blind Mice"}) == "Three Blind Mice"
+
+
+def test_rate_selected_reads_the_browsers_choice():
+    """
+    Same shape as part_selected, and read at the same
+    moment: no mixer yet or nothing set means full speed,
+    the fresh-song default; a real rate the browser sent
+    back is echoed as-is.
+    """
+
+    from mixer_data import rate_selected
+
+    assert rate_selected(None) == 1.0
+    assert rate_selected({}) == 1.0
+    assert rate_selected({"rate": 0.75}) == 0.75
+    assert rate_selected({"rate": 1.0}) == 1.0
 
 
 def test_a_stale_part_name_does_not_survive_into_a_one_tune_song():

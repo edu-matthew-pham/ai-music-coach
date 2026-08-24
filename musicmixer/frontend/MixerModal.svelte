@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from "svelte";
 	import { mixerOpen } from "./mixerPanels.svelte";
+	import { engine } from "./mixerEngine.svelte";
 	import FaderPanel from "./FaderPanel.svelte";
 	import type { MixerLayerData } from "./mixerEngine.svelte";
 
@@ -26,9 +27,10 @@
 	interface Props {
 		layers: MixerLayerData[];
 		onLevelChanged: (name: string) => void;
+		onRateChanged: (value: number) => void;
 	}
 
-	let { layers, onLevelChanged }: Props = $props();
+	let { layers, onLevelChanged, onRateChanged }: Props = $props();
 
 	function open(): void {
 		mixerOpen.value = true;
@@ -87,6 +89,19 @@
 					&#10005;
 				</button>
 			</div>
+			<label class="rate-slider">
+				Speed
+				<input
+					type="range"
+					min="0.5"
+					max="1.5"
+					step="0.05"
+					value={engine.rate}
+					oninput={(event) =>
+						onRateChanged(Number((event.target as HTMLInputElement).value))}
+				/>
+				<span class="value">{Math.round(engine.rate * 100)}%</span>
+			</label>
 			<FaderPanel {layers} {onLevelChanged} />
 		</div>
 	</div>
@@ -158,5 +173,21 @@
 		border-radius: 6px;
 		background: var(--background-fill-primary);
 		cursor: pointer;
+	}
+	.rate-slider {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 13px;
+		margin-bottom: 10px;
+	}
+	.rate-slider input[type="range"] {
+		flex: 1;
+	}
+	.rate-slider .value {
+		width: 34px;
+		font-size: 12px;
+		color: var(--body-text-color-subdued);
+		text-align: right;
 	}
 </style>

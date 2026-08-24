@@ -646,15 +646,17 @@ with gr.Blocks(
         would silently put a singer back on the first part.
         mixer_data falls back to the first tune when the
         name means nothing here, so a different song loading
-        cannot leave a stale choice in charge.
+        cannot leave a stale choice in charge. The practice
+        speed carries the same way, read by rate_selected.
         """
 
-        from mixer_data import part_selected
+        from mixer_data import part_selected, rate_selected
 
         return mixer_data(
             pitch_text, duration_text, key, bpm, chart_text,
             harmony_style, lyric_text, phrase_label="Whole part",
-            part_label=part_selected(mixer_value)
+            part_label=part_selected(mixer_value),
+            rate=rate_selected(mixer_value)
         )
 
     def build_mixer_fresh(pitch_text, duration_text, key, bpm,

@@ -531,16 +531,3 @@ class MixerEngine {
 // One engine, shared by every mount of the component for
 // as long as the page lives.
 export const engine = new MixerEngine();
-
-// Stage 2 of the time-stretch plan is deliberately UI-less:
-// the rate is set from the browser console and everything
-// that consumes time is clicked through at 75% and 150%.
-// This hook is that console handle - `mixerRate(0.75)` -
-// and is REMOVED in stage 3 when the real controls land,
-// same retire-with-the-replacement rule as everything else.
-if (typeof window !== "undefined") {
-	(window as any).mixerRate = (value: number) => {
-		engine.setRate(value);
-		return engine.rate;
-	};
-}

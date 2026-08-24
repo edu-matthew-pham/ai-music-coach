@@ -19,12 +19,34 @@
 		}
 	}
 
+	// Conventional practice speeds, not a slider - one tap
+	// beats dragging anything for the common case, and the
+	// slider's own extra precision belongs in the Mix sheet
+	// instead, set once between takes like a fader, not
+	// fussed over mid-song. 100 is included so the current
+	// speed is always visible, not just implied by nothing
+	// being highlighted.
+	const RATE_PRESETS = [0.5, 0.75, 1, 1.25, 1.5];
+
+	// The Mix sheet's fine slider can land on a value none of
+	// these five presets show (85%, say). Rather than leaving
+	// the row looking like it disagrees with the actual speed
+	// - nothing highlighted, no number visible anywhere in
+	// this row - a small extra pill appears showing exactly
+	// what is set. Only rendered when it's needed: an ordinary
+	// preset match adds nothing here to keep the row as small
+	// as it looks in the common case.
+	const customRate = $derived(
+		RATE_PRESETS.includes(engine.rate) ? null : engine.rate
+	);
+
 	interface Props {
 		follow: boolean;
 		hasTimeline: boolean;
 		onClearSelection: () => void;
 		onToggleRepeat: () => void;
 		onMasterVolumeChanged: () => void;
+		onRateChanged: (value: number) => void;
 	}
 
 	let {
@@ -32,12 +54,32 @@
 		hasTimeline,
 		onClearSelection,
 		onToggleRepeat,
-		onMasterVolumeChanged
+		onMasterVolumeChanged,
+		onRateChanged
 	}: Props = $props();
 </script>
 
 <div class="transport-settings">
 	<button onclick={onClearSelection}>Clear selection</button>
+	<div class="speed-buttons" role="group" aria-label="Practice speed">
+		<span class="speed-label">Speed</span>
+		{#each RATE_PRESETS as preset (preset)}
+			<button
+				type="button"
+				class="speed-button"
+				class:chosen={engine.rate === preset}
+				aria-pressed={engine.rate === preset}
+				onclick={() => onRateChanged(preset)}
+			>
+				{Math.round(preset * 100)}%
+			</button>
+		{/each}
+		{#if customRate !== null}
+			<span class="speed-custom" aria-live="polite">
+				{Math.round(customRate * 100)}%
+			</span>
+		{/if}
+	</div>
 	<label class="volume">
 		Volume
 		<input
@@ -142,5 +184,40 @@
 		font-size: 12px;
 		color: var(--body-text-color-subdued);
 		text-align: right;
+	}
+	.speed-buttons {
+		display: flex;
+		align-items: center;
+		gap: 3px;
+		font-size: 12px;
+	}
+	.speed-label {
+		margin-right: 1px;
+	}
+	.speed-button {
+		padding: 0.1rem 0.35rem;
+		border: 1px solid var(--border-color-primary, #ccc);
+		border-radius: 999px;
+		background: transparent;
+		cursor: pointer;
+		font-size: 10px;
+	}
+	.speed-custom {
+		/* Not a button - nothing happens if you click it - so
+		   it deliberately does not look like the presets
+		   beside it: dashed border, no pointer cursor, and the
+		   subdued colour the volume/text-size readouts already
+		   use elsewhere in this row for "this is a number, not
+		   a control". */
+		padding: 0.1rem 0.35rem;
+		border: 1px dashed var(--border-color-primary, #ccc);
+		border-radius: 999px;
+		font-size: 10px;
+		color: var(--body-text-color-subdued);
+	}
+	.speed-button.chosen {
+		background: var(--color-accent, #2e7d32);
+		color: #fff;
+		border-color: transparent;
 	}
 </style>
