@@ -1478,3 +1478,60 @@ def test_a_one_line_second_voice_still_gets_a_phrase_list():
     )
 
     assert value["phrases_by_part"]["Voice 2"]
+
+
+def test_a_fully_instrumental_song_still_pages_by_bars():
+    """
+    A song with no real words anywhere (an instrumental
+    import like a piano solo) used to page nothing at all:
+    the gap-chunking machinery only ever ran AROUND a real
+    sung phrase, and with zero of those there was nothing to
+    chunk between. It now falls through to the same
+    bar-chunked "(instrumental)" pages any other long unsung
+    stretch gets - the whole song is one big unowned
+    stretch, not a special case.
+    """
+
+    pitches = " ".join(["C4"] * 16)
+    durations = " ".join(["1"] * 16)
+    lyrics = " ".join(["_"] * 12) + "\n" + " ".join(["_"] * 4)
+
+    phrases = mixer_data(
+        pitches, durations, "C", 120, "", lyric_text=lyrics
+    )["phrases"]
+
+    assert phrases
+    assert all("(instrumental)" in phrase["label"] for phrase in phrases)
+
+
+def test_a_single_unbroken_instrumental_phrase_still_pages():
+    """
+    The related edge the same bug hid behind: a piece with
+    no internal rests at all has only ONE phrase by
+    Piece.phrases()' own count, which used to be read as
+    "trivial - matches Whole part, show nothing" regardless
+    of whether that one phrase is sung. Correct for a real
+    one-line song; wrong for an instrumental one, which
+    still wants its bar-chunked page. A genuinely sung
+    one-line song must still return [], unchanged.
+    """
+
+    pitches = " ".join(["C4"] * 16)
+    durations = " ".join(["1"] * 16)
+
+    instrumental = mixer_data(
+        pitches, durations, "C", 120, "",
+        lyric_text=" ".join(["_"] * 16)
+    )["phrases"]
+
+    assert instrumental
+    assert instrumental[0]["label"].endswith("(instrumental)")
+
+    sung = mixer_data(
+        pitches, durations, "C", 120, "",
+        lyric_text=(
+            "Hi there my friend " + " ".join(["_"] * 12)
+        )
+    )["phrases"]
+
+    assert sung == []

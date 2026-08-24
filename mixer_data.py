@@ -847,9 +847,13 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
     # real phrase the other singers' fills and carry-on need
     # to see - returning [] made a one-line second voice
     # invisible to every mechanism that shows one part's
-    # words to another.
-    if undivided and len(found) <= 1:
-        return []
+    # words to another. And a SINGLE unbroken instrumental
+    # piece (no lyrics anywhere, so nothing ever split it
+    # into more than one "line") is not the sung-song case
+    # this convention was written for either - it still
+    # wants bar-chunked pages, not silence. Decided below,
+    # once marked_lines exists to ask whether that one line
+    # is actually sung.
 
     # In a song with several tunes, one voice's rests are
     # usually not silence - another voice is singing there,
@@ -891,6 +895,11 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
             return True
         tokens = marked_lines[index].split()
         return any(token != "*" for token in tokens)
+
+    if undivided and len(found) <= 1 and (
+        not lines or line_is_sung(0)
+    ):
+        return []
 
     # Per-note: does this position sound but belong to no
     # singer ("*" after marking)? Rests are not unsung -
@@ -1053,8 +1062,14 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
             "label": label,
         })
 
-    if not sung:
-        return []
+    # No early return when sung is empty: the walk below
+    # does nothing (zero iterations) and previous_end stays
+    # at 0.0, so the outro logic that follows it treats the
+    # WHOLE piece as the unowned stretch and chunks it the
+    # same as any other gap - the only difference for a
+    # purely instrumental piece (no lyrics anywhere at all,
+    # or every line judged too short to be a real word) is
+    # that there is no sung phrase to chunk AROUND.
 
     def gap_pages(gap_start, gap_end, first_note, last_note):
         """
