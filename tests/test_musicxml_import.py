@@ -848,3 +848,208 @@ def test_o_holy_night_still_keeps_its_own_real_short_lines():
 
     assert "Christ was born" in lines
     assert "Sa- viour's birth" in lines
+
+# --- hold-run breaks and the comma rescue -----------------------
+#
+# sung_spans is (beat_position, beat_length) per syllable
+# position, at 60 bpm so a beat is a second and the numbers
+# in each test read directly as seconds.
+
+
+def _spans(beat_lengths):
+    spans = []
+    position = 0.0
+    for length in beat_lengths:
+        spans.append((position, length))
+        position += length
+    return spans
+
+
+def test_a_long_hold_run_breaks_the_line_at_both_ends():
+    """
+    Regression pin for the real bug: an imported intro's
+    held notes were welded onto the first sung line, because
+    the words-based splitter has no concept of elapsed time
+    and walks straight past every hold. A run past
+    HOLD_RUN_BREAK_SECONDS is instrumental, not part of any
+    line, whatever the surrounding punctuation says.
+    """
+
+    from musicxml_import import _hold_run_breaks
+
+    # 5 seconds of holds (past the 4.0s threshold), then
+    # words with no punctuation to have found the break
+    # on their own.
+    syllables = (
+        ["_"] * 5 + ["I", "know", "there's", "some-", "thing"]
+    )
+    spans = _spans([1.0] * 5 + [1.0] * 5)
+
+    assert _hold_run_breaks(syllables, spans, bpm=60) == {5}
+
+
+def test_a_short_hold_run_is_left_alone():
+    """
+    A real melisma - a single word held across several notes
+    - must never be split. The threshold sits with margin
+    above the longest genuine melisma found in this app's
+    own fixtures (2.0s, Mulan) and below the shortest real
+    instrumental gap found in an uploaded song (5.1s).
+    """
+
+    from musicxml_import import _hold_run_breaks
+
+    syllables = ["Ho-", "_", "_", "ly"]
+    spans = _spans([1.0, 1.0, 1.0, 1.0])
+
+    assert _hold_run_breaks(syllables, spans, bpm=60) == set()
+
+
+def test_a_hold_run_at_the_very_start_gets_no_leading_break():
+    """
+    A break at position 0 would open an empty first line -
+    the run at the front of a song only needs the break
+    after it, not one before nothing.
+    """
+
+    from musicxml_import import _hold_run_breaks
+
+    syllables = ["_"] * 5 + ["Hi", "there"]
+    spans = _spans([1.0] * 7)
+
+    assert _hold_run_breaks(syllables, spans, bpm=60) == {5}
+
+
+def test_a_trailing_hold_run_gets_its_leading_break_only():
+    """
+    The mirror case: a long outro of holds after the last
+    word needs the break before it, and nothing after -
+    there is no next line for a trailing break to open.
+    """
+
+    from musicxml_import import _hold_run_breaks
+
+    syllables = ["Bye"] + ["_"] * 5
+    spans = _spans([1.0] * 6)
+
+    assert _hold_run_breaks(syllables, spans, bpm=60) == {1}
+
+
+def test_a_comma_is_ignored_inside_an_ordinary_length_line():
+    """
+    A comma is an ordinary breath inside one phrase, not a
+    break - "Listen to your heart, there's nothing else you
+    can do" (4.8s, a real line from an uploaded song) must
+    stay whole. Only a line already far past
+    COMMA_RESCUE_LINE_SECONDS gets a comma-based rescue.
+    """
+
+    from musicxml_import import _comma_rescue
+
+    syllables = [
+        "Lis-", "ten", "to", "your", "heart,",
+        "there's", "noth-", "ing", "else", "you", "can", "do."
+    ]
+    spans = _spans([0.4] * 12)  # 4.8s total, at 60bpm
+
+    assert _comma_rescue(set(), syllables, spans, bpm=60) == set()
+
+
+def test_a_comma_rescues_a_line_that_is_still_far_too_long():
+    """
+    Regression pin for the real bug: two full sentences plus
+    a long instrumental break landed as one 29.4s line
+    because the comma inside it was never used as evidence.
+    Past COMMA_RESCUE_LINE_SECONDS, a comma may split - but
+    only when both resulting halves still clear the same
+    floor a bare-capital break must.
+    """
+
+    from musicxml_import import _comma_rescue
+
+    syllables = (
+        ["I", "don't", "know", "why,"]
+        + ["but", "lis-", "ten", "to", "your", "heart."]
+    )
+    # 14 beats at 60bpm = 14s, past the 12.0s threshold;
+    # the comma falls after position 3.
+    spans = _spans([1.4] * 10)
+
+    assert _comma_rescue(set(), syllables, spans, bpm=60) == {4}
+
+
+def test_a_comma_rescue_never_opens_a_sliver():
+    """
+    A comma one word from either end of an otherwise-too-long
+    line would open a sliver phrase - the same floor
+    _drop_short_lyric_breaks already holds bare capitals to
+    applies here too, so a rescue can never create the thing
+    that filter exists to prevent.
+    """
+
+    from musicxml_import import _comma_rescue
+
+    syllables = (
+        ["Well,"]
+        + ["a", "long", "phrase", "goes", "on", "and", "on", "and", "on."]
+    )
+    # "Well," alone is 0.5s - under MINIMUM_LYRIC_PHRASE_SECONDS,
+    # so splitting there would open a sliver. The line as a
+    # whole is still 14.0s, comfortably past the rescue
+    # threshold, so the rescue is genuinely available here -
+    # it is the sliver check specifically that must block it.
+    spans = _spans([0.5] + [1.5] * 9)
+
+    assert _comma_rescue(set(), syllables, spans, bpm=60) == set()
+
+
+# A long piano intro's held notes used to be welded onto
+# the first sung line, because the words-based splitter has
+# no concept of elapsed time. Built directly with music21,
+# the same technique the multi-key tests use, rather than
+# relying on an uploaded song that cannot be committed.
+
+
+def _build_score_with_a_long_intro(path):
+
+    from music21 import stream, note, meter
+
+    part = stream.Part()
+    part.insert(0, meter.TimeSignature("4/4"))
+
+    # Five real seconds of intro at a plain 60bpm (no tempo
+    # marking, so music21's own default), well past
+    # HOLD_RUN_BREAK_SECONDS and nowhere near the longest
+    # genuine melisma seen in any real fixture (2.0s).
+    for beat in range(5):
+        part.insert(beat, note.Note("C4", quarterLength=1))
+
+    opening = note.Note("D4", quarterLength=1)
+    opening.lyrics.append(note.Lyric(text="Hi", number=1))
+    part.insert(5, opening)
+
+    closing = note.Note("E4", quarterLength=1)
+    closing.lyrics.append(note.Lyric(text="there.", number=1))
+    part.insert(6, closing)
+
+    score = stream.Score()
+    score.append(part)
+    score.write("musicxml", fp=str(path))
+
+
+def test_a_long_intro_no_longer_welds_onto_the_first_sung_line(tmp_path):
+
+    from musicxml_import import import_musicxml, parts_in
+
+    path = tmp_path / "long_intro.musicxml"
+
+    _build_score_with_a_long_intro(path)
+
+    label = parts_in(str(path))[0]
+
+    _, _, lyrics, _, _, _, _, _ = import_musicxml(str(path), label)
+
+    lines = lyrics.split("\n")
+
+    assert lines[0].strip("_ ") == ""
+    assert lines[1] == "Hi there."

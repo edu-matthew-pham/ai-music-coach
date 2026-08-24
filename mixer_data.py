@@ -38,6 +38,7 @@ from instrument_diagrams import (
 # rest of the song should open thin.
 OPENING_LEVELS = {
     "Melody": 1.0,
+    "Instrumental": 1.0,
     "Harmony above": 0.0,
     "Harmony below": 0.0,
     "Bass": 1.0,
@@ -50,6 +51,7 @@ OPENING_LEVELS = {
 # thing on the picture.
 LAYER_COLOURS = {
     "Melody": "#2e7d32",
+    "Instrumental": "#8d6e63",
     "Harmony above": "#e65100",
     "Harmony below": "#6a1b9a",
     "Bass": "#00695c",
@@ -655,7 +657,7 @@ def _continue_with_other_parts(own_phrases, part_label, phrases_by_part):
 
 
 def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
-                      part_label=None):
+                      part_label=None, chart_text=None):
     """
     Where each phrase starts and ends, in seconds, with a
     label to click on.
@@ -708,12 +710,17 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
     if len(found) <= 1:
         return []
 
+    # Gap pages exist only for an undivided song. In a song
+    # with several tunes, one voice's rests are not silence
+    # at all - another voice is singing there, and the
+    # carried-on paging (_continue_with_other_parts) already
+    # owns that time. Paging it "(rest)" here would claim it
+    # twice and call a duet's answer silence.
+    undivided = len(sections) == 1 and sections[0][0] is None
+
     per_beat = 60.0 / float(bpm)
 
     durations = [float(length) for length in piece.durations]
-
-    def time_at(index):
-        return sum(durations[:index]) * per_beat
 
     lines = [
         line for line in (lyric_text or "").split("\n")
@@ -721,42 +728,231 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
     ]
 
     from notes import is_rest
+    from music import mark_unsung_holds
 
-    phrases = []
+    if not undivided:
+
+        # A song with several tunes pages exactly as it
+        # always has: one page per lyric line, trimmed to
+        # the last sung note, the gap after it left to the
+        # carried-on paging. A page is the singing, not the
+        # silence after it.
+        phrases = []
+
+        for position, (first, last) in enumerate(found):
+
+            if position < len(lines):
+                label = join_syllables(lines[position].split())
+            else:
+                label = " ".join(piece.pitches[first:first + 5])
+
+            last_sung = last
+
+            while last_sung > first and is_rest(piece.pitches[last_sung]):
+                last_sung -= 1
+
+            phrases.append({
+                "start": sum(durations[:first]) * per_beat,
+                "end": sum(durations[:last_sung + 1]) * per_beat,
+                "label": f"{position + 1}. {label}"
+            })
+
+        return phrases
+
+    # A line with no real word left after marking is not a
+    # phrase anyone sings - it is unowned time (the imported
+    # intro, an instrumental break written as held notes).
+    # A SHORT all-hold line is different: a genuine melisma
+    # carrying the previous line's word across a break, so
+    # the marked tokens ("*" only past a real melisma's
+    # length) are what decide, not the raw "_".
+    marked_lines = [
+        line for line in mark_unsung_holds(
+            "\n".join(lines)
+        ).split("\n")
+    ] if lines else []
+
+    def line_is_sung(index):
+        if index >= len(marked_lines):
+            return True
+        tokens = marked_lines[index].split()
+        return any(token != "*" for token in tokens)
+
+    # Per-note: does this position sound but belong to no
+    # singer ("*" after marking)? Rests are not unsung -
+    # they are nothing at all - and a note past the lyric
+    # tokens is treated as sung rather than guessed about.
+    marked_tokens = iter(
+        token
+        for line in marked_lines
+        for token in line.split()
+    )
+
+    note_unsung = []
+
+    for pitch in piece.pitches:
+        if is_rest(pitch):
+            note_unsung.append(False)
+        else:
+            note_unsung.append(next(marked_tokens, None) == "*")
+
+    def unowned(index):
+        return is_rest(piece.pitches[index]) or note_unsung[index]
+
+    starts = [0.0]
+    for length in durations:
+        starts.append(starts[-1] + length)
+
+    def beat_at(index):
+        return starts[index]
+
+    # The real bar grid, for cutting gap pages where the
+    # chart strip already draws lines. Without a chart the
+    # song has no bars on screen at all, so a plain
+    # four-beat bar stands in.
+    from chords import read_chart
+
+    bar_starts = []
+    bar_len = 4.0
+
+    if chart_text and chart_text.strip():
+        try:
+            _, chart_bars = read_chart(chart_text)
+            bar_starts = [start for start, _ in chart_bars]
+            if chart_bars:
+                bar_len = float(chart_bars[0][1])
+        except Exception:
+            pass
+
+    EPSILON = 1e-6
+    PAGE_BARS = 4
+    FOLD_BARS = 1
+
+    # Sung phrases first, trimmed to their sung notes at
+    # both ends; everything between them pools into gaps.
+    sung = []
 
     for position, (first, last) in enumerate(found):
 
+        if not line_is_sung(position):
+            continue
+
+        first_sung = first
+        while first_sung < last and unowned(first_sung):
+            first_sung += 1
+
+        last_sung = last
+        while last_sung > first_sung and unowned(last_sung):
+            last_sung -= 1
+
         if position < len(lines):
             label = join_syllables(lines[position].split())
-
         else:
             label = " ".join(piece.pitches[first:first + 5])
 
-        # A page is the singing, not the silence after it.
-        # Piece.phrases() hands a phrase every note up to the
-        # next line's first - which for a practice slice
-        # (Compare, the guide track) is what you want, since
-        # the rest is where the take ends. For a PAGE it is
-        # wrong: a rest between phrases is nobody's, and a
-        # trailing bar of rest in a several-tune song is not
-        # silence at all but another voice still going. Cut
-        # the page at the last sung note; the gap up to the
-        # next page's start is left unowned, and the panels
-        # already cope with that (a page's notes are filtered
-        # by its own window, and the next page begins at its
-        # own first note).
-        last_sung = last
-
-        while last_sung > first and is_rest(piece.pitches[last_sung]):
-            last_sung -= 1
-
-        phrases.append({
-            "start": time_at(first),
-            "end": time_at(last_sung + 1),
-            "label": f"{position + 1}. {label}"
+        sung.append({
+            "first": first_sung,
+            "last": last_sung,
+            "label": label,
         })
 
-    return phrases
+    if not sung:
+        return []
+
+    def gap_pages(gap_start, gap_end, first_note, last_note):
+        """
+        Greedy pages for a stretch nobody sings: fill each
+        to PAGE_BARS before starting the next, cut on the
+        real bar grid where one exists. Named for what is
+        heard there - "(instrumental)" when notes sound,
+        "(rest)" when it is true silence a singer counts
+        through.
+        """
+
+        sounding = any(
+            not is_rest(pitch)
+            for pitch in piece.pitches[first_note:last_note]
+        )
+        label = "(instrumental)" if sounding else "(rest)"
+
+        pages = []
+        cursor = gap_start
+
+        while gap_end - cursor > PAGE_BARS * bar_len + EPSILON:
+
+            target = cursor + PAGE_BARS * bar_len
+            cuts = [
+                c for c in bar_starts
+                if cursor + EPSILON < c <= target + EPSILON
+            ]
+            cut = max(cuts) if cuts else target
+
+            pages.append((cursor, cut, label))
+            cursor = cut
+
+        pages.append((cursor, gap_end, label))
+        return pages
+
+    # Walk the sung phrases, deciding each gap's fate as it
+    # is reached: folded forward when short, paged when long.
+    built = []
+
+    previous_end = 0.0
+    previous_end_note = 0
+
+    for entry in sung:
+
+        phrase_start = beat_at(entry["first"])
+        phrase_end = beat_at(entry["last"] + 1)
+
+        gap = phrase_start - previous_end
+
+        if gap > FOLD_BARS * bar_len + EPSILON:
+
+            pages = gap_pages(
+                previous_end, phrase_start,
+                previous_end_note, entry["first"]
+            )
+
+            # A sliver left over after the full pages folds
+            # forward, the same rule a short gap follows.
+            tail_start, tail_end, tail_label = pages[-1]
+
+            if tail_end - tail_start <= FOLD_BARS * bar_len + EPSILON:
+                pages = pages[:-1]
+                phrase_start = tail_start
+
+            for page_start, page_end, page_label in pages:
+                built.append((page_start, page_end, page_label))
+
+        elif gap > EPSILON:
+            phrase_start = previous_end
+
+        built.append((phrase_start, phrase_end, entry["label"]))
+
+        previous_end = phrase_end
+        previous_end_note = entry["last"] + 1
+
+    # An outro: unowned time after the last sung note, with
+    # nothing ahead to fold into - paged when long, left
+    # unowned when short, exactly as before this existed.
+    song_end = beat_at(len(piece.pitches))
+
+    if song_end - previous_end > FOLD_BARS * bar_len + EPSILON:
+        for page_start, page_end, page_label in gap_pages(
+            previous_end, song_end,
+            previous_end_note, len(piece.pitches)
+        ):
+            built.append((page_start, page_end, page_label))
+
+    return [
+        {
+            "start": start * per_beat,
+            "end": end * per_beat,
+            "label": f"{number + 1}. {label}",
+        }
+        for number, (start, end, label) in enumerate(built)
+    ]
 
 
 def mixer_data(
@@ -855,14 +1051,15 @@ def mixer_data(
     # song, which has no tunes to name.
     phrases_by_part = {
         name: _phrase_timeline(
-            pitch_text, duration_text, key, bpm, lyric_text, name
+            pitch_text, duration_text, key, bpm, lyric_text, name,
+            chart_text
         )
         for name in tunes
     }
 
     own_phrases = _phrase_timeline(
         pitch_text, duration_text, key, bpm, lyric_text,
-        part_label
+        part_label, chart_text
     )
 
     phrases = _continue_with_other_parts(

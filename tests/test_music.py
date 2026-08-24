@@ -1063,12 +1063,74 @@ def test_the_layers_are_the_same_ones_the_mix_uses():
         lyric_text=lyrics, phrase_label="Whole part"
     )
 
+    # "Instrumental" only exists when a song genuinely has
+    # notes mark_unsung_holds judges unsung - absent rather
+    # than silent, the same rule Bass and Chords already
+    # follow for a chartless song. Wellerman has no such
+    # notes, so it is the one name in LAYER_NAMES this song
+    # cannot be expected to produce; covered on its own in
+    # test_the_instrumental_layer_sums_back_to_the_original.
     for name in LAYER_NAMES:
+        if name == "Instrumental":
+            continue
         assert name in parts, name
 
     lengths = {len(track) for track in parts.values()}
 
     assert len(lengths) == 1, "every layer covers the same music"
+
+
+def test_the_instrumental_layer_sums_back_to_the_original():
+    """
+    A song with a genuine unsung run gets an "Instrumental"
+    layer, and its own tune's layer goes silent for exactly
+    that stretch - the two must sum back to what a single,
+    unsplit render of the same notes would be, sample for
+    sample. This is the actual regression that shipped once:
+    resynthesising two note sequences independently drifted,
+    because a rest rounds its sample count as one duration
+    and a real note rounds it as tone-plus-gap, which do not
+    always agree - caught on a real uploaded song with a long
+    intro, not on any fixture small enough to have been
+    written by hand before this test existed.
+    """
+
+    import numpy as np
+    from music import separate_layers, mark_unsung_holds, MAX_MELISMA_RUN
+
+    # A run past MAX_MELISMA_RUN reads as instrumental. Built
+    # from the constant, not a hardcoded count, so this stays
+    # correct if that threshold ever moves.
+    run = MAX_MELISMA_RUN + 2
+    words = ["Hi", "there", "my", "friend", "now"]
+    lyrics = " ".join(["_"] * run + words)
+
+    note_names = [
+        "C4", "D4", "E4", "F4", "G4", "A4", "B4",
+        "C5", "D5", "E5", "F5", "G5"
+    ]
+    total_notes = run + len(words)
+    pitches = " ".join(
+        (note_names * (total_notes // len(note_names) + 1))[:total_notes]
+    )
+    durations = " ".join(["1"] * total_notes)
+
+    assert "*" in mark_unsung_holds(lyrics)
+
+    sr, split = separate_layers(
+        pitches, durations, "C", 120, "", lyric_text=lyrics
+    )
+    sr0, whole = separate_layers(
+        pitches, durations, "C", 120, "", lyric_text=""
+    )
+
+    assert "Instrumental" in split
+
+    melody = np.array(split["Melody"])
+    instrumental = np.array(split["Instrumental"])
+    original = np.array(whole["Melody"])
+
+    assert np.array_equal(melody + instrumental, original)
 
 
 def test_a_part_the_music_cannot_sound_is_absent():

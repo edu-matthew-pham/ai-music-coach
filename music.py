@@ -6,6 +6,7 @@ from chords import chord_semitones, transpose_chart
 
 from playback import (
     make_melody,
+    note_length_samples,
     make_accompaniment,
     keep_in_range,
     mix_tracks,
@@ -550,6 +551,62 @@ def mark_unsung_holds(lyric_text, max_run=MAX_MELISMA_RUN):
     return "\n".join(" ".join(line) for line in rebuilt_lines)
 
 
+def split_instrumental(pitches, durations, lyric_text):
+    """
+    Split one tune's notes into what is genuinely sung and
+    what mark_unsung_holds judges to be instrumental.
+
+    Both lists come back the same length as pitches and
+    durations - a rest standing in on whichever side a
+    position does not belong to. Two tracks rendered from
+    these stay in time with each other and with the
+    original by construction: the durations never change,
+    only which side gets to sound. Notes display is
+    untouched by this - it reads pitches and the lyric box
+    directly, same as always; this only feeds the audio.
+
+    Returns (sung_pitches, instrumental_pitches,
+    has_instrumental). A piece with no lyrics, or none
+    marked "*", has nothing to split: sung_pitches comes
+    back unchanged and has_instrumental is False, so a
+    caller with no instrumental content can skip building
+    a track for it.
+    """
+
+    if not lyric_text:
+        return list(pitches), [REST] * len(pitches), False
+
+    unsung = [
+        word == UNSUNG_HOLD
+        for word in mark_unsung_holds(lyric_text).split()
+    ]
+
+    if not any(unsung):
+        return list(pitches), [REST] * len(pitches), False
+
+    sung_pitches = []
+    instrumental_pitches = []
+    sung_index = 0
+
+    for pitch in pitches:
+
+        if is_rest(pitch):
+            sung_pitches.append(pitch)
+            instrumental_pitches.append(pitch)
+            continue
+
+        if unsung[sung_index]:
+            sung_pitches.append(REST)
+            instrumental_pitches.append(pitch)
+        else:
+            sung_pitches.append(pitch)
+            instrumental_pitches.append(REST)
+
+        sung_index += 1
+
+    return sung_pitches, instrumental_pitches, True
+
+
 def read_music(pitch_text, duration_text):
     """
     Turn textbox input into Python lists.
@@ -588,6 +645,7 @@ def read_music(pitch_text, duration_text):
 # anything that plays them separately cannot drift apart.
 LAYER_NAMES = [
     "Melody",
+    "Instrumental",
     "Harmony above",
     "Harmony below",
     "Bass",
@@ -654,10 +712,71 @@ def separate_layers(
     chords, bars = read_chords(chart_text, durations)
 
     layers = {}
+    instrumental_track = None
 
     sample_rate, melody_track = make_melody(
         pitches, durations, bpm
     )
+
+    def add_tune(label, tune_pitches, tune_durations, tune_lyrics):
+        """
+        One tune's audio, split at its own "*" positions if
+        it has any. instrumental_track accumulates across
+        every tune in the song - a group hears one combined
+        instrumental stretch, not one per tune, since no
+        real song yet needs faders that fine-grained.
+
+        Rendered once, then masked, rather than resynthesised
+        twice as two separate note sequences. Resynthesising
+        drifts: a rest rounds its sample count as one plain
+        duration, a real note rounds it as 90% tone plus 10%
+        gap, and those two roundings do not always agree for
+        the same duration - a difference of a sample at one
+        switched note, compounding through every note after
+        it once the two sequences' concatenated lengths start
+        to disagree. A mask built from the ONE render's own
+        note boundaries cannot disagree with it: multiplying
+        by the mask and its exact complement always sums back
+        to that same render, sample for sample.
+        """
+
+        nonlocal instrumental_track, sample_rate
+
+        sample_rate, full_track = make_melody(
+            tune_pitches, tune_durations, bpm
+        )
+
+        _, instrumental_pitches, has_instrumental = split_instrumental(
+            tune_pitches, tune_durations, tune_lyrics
+        )
+
+        if not has_instrumental:
+            layers[label] = full_track
+            return
+
+        full = np.array(full_track)
+        mask = np.zeros(len(full), dtype=np.float32)
+
+        position = 0
+
+        for pitch, beats, marked in zip(
+            tune_pitches, tune_durations, instrumental_pitches
+        ):
+            length = note_length_samples(pitch, beats, bpm, sample_rate)
+
+            if not is_rest(marked):
+                mask[position:position + length] = 1.0
+
+            position += length
+
+        layers[label] = (full * (1.0 - mask)).tolist()
+
+        this_instrumental = full * mask
+
+        if instrumental_track is None:
+            instrumental_track = this_instrumental
+        else:
+            instrumental_track = instrumental_track + this_instrumental
 
     # One sound per tune. A single, undivided song has one
     # unnamed tune, and it keeps the name every caller and
@@ -665,7 +784,7 @@ def separate_layers(
     named_parts = [name for name, _ in parts]
 
     if named_parts == [None]:
-        layers["Melody"] = melody_track
+        add_tune("Melody", pitches, durations, piece.lyrics)
 
     else:
 
@@ -674,11 +793,10 @@ def separate_layers(
             if number is not None:
                 part_piece = part_piece.phrase(number)
 
-            sample_rate, track = make_melody(
-                part_piece.pitches, part_piece.durations, bpm
+            add_tune(
+                name, part_piece.pitches, part_piece.durations,
+                part_piece.lyrics
             )
-
-            layers[name] = track
 
     for name, steps in (
         ("Harmony above", 2),
@@ -720,6 +838,9 @@ def separate_layers(
             bpm,
             sample_rate
         )
+
+    if instrumental_track is not None:
+        layers["Instrumental"] = instrumental_track.tolist()
 
     layers["Metronome"] = add_metronome(
         [0.0] * len(melody_track),

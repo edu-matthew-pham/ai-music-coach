@@ -1078,3 +1078,131 @@ def test_carried_on_phrases_name_the_part_their_words_come_from():
             and ph["start"] <= n["start"] < ph["end"]
         ]
         assert inside, f"{ph['label']!r} tagged {ph['part']!r} but no words there"
+
+# --- gap pages: instrumental stretches and long silences ---
+
+
+def _gap_phrases(pitches, durations, lyrics):
+    value = mixer_data(pitches, durations, "C", 120, "", lyric_text=lyrics)
+    return value["phrases"]
+
+
+def test_a_long_unsung_intro_becomes_its_own_pages():
+    """
+    An imported intro arrives as a line of held notes longer
+    than any real melisma. That is nobody's phrase - it is
+    paged on its own, greedily, four bars to a page, so a
+    28-second intro is no longer one blank page a singer
+    stares at.
+    """
+
+    # 24 beats of unsung holds (6 four-beat bars), then a
+    # sung line. Greedy: one full 4-bar page, then the
+    # 2-bar remainder as its own page (longer than the
+    # 1-bar fold), then the singing.
+    pitches = " ".join(["C4"] * 24 + ["E4", "F4", "G4", "A4"])
+    durations = " ".join(["1"] * 28)
+    lyrics = " ".join(["_"] * 24) + "\nHi there my friend"
+
+    phrases = _gap_phrases(pitches, durations, lyrics)
+
+    assert [p["label"] for p in phrases] == [
+        "1. (instrumental)",
+        "2. (instrumental)",
+        "3. Hi there my friend",
+    ]
+
+    seconds_per_beat = 0.5
+
+    assert phrases[0]["start"] == 0.0
+    assert phrases[0]["end"] == 16 * seconds_per_beat
+    assert phrases[1]["end"] == 24 * seconds_per_beat
+    assert phrases[2]["start"] == 24 * seconds_per_beat
+
+
+def test_a_short_gap_folds_into_the_next_phrase():
+    """
+    A rest of a bar or less between phrases is a breath, not
+    a page: the next phrase starts where the last one ended,
+    so no time on the strip belongs to nobody.
+    """
+
+    pitches = "C4 D4 E4 F4 R R G4 A4 B4 C5"
+    durations = "1 1 1 1 1 1 1 1 1 1"
+    lyrics = "One two three four\nFive six sev'n eight"
+
+    phrases = _gap_phrases(pitches, durations, lyrics)
+
+    assert len(phrases) == 2
+    assert phrases[1]["start"] == phrases[0]["end"]
+
+
+def test_a_long_silence_is_paged_as_rest():
+    """
+    Silence past a bar is real counting time - it gets its
+    own page, named "(rest)" rather than "(instrumental)",
+    because nothing sounds there for a singer to listen to;
+    they are counting themselves in.
+    """
+
+    pitches = " ".join(
+        ["C4", "D4", "E4", "F4"] + ["R"] * 8 + ["G4", "A4", "B4", "C5"]
+    )
+    durations = " ".join(["1"] * 16)
+    lyrics = "One two three four\nFive six sev'n eight"
+
+    phrases = _gap_phrases(pitches, durations, lyrics)
+
+    assert [p["label"] for p in phrases] == [
+        "1. One two three four",
+        "2. (rest)",
+        "3. Five six sev'n eight",
+    ]
+
+
+def test_a_trailing_unsung_run_splits_off_the_last_phrase():
+    """
+    An outro's held notes share a lyric line with the last
+    sung words, so trimming by rests alone left them inside
+    the phrase - a real page bloat seen on two uploaded
+    songs before this trim treated "*" notes at a phrase's
+    edges as the unowned time they are.
+    """
+
+    pitches = " ".join(
+        ["C4", "D4", "E4", "F4"] + ["G4", "A4", "B4", "C5"] + ["G4"] * 8
+    )
+    durations = " ".join(["1"] * 16)
+    lyrics = (
+        "One two three four\n"
+        "Five six sev'n eight " + " ".join(["_"] * 8)
+    )
+
+    phrases = _gap_phrases(pitches, durations, lyrics)
+
+    assert phrases[1]["label"] == "2. Five six sev'n eight"
+    assert phrases[1]["end"] == 8 * 0.5
+    assert phrases[-1]["label"].endswith("(instrumental)")
+
+
+def test_a_divided_song_pages_exactly_as_before():
+    """
+    In a song with several tunes, one voice's rests are not
+    silence - another voice is singing there, and the
+    carried-on paging owns that time. No gap pages, no
+    folding: one page per lyric line, trimmed to the last
+    sung note, same as always.
+    """
+
+    from examples import load_partner_songs
+
+    pitches, durations, lyrics, key, chart, tempo = load_partner_songs()
+
+    value = mixer_data(
+        pitches, durations, key, tempo, chart, lyric_text=lyrics
+    )
+
+    for name, phrases in value["phrases_by_part"].items():
+        for phrase in phrases:
+            assert "(rest)" not in phrase["label"], name
+            assert "(instrumental)" not in phrase["label"], name

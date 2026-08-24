@@ -287,6 +287,126 @@ def _drop_short_lyric_breaks(breaks, syllables, sung_spans, bpm):
 
     return kept
 
+# A run of held notes past this many real seconds is not a
+# melisma - it is an instrumental stretch, and it breaks the
+# line at both ends so it stands alone (where the mixer's
+# unsung marking then reads it as "(instrumental)" pages).
+# Measured, not guessed: the longest genuine melisma in any
+# fixture with lyrics is 2.0s (Mulan), while the shortest
+# real instrumental break in an uploaded song is 5.1s -
+# 4.0 sits between with margin on both sides.
+HOLD_RUN_BREAK_SECONDS = 4.0
+
+# A comma only splits a line that is already far too long.
+# In a line of ordinary size a comma is a breath inside one
+# phrase ("Listen to your heart, there's nothing else you
+# can do" - 4.8s, must stay whole); only when a line runs
+# past this does a comma get to rescue it ("...I don't know
+# why, but listen..." sat inside a 29.4s line). The longest
+# line seen that should stay whole is 8.7s.
+COMMA_RESCUE_LINE_SECONDS = 12.0
+
+
+def _hold_run_breaks(syllables, sung_spans, bpm):
+    """
+    Break positions around every long run of held notes.
+
+    Structural evidence, independent of the words: nobody is
+    singing there, however the text around it is punctuated.
+    Applied on both splitting paths for the same reason.
+    """
+
+    if not sung_spans or not bpm:
+        return set()
+
+    breaks = set()
+    start = None
+
+    def run_seconds(first, last):
+        opening = sung_spans[first][0]
+        final_beat, final_length = sung_spans[last]
+        return (final_beat + final_length - opening) / bpm * 60
+
+    for position, syllable in enumerate(syllables):
+
+        held = syllable in (None, "", "_")
+
+        if held and start is None:
+            start = position
+
+        if not held and start is not None:
+
+            if run_seconds(start, position - 1) >= HOLD_RUN_BREAK_SECONDS:
+                if start > 0:
+                    breaks.add(start)
+                breaks.add(position)
+
+            start = None
+
+    if start is not None and start > 0:
+        if run_seconds(start, len(syllables) - 1) >= HOLD_RUN_BREAK_SECONDS:
+            breaks.add(start)
+
+    return breaks
+
+
+def _comma_rescue(breaks, syllables, sung_spans, bpm):
+    """
+    Inside a line still far too long after every other rule,
+    a comma may split it - and only there. Both halves the
+    split would make must clear the same minimum a bare
+    capital's break must (MINIMUM_LYRIC_PHRASE_SECONDS), so
+    a rescue can never create a sliver.
+    """
+
+    if not sung_spans or not bpm:
+        return breaks
+
+    def seconds(first, end):
+        end = min(end, len(sung_spans))
+        if first >= end:
+            return 0.0
+        opening = sung_spans[first][0]
+        final_beat, final_length = sung_spans[end - 1]
+        return (final_beat + final_length - opening) / bpm * 60
+
+    rescued = set(breaks)
+    edges = sorted(rescued) + [len(syllables)]
+    line_start = 0
+
+    for line_end in edges:
+
+        if line_end <= line_start:
+            continue
+
+        if seconds(line_start, line_end) > COMMA_RESCUE_LINE_SECONDS:
+
+            last_word = None
+
+            for position in range(line_start, line_end):
+
+                syllable = syllables[position]
+
+                if syllable in (None, "", "_"):
+                    continue
+
+                if (
+                    last_word is not None
+                    and last_word.endswith(",")
+                    and seconds(line_start, position)
+                    >= MINIMUM_LYRIC_PHRASE_SECONDS
+                    and seconds(position, line_end)
+                    >= MINIMUM_LYRIC_PHRASE_SECONDS
+                ):
+                    rescued.add(position)
+
+                last_word = syllable
+
+        line_start = line_end
+
+    return rescued
+
+
 # How long a rest may be before it is written as bars of
 # rest instead. Invariant 9: a singer counting through an
 # instrumental counts bars.
@@ -1606,6 +1726,19 @@ def _lyric_lines(read, bpm):
         breaks = _drop_short_lyric_breaks(
             breaks, syllables, read["sung_spans"], bpm
         )
+
+    # Structural, on both paths: a long run of held notes is
+    # an instrumental stretch, not part of any line - it
+    # stands alone whatever the words around it say. Then,
+    # only inside a line still far too long, a comma may
+    # split it.
+    breaks = breaks | _hold_run_breaks(
+        syllables, read["sung_spans"], bpm
+    )
+
+    breaks = _comma_rescue(
+        breaks, syllables, read["sung_spans"], bpm
+    )
 
     if breaks:
 

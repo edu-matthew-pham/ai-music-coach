@@ -446,6 +446,38 @@ def make_note(pitch, beats, bpm=120, sample_rate=8000):
     return sound
 
 
+def note_length_samples(pitch, beats, bpm=120, sample_rate=8000):
+    """
+    How many samples make_note would return, without
+    building them.
+
+    Deliberately next to make_note and rounding exactly the
+    way it does - a rest as one whole duration, a real note
+    as 90% tone plus 10% gap, each truncated separately.
+    Those two are NOT the same count for the same duration,
+    which is why this cannot be a single multiplication and
+    why it lives here rather than being re-derived by a
+    caller: any change to make_note's shape has to change
+    this in the same edit or the two silently disagree.
+
+    Used where only the boundary matters - splitting a
+    rendered track into sung and instrumental stretches -
+    so that measuring a note does not mean synthesising it
+    a second time and discarding the sound.
+    """
+
+    seconds_per_beat = 60 / bpm
+    duration_seconds = beats * seconds_per_beat
+
+    if is_rest(pitch):
+        return int(duration_seconds * sample_rate)
+
+    return (
+        int(duration_seconds * 0.9 * sample_rate)
+        + int(duration_seconds * 0.1 * sample_rate)
+    )
+
+
 def make_melody(
     pitches,
     durations,
