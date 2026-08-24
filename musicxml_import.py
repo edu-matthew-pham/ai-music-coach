@@ -1708,6 +1708,14 @@ def _lyric_lines(read, bpm):
 
         for is_rest, length, item in read["merged"]:
 
+            # The read loop that built the syllables skipped
+            # zero-length items (grace notes); this count must
+            # skip the same ones, or every break after the
+            # first grace lands late and the last can fall
+            # past the end of the list entirely.
+            if length <= 0:
+                continue
+
             if is_rest:
 
                 if length >= PHRASE_REST and spoken:
