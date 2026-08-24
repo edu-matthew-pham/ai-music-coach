@@ -28,6 +28,13 @@
 // unnecessary cut.
 const MASTER_VOLUME_DEFAULT = 0.95;
 
+import { stretchSamples } from "./timestretch";
+
+// The practice-speed bounds. The UI (stage 3) offers preset
+// buttons plus a fine slider; the engine only clamps.
+const RATE_MIN = 0.5;
+const RATE_MAX = 1.5;
+
 export interface MixerLayerData {
 	name: string;
 	level: number;
@@ -53,6 +60,15 @@ class MixerEngine {
 	private master: GainNode | null = null;
 	private buffers: Record<string, AudioBuffer> = {};
 	private gains: Record<string, GainNode> = {};
+
+	// Stretched copies of the layer buffers for the current
+	// rate, keyed alongside stretchedKey below. Kept apart
+	// from this.buffers on purpose: at 100% the originals
+	// play through the untouched code path (a true bypass),
+	// and a song swap or rate change can invalidate these
+	// without ever touching the decoded originals.
+	private stretched: Record<string, AudioBuffer> = {};
+	private stretchedKey = "";
 	private sources: AudioBufferSourceNode[] = [];
 	private startedAt = 0;
 
@@ -72,6 +88,16 @@ class MixerEngine {
 
 	playing = $state(false);
 	offset = $state(0);
+
+	// Practice speed as a fraction of full speed: 0.75 plays
+	// at 75%, pitch unchanged. Strictly a playback fact -
+	// DESIGN.md's tempo invariant extended: the song's tempo
+	// and the BPM box are the two arrange-side facts, this is
+	// a third that never writes back to either. Every number
+	// outside the engine stays in original-tempo seconds
+	// ("songTime"); the rate converts only at the two seams,
+	// positionAt (divide out) and play (multiply in).
+	rate = $state(1);
 	loopFrom: number | null = $state(null);
 	loopTo: number | null = $state(null);
 	levels: Record<string, number> = $state({});
@@ -104,7 +130,13 @@ class MixerEngine {
 	// is rather than keeping a second clock of its own.
 	positionAt(contextTime: number): number {
 		if (!this.context || !this.playing) return this.offset;
-		let at = this.offset + (contextTime - this.startedAt);
+		// Elapsed wall-clock seconds times the rate is elapsed
+		// songTime (at 75%, 4 real seconds cover 3 song
+		// seconds). The conversion must happen BEFORE the
+		// wrap below - loopFrom/loopTo are songTime, so
+		// wrapping in wall seconds reports wrong positions
+		// while looping at any rate but 100%.
+		let at = this.offset + (contextTime - this.startedAt) * this.rate;
 		if (this.loopFrom !== null && this.loopTo !== null && at > this.loopTo) {
 			const span = this.loopTo - this.loopFrom;
 			at = this.loopFrom + ((at - this.loopFrom) % span);
@@ -198,6 +230,12 @@ class MixerEngine {
 		}
 		this.buffers = {};
 		this.gains = {};
+		// Stretched buffers are per-song by construction (the
+		// key carries the fingerprint) but freed here anyway -
+		// they are the biggest allocations in the engine and
+		// a stale song's copies have no reason to outlive it.
+		this.stretched = {};
+		this.stretchedKey = "";
 
 		for (const layer of layers) {
 			const gain = context.createGain();
@@ -210,6 +248,72 @@ class MixerEngine {
 		}
 
 		this.fingerprint = fingerprint;
+	}
+
+	// Build stretched copies of every layer for the current
+	// rate, once, cached against (song fingerprint, rate).
+	//
+	// The stretch reads each layer at its NATIVE sample rate,
+	// not from this.buffers: decodeAudioData resamples to the
+	// context's rate (44.1/48kHz), which makes the stretch
+	// ~6x more work for identical audible output - measured,
+	// not assumed (1.6s vs 0.65s for one 6-minute layer). A
+	// throwaway OfflineAudioContext at the layer's own rate
+	// decodes without resampling and without a hand-written
+	// WAV parser that could disagree with the browser's.
+	// The stretched result is then wrapped in an AudioBuffer
+	// at that same native rate; the context resamples it at
+	// playback exactly as it does the originals.
+	private async ensureStretched(layers: MixerLayerData[]): Promise<void> {
+		const key = this.fingerprint + "|" + this.rate;
+		if (this.stretchedKey === key) return;
+
+		const stretched: Record<string, AudioBuffer> = {};
+		for (const layer of layers) {
+			const bytes = this.bytesFrom(layer.wav);
+			// Native rate first, cheaply, from the WAV header
+			// via a 1-frame probe decode is overkill - the
+			// OfflineAudioContext must be constructed AT the
+			// target rate, so read the rate field directly
+			// (byte 24, little-endian, fixed for RIFF PCM -
+			// every layer here is produced by as_wav_data).
+			const nativeRate = new DataView(bytes).getUint32(24, true);
+			const offline = new OfflineAudioContext(1, 1, nativeRate);
+			const decoded = await offline.decodeAudioData(bytes.slice(0));
+			const samples = stretchSamples(
+				decoded.getChannelData(0),
+				this.rate,
+				decoded.sampleRate
+			);
+			const buffer = this.ensureContext().createBuffer(
+				1,
+				samples.length,
+				decoded.sampleRate
+			);
+			buffer.copyToChannel(samples, 0);
+			stretched[layer.name] = buffer;
+			// One layer per macrotask, so a multi-layer stretch
+			// (~0.1-0.7s each) never freezes the page in one
+			// uninterruptible block.
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+
+		this.stretched = stretched;
+		this.stretchedKey = key;
+	}
+
+	// Set the practice speed. Playback is stopped rather than
+	// hot-swapped mid-note: the playhead stays put (stop()
+	// captures songTime), and the next Play runs at the new
+	// rate. Restart-in-place can come with the stage 3 UI if
+	// it earns its complexity; a mid-buffer source swap is
+	// exactly the kind of silent timing seam this engine has
+	// been burned by before.
+	setRate(value: number): void {
+		const clamped = Math.min(RATE_MAX, Math.max(RATE_MIN, value));
+		if (clamped === this.rate) return;
+		if (this.playing) this.stop();
+		this.rate = clamped;
 	}
 
 	private stopSources(): void {
@@ -245,6 +349,7 @@ class MixerEngine {
 		this.playing = false;
 
 		await this.ensureAudio(layers);
+		if (this.rate !== 1) await this.ensureStretched(layers);
 		if (!this.context) return;
 		if (this.context.state === "suspended") await this.context.resume();
 
@@ -252,26 +357,42 @@ class MixerEngine {
 		this.startedAt = this.context.currentTime;
 		this.playing = true;
 
+		// Everything the engine holds is songTime; the buffer
+		// being handed to a source is stretched, so its own
+		// seconds run 1/rate as long. Three scheduling numbers
+		// convert here and nowhere else: the loop's start, its
+		// end, and the one-shot stop time. At 100% the factor
+		// is 1 and the originals play through the untouched
+		// path - stretched buffers are not even consulted.
+		const toBufferTime = (songTime: number) => songTime / this.rate;
+		const active = this.rate === 1 ? this.buffers : this.stretched;
+
 		for (const layer of layers) {
 			const source = this.context.createBufferSource();
-			source.buffer = this.buffers[layer.name];
+			source.buffer = active[layer.name];
 
 			if (this.loopFrom !== null && this.loopTo !== null && this.repeat) {
 				source.loop = true;
-				source.loopStart = this.loopFrom;
-				source.loopEnd = this.loopTo;
+				source.loopStart = toBufferTime(this.loopFrom);
+				source.loopEnd = Math.min(
+					toBufferTime(this.loopTo),
+					source.buffer!.duration
+				);
 			}
 
 			source.connect(this.gains[layer.name]);
-			source.start(this.startedAt, this.offset);
+			source.start(this.startedAt, toBufferTime(this.offset));
 
 			// A one-shot selection stops exactly at its end.
 			// Scheduled after start(), never before: the spec
 			// forbids stop() on a source that has not started,
 			// and calling it early threw per layer and left
-			// playback half-initialised.
+			// playback half-initialised. The stop is a wall-
+			// clock moment, so the songTime span converts too.
 			if (this.loopFrom !== null && this.loopTo !== null && !this.repeat) {
-				source.stop(this.startedAt + (this.loopTo - this.offset));
+				source.stop(
+					this.startedAt + toBufferTime(this.loopTo - this.offset)
+				);
 			}
 
 			this.sources.push(source);
@@ -410,3 +531,16 @@ class MixerEngine {
 // One engine, shared by every mount of the component for
 // as long as the page lives.
 export const engine = new MixerEngine();
+
+// Stage 2 of the time-stretch plan is deliberately UI-less:
+// the rate is set from the browser console and everything
+// that consumes time is clicked through at 75% and 150%.
+// This hook is that console handle - `mixerRate(0.75)` -
+// and is REMOVED in stage 3 when the real controls land,
+// same retire-with-the-replacement rule as everything else.
+if (typeof window !== "undefined") {
+	(window as any).mixerRate = (value: number) => {
+		engine.setRate(value);
+		return engine.rate;
+	};
+}
