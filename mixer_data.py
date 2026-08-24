@@ -710,12 +710,15 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
     if len(found) <= 1:
         return []
 
-    # Gap pages exist only for an undivided song. In a song
-    # with several tunes, one voice's rests are not silence
-    # at all - another voice is singing there, and the
-    # carried-on paging (_continue_with_other_parts) already
-    # owns that time. Paging it "(rest)" here would claim it
-    # twice and call a duet's answer silence.
+    # In a song with several tunes, one voice's rests are
+    # usually not silence - another voice is singing there,
+    # and the carried-on paging owns that time. But "this
+    # song has several tunes" is the wrong question asked of
+    # the whole song at once: the right one is per-moment -
+    # is ANYONE singing right now? A stretch where every
+    # tune is silent or instrumental together is genuinely
+    # nobody's, however many tunes the song has, and pages
+    # the same way a solo song's dead time does.
     undivided = len(sections) == 1 and sections[0][0] is None
 
     per_beat = 60.0 / float(bpm)
@@ -729,35 +732,6 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
 
     from notes import is_rest
     from music import mark_unsung_holds
-
-    if not undivided:
-
-        # A song with several tunes pages exactly as it
-        # always has: one page per lyric line, trimmed to
-        # the last sung note, the gap after it left to the
-        # carried-on paging. A page is the singing, not the
-        # silence after it.
-        phrases = []
-
-        for position, (first, last) in enumerate(found):
-
-            if position < len(lines):
-                label = join_syllables(lines[position].split())
-            else:
-                label = " ".join(piece.pitches[first:first + 5])
-
-            last_sung = last
-
-            while last_sung > first and is_rest(piece.pitches[last_sung]):
-                last_sung -= 1
-
-            phrases.append({
-                "start": sum(durations[:first]) * per_beat,
-                "end": sum(durations[:last_sung + 1]) * per_beat,
-                "label": f"{position + 1}. {label}"
-            })
-
-        return phrases
 
     # A line with no real word left after marking is not a
     # phrase anyone sings - it is unowned time (the imported
@@ -799,6 +773,47 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
     def unowned(index):
         return is_rest(piece.pitches[index]) or note_unsung[index]
 
+    # Every OTHER tune's sung stretches, in beats. A gap in
+    # this tune only pages when none of these covers it -
+    # otherwise the time belongs to whoever is singing, and
+    # the carried-on paging shows their words there.
+    others_sing = []
+
+    if not undivided:
+
+        from fractions import Fraction
+
+        for name, sec_pitches, sec_durations, sec_lyrics in sections:
+
+            mine = name == part_label or (
+                part_label is None and name == sections[0][0]
+            )
+            if mine:
+                continue
+
+            sec_marked = iter(
+                mark_unsung_holds(sec_lyrics or "").split()
+            )
+
+            beat = 0.0
+
+            for pitch, length in zip(
+                sec_pitches.split(), sec_durations.split()
+            ):
+                span = float(Fraction(length))
+
+                if not is_rest(pitch):
+                    if next(sec_marked, None) != "*":
+                        others_sing.append((beat, beat + span))
+
+                beat += span
+
+    def anyone_else_sings(gap_start, gap_end):
+        return any(
+            s < gap_end - 1e-6 and e > gap_start + 1e-6
+            for s, e in others_sing
+        )
+
     starts = [0.0]
     for length in durations:
         starts.append(starts[-1] + length)
@@ -832,17 +847,28 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
     # both ends; everything between them pools into gaps.
     sung = []
 
+    # A divided song's phrase boundaries stay exactly where
+    # they have always been - starts at the line, trailing
+    # rests trimmed - so the carried-on paging and every pin
+    # on it are untouched. Only the undivided path edge-trims
+    # by unowned(), where there is no other voice for a
+    # boundary shift to ripple into.
+    def trims(index):
+        return unowned(index) if undivided else is_rest(piece.pitches[index])
+
     for position, (first, last) in enumerate(found):
 
         if not line_is_sung(position):
             continue
 
         first_sung = first
-        while first_sung < last and unowned(first_sung):
-            first_sung += 1
+
+        if undivided:
+            while first_sung < last and unowned(first_sung):
+                first_sung += 1
 
         last_sung = last
-        while last_sung > first_sung and unowned(last_sung):
+        while last_sung > first_sung and trims(last_sung):
             last_sung -= 1
 
         if position < len(lines):
@@ -907,7 +933,12 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
 
         gap = phrase_start - previous_end
 
-        if gap > FOLD_BARS * bar_len + EPSILON:
+        pageable = gap > FOLD_BARS * bar_len + EPSILON and (
+            undivided
+            or not anyone_else_sings(previous_end, phrase_start)
+        )
+
+        if pageable:
 
             pages = gap_pages(
                 previous_end, phrase_start,
@@ -915,17 +946,20 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
             )
 
             # A sliver left over after the full pages folds
-            # forward, the same rule a short gap follows.
+            # forward in a solo song, the same rule a short
+            # gap follows; in a divided song boundaries never
+            # move, so the sliver is left unowned instead.
             tail_start, tail_end, tail_label = pages[-1]
 
             if tail_end - tail_start <= FOLD_BARS * bar_len + EPSILON:
                 pages = pages[:-1]
-                phrase_start = tail_start
+                if undivided:
+                    phrase_start = tail_start
 
             for page_start, page_end, page_label in pages:
                 built.append((page_start, page_end, page_label))
 
-        elif gap > EPSILON:
+        elif gap > EPSILON and undivided:
             phrase_start = previous_end
 
         built.append((phrase_start, phrase_end, entry["label"]))
@@ -938,7 +972,9 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
     # unowned when short, exactly as before this existed.
     song_end = beat_at(len(piece.pitches))
 
-    if song_end - previous_end > FOLD_BARS * bar_len + EPSILON:
+    if song_end - previous_end > FOLD_BARS * bar_len + EPSILON and (
+        undivided or not anyone_else_sings(previous_end, song_end)
+    ):
         for page_start, page_end, page_label in gap_pages(
             previous_end, song_end,
             previous_end_note, len(piece.pitches)

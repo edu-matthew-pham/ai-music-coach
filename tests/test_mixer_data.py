@@ -1185,24 +1185,105 @@ def test_a_trailing_unsung_run_splits_off_the_last_phrase():
     assert phrases[-1]["label"].endswith("(instrumental)")
 
 
-def test_a_divided_song_pages_exactly_as_before():
+def test_a_covered_gap_in_a_divided_song_never_pages():
     """
-    In a song with several tunes, one voice's rests are not
-    silence - another voice is singing there, and the
-    carried-on paging owns that time. No gap pages, no
-    folding: one page per lyric line, trimmed to the last
-    sung note, same as always.
+    In a song with several tunes, one voice's rests are
+    usually another voice singing - that time belongs to the
+    carried-on paging, never to a "(rest)" page. The partner
+    song and the round cover every one of their gaps this
+    way, so neither produces a single gap page and their
+    boundaries stay exactly where they have always been.
     """
 
-    from examples import load_partner_songs
+    from examples import load_partner_songs, load_row_your_boat
 
-    pitches, durations, lyrics, key, chart, tempo = load_partner_songs()
+    for load in (load_partner_songs, load_row_your_boat):
 
-    value = mixer_data(
-        pitches, durations, key, tempo, chart, lyric_text=lyrics
+        pitches, durations, lyrics, key, chart, tempo = load()
+
+        value = mixer_data(
+            pitches, durations, key, tempo, chart, lyric_text=lyrics
+        )
+
+        for name, phrases in value["phrases_by_part"].items():
+            for phrase in phrases:
+                assert "(rest)" not in phrase["label"], name
+                assert "(instrumental)" not in phrase["label"], name
+
+
+def test_a_gap_every_voice_shares_pages_even_in_a_divided_song():
+    """
+    "This song has several tunes" was the wrong question,
+    asked of the whole song at once - the right one is
+    per-moment. When EVERY voice is silent together past a
+    bar, that time is genuinely nobody's, and it pages the
+    same way a solo song's dead time does. The real case: a
+    duet whose second voice sings one word, leaving nearly
+    every gap in the first voice uncovered.
+    """
+
+    pitches = (
+        "=== Voice 1 ===\n"
+        "C4 D4 E4 F4 " + "R " * 8 + "G4 A4 B4 C5\n"
+        "=== Voice 2 ===\n"
+        "R R R R " + "R " * 8 + "E4 F4 G4 A4"
+    )
+    durations = (
+        "=== Voice 1 ===\n" + "1 " * 16 + "\n"
+        "=== Voice 2 ===\n" + "1 " * 16
+    )
+    lyrics = (
+        "=== Voice 1 ===\n"
+        "One two three four\nFive six sev'n eight\n"
+        "=== Voice 2 ===\n"
+        "La la la la"
     )
 
-    for name, phrases in value["phrases_by_part"].items():
-        for phrase in phrases:
-            assert "(rest)" not in phrase["label"], name
-            assert "(instrumental)" not in phrase["label"], name
+    value = mixer_data(
+        pitches, durations, "C", 120, "", lyric_text=lyrics
+    )
+
+    voice_one = value["phrases_by_part"]["Voice 1"]
+
+    # Beats 4-12: both voices rest together - two bars of
+    # genuinely shared silence, paged as "(rest)".
+    assert any("(rest)" in phrase["label"] for phrase in voice_one)
+
+    # And the sung phrases keep their old boundaries: no
+    # folding in a divided song, starts exactly at the line.
+    labels = [phrase["label"] for phrase in voice_one]
+    assert any("One two three four" in label for label in labels)
+    assert any("Five six sev'n eight" in label for label in labels)
+
+
+def test_a_gap_covered_by_the_other_voice_stays_unowned():
+    """
+    The mirror case: the same gap in voice one, but voice
+    two sings through it - a real duet's answer. Nothing
+    pages; the time belongs to the other voice's phrases.
+    """
+
+    pitches = (
+        "=== Voice 1 ===\n"
+        "C4 D4 E4 F4 " + "R " * 8 + "G4 A4 B4 C5\n"
+        "=== Voice 2 ===\n"
+        "R R R R " + "E4 " * 8 + "R R R R"
+    )
+    durations = (
+        "=== Voice 1 ===\n" + "1 " * 16 + "\n"
+        "=== Voice 2 ===\n" + "1 " * 16
+    )
+    lyrics = (
+        "=== Voice 1 ===\n"
+        "One two three four\nFive six sev'n eight\n"
+        "=== Voice 2 ===\n"
+        "Ah ah ah ah ah ah ah ah"
+    )
+
+    value = mixer_data(
+        pitches, durations, "C", 120, "", lyric_text=lyrics
+    )
+
+    for phrase in value["phrases_by_part"]["Voice 1"]:
+        assert "(rest)" not in phrase["label"]
+        assert "(instrumental)" not in phrase["label"]
