@@ -23,6 +23,7 @@ import numpy as np
 from scipy.io import wavfile
 
 from music import LAYER_NAMES, separate_layers
+from musicxml_import import REST_RUN_BREAK_SECONDS
 from harmony import MAJOR_SCALES
 from instrument_diagrams import (
     INSTRUMENTS, chord_overlay_for, scale_overlay_for, shape_overlay_for,
@@ -1028,13 +1029,35 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
     sung = []
 
     # A divided song's phrase boundaries stay exactly where
-    # they have always been - starts at the line, trailing
-    # rests trimmed - so the carried-on paging and every pin
-    # on it are untouched. Only the undivided path edge-trims
-    # by unowned(), where there is no other voice for a
-    # boundary shift to ripple into.
+    # they have always been for an ordinary pickup - starts
+    # at the line, trailing rests trimmed - so the carried-on
+    # paging and every pin on it are untouched by a short
+    # lead-in. Only a leading silence long enough to be a
+    # structural gap, not a pickup, is trimmed off the front
+    # too - the same REST_RUN_BREAK_SECONDS threshold the
+    # lyric splitter already uses to draw that line, so a
+    # gap that would have opened its own instrumental line
+    # had the words allowed it is never instead buried,
+    # untrimmed, inside the following phrase. This Love's
+    # Voice 2 is the real case: an 8-bar intro with nothing
+    # sung in it landed as 80% of "phrase 1" because the
+    # only trim ever applied to a divided phrase was
+    # trailing, never leading.
     def trims(index):
         return unowned(index) if undivided else is_rest(piece.pitches[index])
+
+    def leading_rest_beats(first, last):
+
+        run = 0.0
+
+        for index in range(first, last + 1):
+
+            if not is_rest(piece.pitches[index]):
+                break
+
+            run += durations[index]
+
+        return run
 
     for position, (first, last) in enumerate(found):
 
@@ -1045,6 +1068,15 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
 
         if undivided:
             while first_sung < last and unowned(first_sung):
+                first_sung += 1
+
+        elif (
+            leading_rest_beats(first, last) * per_beat
+            >= REST_RUN_BREAK_SECONDS
+        ):
+            while first_sung < last and is_rest(
+                piece.pitches[first_sung]
+            ):
                 first_sung += 1
 
         last_sung = last
@@ -1145,16 +1177,42 @@ def _phrase_timeline(pitch_text, duration_text, key, bpm, lyric_text,
             # moments another voice sings belong to them (and
             # are filled with their pages downstream), while
             # the stretches nobody covers page here, chopped
-            # around the covered ones. Boundaries of this
-            # tune's own phrases never move.
+            # around the covered ones. And the same fold the
+            # undivided path has always had applies to what
+            # is left: a short uncovered pause touching the
+            # next phrase rides into that page's start, and a
+            # paged stretch's sliver tail does the same - so
+            # the breath between two of your phrases is on a
+            # page, not in a hole between pages where its
+            # bars appear on neither. Only uncovered time
+            # ever folds into your page; a moment another
+            # voice sings through is theirs, never yours.
             for sub_start, sub_end in uncovered(
                 previous_end, phrase_start
             ):
+                touches = abs(sub_end - phrase_start) < EPSILON
+
                 if sub_end - sub_start > FOLD_BARS * bar_len + EPSILON:
-                    built.extend(gap_pages(
+
+                    pages = gap_pages(
                         sub_start, sub_end,
                         note_at(sub_start), note_at(sub_end)
-                    ))
+                    )
+
+                    if touches:
+                        tail_start, tail_end, _, _ = pages[-1]
+
+                        if (
+                            tail_end - tail_start
+                            <= FOLD_BARS * bar_len + EPSILON
+                        ):
+                            pages = pages[:-1]
+                            phrase_start = tail_start
+
+                    built.extend(pages)
+
+                elif touches:
+                    phrase_start = sub_start
 
         built.append((phrase_start, phrase_end, entry["label"], None))
 

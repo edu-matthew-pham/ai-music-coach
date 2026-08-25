@@ -93,7 +93,10 @@
 	interface PartColumn {
 		name: string;
 		words: MixerNote[];
-		visible: MixerPhrase[];
+		items: Array<
+			| { kind: "phrase"; phrase: MixerPhrase; start: number }
+			| { kind: "gap"; start: number; end: number }
+		>;
 		current: MixerPhrase | null;
 	}
 
@@ -120,12 +123,54 @@
 				})()
 				: -1;
 
-			return {
-				name,
-				words: tuneWords,
-				visible: foundIndex >= 0 ? tunePhrases.slice(foundIndex) : [],
-				current: foundIndex >= 0 ? tunePhrases[foundIndex] : null
-			};
+			const current = foundIndex >= 0 ? tunePhrases[foundIndex] : null;
+
+			// This tune's own list can have holes - stretches
+			// another voice sings through. The chart is shared
+			// across voices (one chart per song), so those
+			// stretches still have chords, and they render as
+			// a standing lead-in-style line IN the list, the
+			// way an unsung intro's chords already do - present
+			// from the start, scrolling up as earlier pages
+			// drop off. Deliberately not conjured when the
+			// playhead arrives: a line popping into existence
+			// at the hole boundary read as "suddenly more
+			// chords appear" on a real song, where the same
+			// line sitting visibly below the intro pages all
+			// along is just the progression leading into the
+			// part. The hole the playhead is currently inside
+			// is included too, so the column is never
+			// chord-blind mid-wait.
+			const items: PartColumn["items"] = [];
+
+			if (foundIndex >= 0) {
+				let previousEnd = playhead < tunePhrases[foundIndex].start
+					? (() => {
+						let last = 0;
+						for (const phrase of tunePhrases) {
+							if (phrase.end <= playhead && phrase.end > last) {
+								last = phrase.end;
+							}
+						}
+						return last;
+					})()
+					: null;
+
+				for (const phrase of tunePhrases.slice(foundIndex)) {
+					if (
+						previousEnd !== null &&
+						phrase.start - previousEnd > 1e-6
+					) {
+						items.push({
+							kind: "gap", start: previousEnd, end: phrase.start
+						});
+					}
+					items.push({ kind: "phrase", phrase, start: phrase.start });
+					previousEnd = phrase.end;
+				}
+			}
+
+			return { name, words: tuneWords, items, current };
 		});
 	});
 
@@ -533,25 +578,89 @@
 	}
 
 	type RhythmEvent =
-		| { time: number; type: "chord"; name: string }
-		| { time: number; type: "bar" };
+		| {
+			time: number;
+			type: "chord";
+			name: string;
+			carried: boolean;
+			barStart: number;
+			barEnd: number;
+		}
+		| { time: number; type: "bar"; barStart: number; barEnd: number };
 
-	// Every real chord CHANGE inside this phrase - carried
-	// entries (the same chord still sounding when a later bar
-	// opens) are dropped here, not just dimmed, per the "only
-	// the bold ones" steer: a bar with nothing new happening
-	// shows its "|" and nothing else.
+	// Every chord inside this phrase - the changes AND the
+	// carried entries (the same chord still sounding when a
+	// later bar opens). Carried ones used to be dropped
+	// outright ("only the bold ones"), which left a bar with
+	// no chord printed at all whenever the chord held over -
+	// nothing there to highlight as the current bar's chord,
+	// and in paired mode the one printed name could scroll
+	// off with its line, losing track of what is sounding.
+	// Now they print, faded, the same "shown but dimmed"
+	// treatment ChordStrip already gives them - EXCEPT when
+	// the real change was itself a syncopation into this
+	// bar: a chord that landed within the last beat before
+	// the bar line (Mulan does this in over twenty bars,
+	// half a beat early almost every other bar) was just
+	// printed, and a faded repeat half a beat later is
+	// noise, not a reminder. One beat is measured, not
+	// guessed: every real anticipation in the fixture is
+	// 0.5 or 1.0 beats early, while a genuinely held chord
+	// is whole bars back.
 	function chordEvents(phrase: MixerPhrase | null): RhythmEvent[] {
 		if (!phrase || !lyricsShowChords.value) return [];
 		const found: RhythmEvent[] = [];
+		let lastRealOnset: number | null = null;
+		let lastRealBeatSeconds = 0;
 		for (const bar of timeline) {
-			if (bar.start >= phrase.end || bar.end <= phrase.start) continue;
+			const beatSeconds = (bar.end - bar.start) / bar.beats;
 			for (const chord of bar.chords) {
-				if (chord.carried) continue;
 				const time = chordTime(bar, chord);
-				if (time >= phrase.start && time < phrase.end) {
-					found.push({ time, type: "chord", name: chord.name });
+				if (!chord.carried) {
+					lastRealOnset = time;
+					lastRealBeatSeconds = beatSeconds;
 				}
+				if (
+					chord.carried &&
+					repeatSuppressed(bar.start, lastRealOnset, lastRealBeatSeconds)
+				) {
+					// The bar adopts the syncopated chord: with
+					// its repeat suppressed, the real chord's
+					// own bar span stretches over this bar, so
+					// it stays bar-blue while the playhead is
+					// here rather than dropping to just the
+					// ring at the bar line. Deliberately BEFORE
+					// the phrase-window filters below: a
+					// syncopated chord most often sits at the
+					// END of a line, anticipating the next
+					// line's bar - the suppressed entry then
+					// falls in the NEXT phrase's window, and
+					// filtering first meant this branch never
+					// ran, so the chord went grey the moment
+					// the playhead crossed the bar tick
+					// (caught on a real screenshot, not by any
+					// check here). The real chord, when it was
+					// printed in THIS line, is the last thing
+					// pushed - extend it whatever window the
+					// carried entry itself lands in.
+					const previous = found[found.length - 1];
+					if (
+						previous &&
+						previous.type === "chord" &&
+						lastRealOnset !== null &&
+						Math.abs(previous.time - lastRealOnset) < 1e-9
+					) {
+						previous.barEnd = bar.end;
+					}
+					continue;
+				}
+				if (bar.start >= phrase.end || bar.end <= phrase.start) continue;
+				if (time < phrase.start || time >= phrase.end) continue;
+				found.push({
+					time, type: "chord", name: chord.name,
+					carried: chord.carried,
+					barStart: bar.start, barEnd: bar.end
+				});
 			}
 		}
 		return found;
@@ -566,10 +675,91 @@
 		const found: RhythmEvent[] = [];
 		for (const bar of timeline) {
 			if (bar.start >= phrase.start && bar.start < phrase.end) {
-				found.push({ time: bar.start, type: "bar" });
+				found.push({
+					time: bar.start, type: "bar",
+					barStart: bar.start, barEnd: bar.end
+				});
 			}
 		}
 		return found;
+	}
+
+	// The one highlight rule: everything belonging to the
+	// bar the playhead is currently inside - its tick, its
+	// chord, carried or not - lights up, and goes back to
+	// normal the moment the next bar opens. A bar is the
+	// natural unit chords live in (the whole chart strip is
+	// bar-organised), so the reset at each bar line is a
+	// rhythmic cue in itself.
+	function inCurrentBar(event: RhythmEvent): boolean {
+		return event.barStart <= playhead && playhead < event.barEnd;
+	}
+
+	// On top of the bar-level blue: the single chord
+	// actually sounding right now - the latest chord at or
+	// before the playhead - gets a pill for further
+	// prominence. Computed from the timeline directly, not
+	// per phrase, so exactly one chord on screen ever
+	// carries it.
+	// A carried repeat is suppressed when the real change
+	// was itself a syncopation into this bar - landed
+	// within the last beat before the bar line. One
+	// predicate, shared by the printing (chordEvents) and
+	// the ring (soundingChordTime), so what is highlighted
+	// can never disagree with what is on screen.
+	function repeatSuppressed(
+		barStart: number,
+		lastRealOnset: number | null,
+		lastRealBeatSeconds: number
+	): boolean {
+		return (
+			lastRealOnset !== null &&
+			barStart - lastRealOnset <= lastRealBeatSeconds + 1e-6
+		);
+	}
+
+	const soundingChordTime = $derived.by((): number | null => {
+		let latest: number | null = null;
+		let lastRealOnset: number | null = null;
+		let lastRealBeatSeconds = 0;
+		for (const bar of timeline) {
+			if (bar.start > playhead) break;
+			const beatSeconds = (bar.end - bar.start) / bar.beats;
+			for (const chord of bar.chords) {
+				const time = chordTime(bar, chord);
+				if (!chord.carried) {
+					lastRealOnset = time;
+					lastRealBeatSeconds = beatSeconds;
+				}
+				// The ring sits on the latest VISIBLE chord
+				// instance: an ordinary held chord's ring
+				// travels bar to bar with its printed faded
+				// repeats, while a suppressed syncopated
+				// repeat is skipped here exactly as it is
+				// skipped in print - so the ring stays on
+				// the syncopated chord itself through the
+				// bar that adopted it, never pointing at
+				// nothing.
+				if (
+					chord.carried &&
+					repeatSuppressed(bar.start, lastRealOnset, lastRealBeatSeconds)
+				) {
+					continue;
+				}
+				if (time <= playhead && (latest === null || time > latest)) {
+					latest = time;
+				}
+			}
+		}
+		return latest;
+	});
+
+	function isSounding(event: RhythmEvent): boolean {
+		return (
+			event.type === "chord" &&
+			soundingChordTime !== null &&
+			Math.abs(event.time - soundingChordTime) < 1e-9
+		);
 	}
 
 	function allEvents(phrase: MixerPhrase | null): RhythmEvent[] {
@@ -594,8 +784,8 @@
 		};
 	}
 
-	function leadInText(events: RhythmEvent[]): string {
-		return events.map((event) => (event.type === "bar" ? "|" : event.name)).join(" ");
+	function leadInLabel(event: RhythmEvent): string {
+		return event.type === "bar" ? "|" : event.name;
 	}
 
 	// Which events belong above each word - an event is
@@ -646,14 +836,19 @@
 	}
 </script>
 
-{#snippet wordSpan(note: MixerNote, i: number, eventsMap: Map<number, RhythmEvent[]>, showSung: boolean)}<span class="word-unit">{#if eventsMap.get(i)}<span class="chord-tags">{#each eventsMap.get(i) as event}{#if event.type === "bar"}<span class="bar-tick">|</span>{:else}<span class="chord-tag">{event.name}</span>{/if}{/each}</span>{/if}<span class="sentence-word" class:sung={showSung && note.start <= playhead}>{note.word}</span></span>{separatorAfter(note.word)}{/snippet}
+{#snippet wordSpan(note: MixerNote, i: number, eventsMap: Map<number, RhythmEvent[]>, showSung: boolean)}<span class="word-unit">{#if eventsMap.get(i)}<span class="chord-tags">{#each eventsMap.get(i) as event}{#if event.type === "bar"}<span class="bar-tick" class:now={inCurrentBar(event)}>|</span>{:else}<span class="chord-tag" class:carried={event.carried} class:now={inCurrentBar(event)} class:sounding={isSounding(event)}>{event.name}</span>{/if}{/each}</span>{/if}<span class="sentence-word" class:sung={showSung && note.start <= playhead}>{note.word}</span></span>{separatorAfter(note.word)}{/snippet}
 
 {#snippet lyricsLine(phrase: MixerPhrase, isCurrent: boolean, source: MixerNote[] = words)}
 	{@const line = lineFor(phrase, source)}
 	<div class="lyrics-line" class:current={isCurrent}>
 		{#if line.split.leadIn.length}
 			<p class="lead-in-line" class:plain={!isCurrent}>
-				{leadInText(line.split.leadIn)}
+				{#each line.split.leadIn as event, i}<span
+					class="lead-in-event"
+					class:carried={event.type === "chord" && event.carried}
+					class:now={inCurrentBar(event)}
+					class:sounding={isSounding(event)}
+				>{leadInLabel(event)}</span>{i < line.split.leadIn.length - 1 ? " " : ""}{/each}
 			</p>
 		{/if}
 		<p class="sentence" class:current={isCurrent}>
@@ -724,8 +919,22 @@
 				{#each partColumns as column (column.name)}
 					<div class="lyrics-column" class:my-part={column.name === singing}>
 						<p class="part-column-label">{column.name}</p>
-						{#each column.visible as phrase (phrase.start)}
-							{@render lyricsLine(phrase, phrase === column.current, column.words)}
+						{#each column.items as item (item.start)}
+							{#if item.kind === "gap"}
+								{@const events = allEvents({ start: item.start, end: item.end, label: "" })}
+								{#if events.length}
+									<p class="lead-in-line">
+										{#each events as event, i}<span
+											class="lead-in-event"
+											class:carried={event.type === "chord" && event.carried}
+											class:now={inCurrentBar(event)}
+											class:sounding={isSounding(event)}
+										>{leadInLabel(event)}</span>{i < events.length - 1 ? " " : ""}{/each}
+									</p>
+								{/if}
+							{:else}
+								{@render lyricsLine(item.phrase, item.phrase === column.current, column.words)}
+							{/if}
 						{/each}
 					</div>
 				{/each}
@@ -916,22 +1125,70 @@
 		font-weight: 700;
 		color: #607d8b;
 	}
+	.chord-tag.carried {
+		/* The same chord still sounding from an earlier bar -
+		   shown but faded, ChordStrip's own treatment of the
+		   same case. Printed at all (it used to be dropped)
+		   so every bar has a chord on screen: the current
+		   bar always has something to light up, and a chord
+		   whose change scrolled away with its line in paired
+		   mode is still visible where you are now. */
+		font-weight: 400;
+		opacity: 0.5;
+	}
+	.chord-tag.now {
+		/* The bar the playhead is inside: its chord lights
+		   up, carried or not, and resets at the next bar
+		   line. One moving highlight, not a trail. */
+		color: #0d47a1;
+		font-weight: 700;
+		opacity: 1;
+	}
 	.bar-tick {
 		font-size: calc(12px * var(--lyrics-scale, 1));
 		font-weight: 700;
 		color: var(--body-text-color-subdued);
 		opacity: 0.65;
 	}
+	.bar-tick.now {
+		color: #0d47a1;
+		opacity: 1;
+	}
 	.lead-in-line {
 		font-size: calc(13px * var(--lyrics-scale, 1));
 		font-weight: 700;
 		letter-spacing: 0.15em;
-		color: var(--body-text-color-subdued);
-		opacity: 0.5;
 		margin: 4px 0 2px;
 	}
 	.lead-in-line.plain {
+		/* A phrase you are not currently on: smaller, and
+		   faded - the same relationship every other phrase
+		   already has to the current one elsewhere in this
+		   panel. This is unrelated to the fix below - the
+		   original complaint was that the CURRENT phrase's
+		   own lead-in chords read as washed out even while
+		   actively playing, not that non-current phrases
+		   should stop dimming. */
 		font-size: calc(11px * var(--lyrics-scale, 1));
+		opacity: 0.5;
+	}
+	.lead-in-event {
+		/* Full-strength colour, not the old 0.5-opacity
+		   subdued grey the whole line used to carry - an
+		   instrumental intro's chords are exactly as real
+		   as a sung line's. Same base colour as the sung
+		   row's own chord-tag, so the two rows read as one
+		   consistent language. */
+		color: #607d8b;
+	}
+	.lead-in-event.carried {
+		font-weight: 400;
+		opacity: 0.5;
+	}
+	.lead-in-event.now {
+		color: #0d47a1;
+		font-weight: 700;
+		opacity: 1;
 	}
 	.lyrics-list {
 		display: flex;
@@ -1057,5 +1314,25 @@
 	.lyrics-empty {
 		font-size: 13px;
 		color: var(--body-text-color-subdued);
+	}
+	.chord-tag.sounding,
+	.lead-in-event.sounding {
+		/* The one chord actually sounding right now: a
+		   hollow pill outline around blue, bold text -
+		   carrying its own colour and weight, not borrowing
+		   .now's, so the sounding chord never reads as
+		   "highlight gone" in a moment where it holds the
+		   ring without also being in the playhead's bar.
+		   outline, not border, so it adds zero layout size;
+		   padding cancelled by equal negative margins gives
+		   the ring breathing room without nudging
+		   neighbouring tags. */
+		color: #0d47a1;
+		font-weight: 700;
+		opacity: 1;
+		padding: 1px 5px;
+		margin: -1px -5px;
+		border-radius: 999px;
+		outline: 1.5px solid #0d47a1;
 	}
 </style>

@@ -407,6 +407,131 @@ def _comma_rescue(breaks, syllables, sung_spans, bpm):
     return rescued
 
 
+# A run of silence past this many real seconds is not a
+# breath - it is a structural gap, and the line breaks at
+# it unconditionally, same standing as a full stop or a
+# long held run. Measured, not guessed, same discipline as
+# HOLD_RUN_BREAK_SECONDS above: the longest rest gap inside
+# any line the splitter already correctly keeps whole is
+# 2.7s (Lascia ch'io pianga's ornamental pauses), while the
+# shortest genuine instrumental silence in a real upload is
+# 5.1s - 4.0 sits between with margin on both sides, and
+# happens to agree with the held-note threshold rather than
+# borrowing from it.
+REST_RUN_BREAK_SECONDS = 4.0
+
+# A small rest is a breath, and a breath is only evidence
+# the way a comma is: inside a line already far too long,
+# never on its own. Below this the gap is articulation -
+# the fixtures' ordinary within-line gaps cluster at 0.3s
+# and under - while real sung phrase boundaries in the file
+# that motivated this (This Love, a transcription with no
+# usable punctuation) sit at 0.6-2.1s. 0.5 separates the
+# two on every file measured.
+REST_BREATH_SECONDS = 0.5
+
+
+def _rest_gap_before(position, sung_spans, bpm):
+    """
+    The silence between a sung note and the one before it,
+    in real seconds - zero for the first note, and zero
+    wherever the notes touch.
+    """
+
+    if position <= 0 or position >= len(sung_spans):
+        return 0.0
+
+    previous_beat, previous_length = sung_spans[position - 1]
+    gap = sung_spans[position][0] - (previous_beat + previous_length)
+
+    return max(gap, 0.0) / bpm * 60
+
+
+def _rest_run_breaks(syllables, sung_spans, bpm):
+    """
+    A break at every long silence between sung notes.
+
+    Structural evidence, same standing as _hold_run_breaks
+    and applied in the same place: nobody is mid-phrase
+    across a silence this long, however the words around it
+    are punctuated. This Love's second line is the real
+    case - a 35-second gap between its choruses, invisible
+    to every word-based rule because no words exist in it.
+
+    A break never lands on a held-note marker: the word a
+    hold continues came before the silence, and splitting
+    there would orphan the hold from its own word.
+    """
+
+    if not sung_spans or not bpm:
+        return set()
+
+    return {
+        position
+        for position in range(1, len(sung_spans))
+        if syllables[position] not in (None, "", "_")
+        and _rest_gap_before(position, sung_spans, bpm)
+        >= REST_RUN_BREAK_SECONDS
+    }
+
+
+def _rest_rescue(breaks, syllables, sung_spans, bpm):
+    """
+    Inside a line still far too long after every other rule,
+    a breath rest may split it - and only there.
+
+    The exact shape of _comma_rescue, with a small silence
+    standing where the comma stood: both are weak evidence
+    (a breath inside an ordinary line is articulation, not
+    a boundary), both fire only past the same length gate,
+    and both halves of any split must clear the same
+    minimum, so a rescue can never create a sliver. Runs
+    after the comma pass, so a line a comma already rescued
+    under the gate is left alone.
+    """
+
+    if not sung_spans or not bpm:
+        return breaks
+
+    def seconds(first, end):
+        end = min(end, len(sung_spans))
+        if first >= end:
+            return 0.0
+        opening = sung_spans[first][0]
+        final_beat, final_length = sung_spans[end - 1]
+        return (final_beat + final_length - opening) / bpm * 60
+
+    rescued = set(breaks)
+    edges = sorted(rescued) + [len(syllables)]
+    line_start = 0
+
+    for line_end in edges:
+
+        if line_end <= line_start:
+            continue
+
+        if seconds(line_start, line_end) > COMMA_RESCUE_LINE_SECONDS:
+
+            for position in range(line_start + 1, line_end):
+
+                if syllables[position] in (None, "", "_"):
+                    continue
+
+                if (
+                    _rest_gap_before(position, sung_spans, bpm)
+                    >= REST_BREATH_SECONDS
+                    and seconds(line_start, position)
+                    >= MINIMUM_LYRIC_PHRASE_SECONDS
+                    and seconds(position, line_end)
+                    >= MINIMUM_LYRIC_PHRASE_SECONDS
+                ):
+                    rescued.add(position)
+
+        line_start = line_end
+
+    return rescued
+
+
 # How long a rest may be before it is written as bars of
 # rest instead. Invariant 9: a singer counting through an
 # instrumental counts bars.
@@ -514,7 +639,8 @@ def _voice_parts(part):
         measure.getElementsByClass("Voice")
         for measure in part.getElementsByClass("Measure")
     ):
-        return [(part, None)]
+        split = _chord_parts(part)
+        return split if split else [(part, None)]
 
     voices = list(part.voicesToParts().parts)
 
@@ -550,6 +676,111 @@ def _voice_parts(part):
     )
 
     return singles + [together]
+
+
+def _chord_parts(part):
+    """
+    A staff whose sung notes include chords, split into an
+    upper and a lower line.
+
+    This Love is the real case that found this: the chorus
+    is written as two-note chords with one syllable each -
+    melody and a harmony line sharing one stem, with no
+    voice markup for voicesToParts to read. The old rule
+    (a chord in a sung part is its top note) assumed the
+    rest of the chord lived in other parts; here the lower
+    line exists nowhere else, and in this file the top note
+    is the harmony, not the tune - so keeping only the top
+    silently judged a singer against the wrong line.
+
+    Which line is the melody is not decidable from the
+    notation - conventions genuinely conflict (choral divisi
+    puts the tune on top; pop transcriptions often stack a
+    harmony above the lead). So no guess is made: both lines
+    land, named by position only, and the singer picks
+    theirs in the mixer, the same way every divided song
+    already works.
+
+    Only a part with no voice markup reaches here - a chord
+    inside a genuine Voice still reads as its top note, as
+    before. Returns entries shaped exactly like
+    _voice_parts' own (part, extra) pairs, or None where
+    there is nothing to split.
+    """
+
+    from music21 import chord as m21chord
+
+    items = _sung(part.flatten().notesAndRests)
+
+    if not any(
+        isinstance(item, m21chord.Chord) and item.lyrics
+        for item in items
+    ):
+        return None
+
+    upper = _chord_line(part, items, top=True)
+    lower = _chord_line(part, items, top=False)
+
+    together = ([upper, lower], "both lines")
+
+    return [(upper, None), (lower, "lower line"), together]
+
+
+def _chord_line(part, items, top):
+    """
+    One line of a chord-bearing staff, as its own part.
+
+    The upper line is the whole staff with every chord
+    replaced by its highest note - exactly what the whole
+    staff already imported as, so choosing it changes
+    nothing against today. The lower line is each chord's
+    lowest note at its true position, with the silence
+    between written as rests, so it reads correctly both
+    alone (the consecutive path) and beside its partner
+    (the positioned path).
+
+    Lyrics ride both lines whole - each line's reader picks
+    its verse from them as usual - and each new note takes
+    its own constituent's tie, so _merge_ties joins held
+    chords the same way it joins held notes.
+    """
+
+    from music21 import chord as m21chord, note as m21note, stream
+
+    line = stream.Part()
+    line.partName = part.partName
+
+    position = 0.0
+
+    for item in items:
+
+        offset = float(item.offset)
+
+        if isinstance(item, m21chord.Chord):
+            chosen = (
+                max(item.notes, key=lambda n: n.pitch.midi) if top
+                else min(item.notes, key=lambda n: n.pitch.midi)
+            )
+            landed = m21note.Note(chosen.pitch)
+            landed.quarterLength = item.quarterLength
+            landed.lyrics = list(item.lyrics)
+            landed.tie = chosen.tie or item.tie
+
+        elif top:
+            landed = item
+
+        else:
+            continue
+
+        if offset > position + 1e-6:
+            gap = m21note.Rest()
+            gap.quarterLength = offset - position
+            line.insert(position, gap)
+
+        line.insert(offset, landed)
+        position = offset + float(item.quarterLength)
+
+    return line
 
 
 def _is_combined(entry_part):
@@ -1736,15 +1967,24 @@ def _lyric_lines(read, bpm):
         )
 
     # Structural, on both paths: a long run of held notes is
-    # an instrumental stretch, not part of any line - it
-    # stands alone whatever the words around it say. Then,
-    # only inside a line still far too long, a comma may
-    # split it.
+    # an instrumental stretch, and a long silence is a
+    # structural gap - neither is part of any line, whatever
+    # the words around it say. Then, only inside a line
+    # still far too long, a comma may split it, and after
+    # the commas have had their say, a breath rest may.
     breaks = breaks | _hold_run_breaks(
         syllables, read["sung_spans"], bpm
     )
 
+    breaks = breaks | _rest_run_breaks(
+        syllables, read["sung_spans"], bpm
+    )
+
     breaks = _comma_rescue(
+        breaks, syllables, read["sung_spans"], bpm
+    )
+
+    breaks = _rest_rescue(
         breaks, syllables, read["sung_spans"], bpm
     )
 

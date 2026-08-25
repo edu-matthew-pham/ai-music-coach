@@ -1416,6 +1416,162 @@ def test_a_scrap_of_the_other_voice_rides_the_gap_page_beside_it():
         assert phrase["end"] - phrase["start"] >= 1.0, phrase["label"]
 
 
+def test_a_long_leading_rest_in_a_divided_tune_becomes_rest_pages():
+    """
+    A divided tune's own long silent lead-in - past the same
+    threshold the lyric splitter uses for a structural gap -
+    is not part of its first phrase: it pages as "(rest)"
+    like any other dead stretch, and the phrase starts where
+    the singing does. This Love is the real case: an 8-bar
+    intro nobody sings landed as 80% of "phrase 1" because
+    a divided phrase was only ever trimmed at its tail.
+    """
+
+    # 12 beats of rest at 120bpm = 6.0s, past the 4.0s
+    # threshold; neither voice sings there.
+    pitches = (
+        "=== Voice 1 ===\n"
+        + "R " * 12 + "C4 D4 E4 F4\n"
+        "=== Voice 2 ===\n"
+        + "R " * 12 + "E4 F4 G4 A4"
+    )
+    durations = (
+        "=== Voice 1 ===\n" + "1 " * 16 + "\n"
+        "=== Voice 2 ===\n" + "1 " * 16
+    )
+    lyrics = (
+        "=== Voice 1 ===\nOne two three four\n"
+        "=== Voice 2 ===\nAh ah ah ah"
+    )
+
+    value = mixer_data(
+        pitches, durations, "C", 120, "", lyric_text=lyrics
+    )
+
+    for name in ("Voice 1", "Voice 2"):
+        phrases = value["phrases_by_part"][name]
+
+        assert phrases[0]["label"].endswith("(rest)"), name
+        assert phrases[0]["start"] == 0.0, name
+
+        sung = next(p for p in phrases if "(rest)" not in p["label"])
+        assert abs(sung["start"] - 6.0) < 1e-6, name
+
+
+def test_a_short_pickup_stays_inside_a_divided_tunes_first_phrase():
+    """
+    The mirror case, pinned so the trim can never overreach:
+    a lead-in under the threshold is a pickup - a count-in a
+    singer may genuinely want - and stays inside the first
+    phrase exactly as it always has.
+    """
+
+    # 4 beats of rest at 120bpm = 2.0s, under the 4.0s
+    # threshold.
+    pitches = (
+        "=== Voice 1 ===\n"
+        + "R " * 4 + "C4 D4 E4 F4\n"
+        "=== Voice 2 ===\n"
+        + "R " * 4 + "E4 F4 G4 A4"
+    )
+    durations = (
+        "=== Voice 1 ===\n" + "1 " * 8 + "\n"
+        "=== Voice 2 ===\n" + "1 " * 8
+    )
+    lyrics = (
+        "=== Voice 1 ===\nOne two three four\n"
+        "=== Voice 2 ===\nAh ah ah ah"
+    )
+
+    value = mixer_data(
+        pitches, durations, "C", 120, "", lyric_text=lyrics
+    )
+
+    first = value["phrases_by_part"]["Voice 1"][0]
+
+    assert "(rest)" not in first["label"]
+    assert first["start"] == 0.0
+
+
+def test_a_short_gap_folds_into_the_next_phrase_in_a_divided_tune_too():
+    """
+    The same fold the undivided path has always had: a
+    breath between two of a divided tune's own phrases,
+    covered by nobody, rides into the next page's start -
+    so its bars are on a page, not in a hole between pages
+    where the Notes panel shows them on neither.
+    """
+
+    # A 2-beat uncovered gap (1.0s at 120bpm, under the
+    # one-bar fold threshold) between Voice 1's two lines;
+    # Voice 2 rests through it.
+    pitches = (
+        "=== Voice 1 ===\n"
+        "C4 D4 E4 F4 R R G4 A4 B4 C5\n"
+        "=== Voice 2 ===\n"
+        "E4 F4 G4 A4 R R B4 C5 D5 E5"
+    )
+    durations = (
+        "=== Voice 1 ===\n" + "1 " * 10 + "\n"
+        "=== Voice 2 ===\n" + "1 " * 10
+    )
+    lyrics = (
+        "=== Voice 1 ===\n"
+        "One two three four\nFive six sev'n eight\n"
+        "=== Voice 2 ===\n"
+        "Ah ah ah ah\nOh oh oh oh"
+    )
+
+    value = mixer_data(
+        pitches, durations, "C", 120, "", lyric_text=lyrics
+    )
+
+    for name in ("Voice 1", "Voice 2"):
+        first, second = value["phrases_by_part"][name][:2]
+        assert abs(second["start"] - first["end"]) < 1e-6, name
+
+
+def test_a_covered_gap_never_folds_into_your_own_phrase():
+    """
+    The fold's own boundary, pinned: a moment the other
+    voice sings through is theirs, never yours - your next
+    phrase starts on your own first note, and the covered
+    stretch is left for their pages, exactly as the
+    covered-gap tests above already require of the paging.
+    """
+
+    # Voice 1 breathes for 2 beats; Voice 2 sings straight
+    # through that gap.
+    pitches = (
+        "=== Voice 1 ===\n"
+        "C4 D4 E4 F4 R R G4 A4 B4 C5\n"
+        "=== Voice 2 ===\n"
+        "E4 F4 G4 A4 E4 E4 B4 C5 D5 E5"
+    )
+    durations = (
+        "=== Voice 1 ===\n" + "1 " * 10 + "\n"
+        "=== Voice 2 ===\n" + "1 " * 10
+    )
+    lyrics = (
+        "=== Voice 1 ===\n"
+        "One two three four\nFive six sev'n eight\n"
+        "=== Voice 2 ===\n"
+        "Ah ah ah ah ah ah\nOh oh oh oh"
+    )
+
+    value = mixer_data(
+        pitches, durations, "C", 120, "", lyric_text=lyrics
+    )
+
+    first, second = value["phrases_by_part"]["Voice 1"][:2]
+
+    # 4 sung beats at 120bpm end at 2.0s; the next phrase
+    # starts at its own first note, 3.0s - the covered
+    # 2.0-3.0s stretch is not folded into it.
+    assert abs(first["end"] - 2.0) < 1e-6
+    assert abs(second["start"] - 3.0) < 1e-6
+
+
 def test_a_breath_between_own_lines_is_not_filled_with_the_other_voice():
     """
     While you sing, the pages are yours: a short rest
