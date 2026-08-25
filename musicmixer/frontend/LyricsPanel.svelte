@@ -2,6 +2,15 @@
 	import { flip } from "svelte/animate";
 	import { onMount } from "svelte";
 	import type { MixerBar, MixerNote, MixerPhrase } from "./types";
+	import { columnItems } from "./columnItems";
+	import {
+		barEvents as buildBarEvents,
+		chordEvents as buildChordEvents,
+		inCurrentBar as eventInBar,
+		isSounding as ringMatches,
+		soundingChordTime as findSoundingChord,
+		type RhythmEvent
+	} from "./chordEvents";
 	import {
 		lyricsShowChords,
 		lyricsShowBars,
@@ -93,10 +102,7 @@
 	interface PartColumn {
 		name: string;
 		words: MixerNote[];
-		items: Array<
-			| { kind: "phrase"; phrase: MixerPhrase; start: number }
-			| { kind: "gap"; start: number; end: number }
-		>;
+		items: ReturnType<typeof columnItems<MixerPhrase>>["items"];
 		current: MixerPhrase | null;
 	}
 
@@ -116,15 +122,6 @@
 				tunePhrases = [{ start: 0, end, label: name }];
 			}
 
-			const foundIndex = tunePhrases.length
-				? (() => {
-					const found = tunePhrases.findIndex((phrase) => playhead < phrase.end);
-					return found === -1 ? tunePhrases.length - 1 : found;
-				})()
-				: -1;
-
-			const current = foundIndex >= 0 ? tunePhrases[foundIndex] : null;
-
 			// This tune's own list can have holes - stretches
 			// another voice sings through. The chart is shared
 			// across voices (one chart per song), so those
@@ -138,37 +135,11 @@
 			// chords appear" on a real song, where the same
 			// line sitting visibly below the intro pages all
 			// along is just the progression leading into the
-			// part. The hole the playhead is currently inside
-			// is included too, so the column is never
-			// chord-blind mid-wait.
-			const items: PartColumn["items"] = [];
-
-			if (foundIndex >= 0) {
-				let previousEnd = playhead < tunePhrases[foundIndex].start
-					? (() => {
-						let last = 0;
-						for (const phrase of tunePhrases) {
-							if (phrase.end <= playhead && phrase.end > last) {
-								last = phrase.end;
-							}
-						}
-						return last;
-					})()
-					: null;
-
-				for (const phrase of tunePhrases.slice(foundIndex)) {
-					if (
-						previousEnd !== null &&
-						phrase.start - previousEnd > 1e-6
-					) {
-						items.push({
-							kind: "gap", start: previousEnd, end: phrase.start
-						});
-					}
-					items.push({ kind: "phrase", phrase, start: phrase.start });
-					previousEnd = phrase.end;
-				}
-			}
+			// part. Logic lives in columnItems.ts, tested
+			// against real phrases_by_part output, including
+			// the case a real report once raised: a SECOND,
+			// later hole must fill too, not just the first.
+			const { items, current } = columnItems(tunePhrases, playhead);
 
 			return { name, words: tuneWords, items, current };
 		});
@@ -568,202 +539,31 @@
 		return word?.endsWith("-") ? "" : " ";
 	}
 
-	// A chord's real position in seconds - the same
-	// beat_in_bar/bar.beats fraction ChordStrip and the Notes
-	// panel already use, just landed on this panel's own
-	// word-by-word layout instead of a bar strip or a pitch
-	// axis.
-	function chordTime(bar: MixerBar, chord: MixerBar["chords"][number]): number {
-		return bar.start + (chord.beat_in_bar / bar.beats) * (bar.end - bar.start);
+	// The chord/bar event rules live in chordEvents.ts - a
+	// plain module, tested under vitest against the real
+	// Mulan timeline, after two rounds of inline logic here
+	// shipped bugs that only a real render could catch. The
+	// wrappers below bind the pure functions to this
+	// component's own reactive state (the toggles and the
+	// playhead); nothing rule-shaped belongs in this file
+	// any more.
+	function allEvents(phrase: MixerPhrase | null): RhythmEvent[] {
+		if (!phrase) return [];
+		const chords = lyricsShowChords.value
+			? buildChordEvents(timeline, phrase) : [];
+		const bars = lyricsShowBars.value
+			? buildBarEvents(timeline, phrase) : [];
+		return [...bars, ...chords].sort((a, b) => a.time - b.time);
 	}
 
-	type RhythmEvent =
-		| {
-			time: number;
-			type: "chord";
-			name: string;
-			carried: boolean;
-			barStart: number;
-			barEnd: number;
-		}
-		| { time: number; type: "bar"; barStart: number; barEnd: number };
-
-	// Every chord inside this phrase - the changes AND the
-	// carried entries (the same chord still sounding when a
-	// later bar opens). Carried ones used to be dropped
-	// outright ("only the bold ones"), which left a bar with
-	// no chord printed at all whenever the chord held over -
-	// nothing there to highlight as the current bar's chord,
-	// and in paired mode the one printed name could scroll
-	// off with its line, losing track of what is sounding.
-	// Now they print, faded, the same "shown but dimmed"
-	// treatment ChordStrip already gives them - EXCEPT when
-	// the real change was itself a syncopation into this
-	// bar: a chord that landed within the last beat before
-	// the bar line (Mulan does this in over twenty bars,
-	// half a beat early almost every other bar) was just
-	// printed, and a faded repeat half a beat later is
-	// noise, not a reminder. One beat is measured, not
-	// guessed: every real anticipation in the fixture is
-	// 0.5 or 1.0 beats early, while a genuinely held chord
-	// is whole bars back.
-	function chordEvents(phrase: MixerPhrase | null): RhythmEvent[] {
-		if (!phrase || !lyricsShowChords.value) return [];
-		const found: RhythmEvent[] = [];
-		let lastRealOnset: number | null = null;
-		let lastRealBeatSeconds = 0;
-		for (const bar of timeline) {
-			const beatSeconds = (bar.end - bar.start) / bar.beats;
-			for (const chord of bar.chords) {
-				const time = chordTime(bar, chord);
-				if (!chord.carried) {
-					lastRealOnset = time;
-					lastRealBeatSeconds = beatSeconds;
-				}
-				if (
-					chord.carried &&
-					repeatSuppressed(bar.start, lastRealOnset, lastRealBeatSeconds)
-				) {
-					// The bar adopts the syncopated chord: with
-					// its repeat suppressed, the real chord's
-					// own bar span stretches over this bar, so
-					// it stays bar-blue while the playhead is
-					// here rather than dropping to just the
-					// ring at the bar line. Deliberately BEFORE
-					// the phrase-window filters below: a
-					// syncopated chord most often sits at the
-					// END of a line, anticipating the next
-					// line's bar - the suppressed entry then
-					// falls in the NEXT phrase's window, and
-					// filtering first meant this branch never
-					// ran, so the chord went grey the moment
-					// the playhead crossed the bar tick
-					// (caught on a real screenshot, not by any
-					// check here). The real chord, when it was
-					// printed in THIS line, is the last thing
-					// pushed - extend it whatever window the
-					// carried entry itself lands in.
-					const previous = found[found.length - 1];
-					if (
-						previous &&
-						previous.type === "chord" &&
-						lastRealOnset !== null &&
-						Math.abs(previous.time - lastRealOnset) < 1e-9
-					) {
-						previous.barEnd = bar.end;
-					}
-					continue;
-				}
-				if (bar.start >= phrase.end || bar.end <= phrase.start) continue;
-				if (time < phrase.start || time >= phrase.end) continue;
-				found.push({
-					time, type: "chord", name: chord.name,
-					carried: chord.carried,
-					barStart: bar.start, barEnd: bar.end
-				});
-			}
-		}
-		return found;
-	}
-
-	// "|" at every bar's own start, unconditionally - a
-	// landmark independent of whether a chord happens to sit
-	// there too. Ordered before chords in the merge below so
-	// a coincident chord reads "| G", not "G |".
-	function barEvents(phrase: MixerPhrase | null): RhythmEvent[] {
-		if (!phrase || !lyricsShowBars.value) return [];
-		const found: RhythmEvent[] = [];
-		for (const bar of timeline) {
-			if (bar.start >= phrase.start && bar.start < phrase.end) {
-				found.push({
-					time: bar.start, type: "bar",
-					barStart: bar.start, barEnd: bar.end
-				});
-			}
-		}
-		return found;
-	}
-
-	// The one highlight rule: everything belonging to the
-	// bar the playhead is currently inside - its tick, its
-	// chord, carried or not - lights up, and goes back to
-	// normal the moment the next bar opens. A bar is the
-	// natural unit chords live in (the whole chart strip is
-	// bar-organised), so the reset at each bar line is a
-	// rhythmic cue in itself.
 	function inCurrentBar(event: RhythmEvent): boolean {
-		return event.barStart <= playhead && playhead < event.barEnd;
+		return eventInBar(event, playhead);
 	}
 
-	// On top of the bar-level blue: the single chord
-	// actually sounding right now - the latest chord at or
-	// before the playhead - gets a pill for further
-	// prominence. Computed from the timeline directly, not
-	// per phrase, so exactly one chord on screen ever
-	// carries it.
-	// A carried repeat is suppressed when the real change
-	// was itself a syncopation into this bar - landed
-	// within the last beat before the bar line. One
-	// predicate, shared by the printing (chordEvents) and
-	// the ring (soundingChordTime), so what is highlighted
-	// can never disagree with what is on screen.
-	function repeatSuppressed(
-		barStart: number,
-		lastRealOnset: number | null,
-		lastRealBeatSeconds: number
-	): boolean {
-		return (
-			lastRealOnset !== null &&
-			barStart - lastRealOnset <= lastRealBeatSeconds + 1e-6
-		);
-	}
-
-	const soundingChordTime = $derived.by((): number | null => {
-		let latest: number | null = null;
-		let lastRealOnset: number | null = null;
-		let lastRealBeatSeconds = 0;
-		for (const bar of timeline) {
-			if (bar.start > playhead) break;
-			const beatSeconds = (bar.end - bar.start) / bar.beats;
-			for (const chord of bar.chords) {
-				const time = chordTime(bar, chord);
-				if (!chord.carried) {
-					lastRealOnset = time;
-					lastRealBeatSeconds = beatSeconds;
-				}
-				// The ring sits on the latest VISIBLE chord
-				// instance: an ordinary held chord's ring
-				// travels bar to bar with its printed faded
-				// repeats, while a suppressed syncopated
-				// repeat is skipped here exactly as it is
-				// skipped in print - so the ring stays on
-				// the syncopated chord itself through the
-				// bar that adopted it, never pointing at
-				// nothing.
-				if (
-					chord.carried &&
-					repeatSuppressed(bar.start, lastRealOnset, lastRealBeatSeconds)
-				) {
-					continue;
-				}
-				if (time <= playhead && (latest === null || time > latest)) {
-					latest = time;
-				}
-			}
-		}
-		return latest;
-	});
+	const soundingTime = $derived(findSoundingChord(timeline, playhead));
 
 	function isSounding(event: RhythmEvent): boolean {
-		return (
-			event.type === "chord" &&
-			soundingChordTime !== null &&
-			Math.abs(event.time - soundingChordTime) < 1e-9
-		);
-	}
-
-	function allEvents(phrase: MixerPhrase | null): RhythmEvent[] {
-		return [...barEvents(phrase), ...chordEvents(phrase)].sort((a, b) => a.time - b.time);
+		return ringMatches(event, soundingTime);
 	}
 
 	// Anything before the phrase's own first sung word has no

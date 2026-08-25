@@ -21,7 +21,7 @@ with gr.Blocks(
 # `gradio_musicmixer`
 
 <div style="display: flex; gap: 7px;">
-<img alt="Static Badge" src="https://img.shields.io/badge/version%20-%200.0.16%20-%20orange">  
+<img alt="Static Badge" src="https://img.shields.io/badge/version%20-%200.0.17%20-%20orange">  
 </div>
 
 Python library for easily interacting with trained machine learning models
@@ -139,6 +139,54 @@ def build_intro():
     )
 
 
+def build_syncopated():
+    \"\"\"
+    A small hand-typed divided song for the Lyrics panel's
+    chord highlighting - two real shapes neither real song
+    on hand exercises safely (Mulan works but is Disney's,
+    not committable; the partner song has no syncopation):
+
+    - Bar 2's G lands on beat 3 (syncopated - half a beat
+      before the bar line at 120bpm) and genuinely carries
+      into bar 3 (written "." there, not a repeated "G", so
+      it is a real carry, not a fresh symbol). Exercises the
+      repeat-suppression, bar-adoption and ring-persistence
+      rules together.
+    - "Answer" sits out the first two lines (0-4.0s) while
+      "Lead" sings alone - a real hole in one tune's own
+      phrase list, covered by the other. Exercises the
+      parts-mode gap-filling chord line.
+
+    Verified directly against mixer_data() before being
+    wired up here: bar 2 gives (F, beat 0, real), (G, beat
+    3, real); bar 3 gives (G, beat 0, carried) - the
+    syncopated case. "Answer"'s own phrase list opens with
+    a 0.0-4.0s hole before its first sung phrase.
+    \"\"\"
+
+    pitches = (
+        "=== Lead ===\n"
+        "C4 D4 E4 F4 G4 A4 B4 C5 D5 E5 F5 G5\n"
+        "=== Answer ===\n"
+        "R R R R R R R R E4 F4 G4 A4"
+    )
+    durations = (
+        "=== Lead ===\n" + "1 " * 12 + "\n"
+        "=== Answer ===\n" + "1 " * 12
+    )
+    lyrics = (
+        "=== Lead ===\n"
+        "One two three four\nFive six sev'n eight\nNine ten e- lev'n\n"
+        "=== Answer ===\n"
+        "Hey hey hey hey"
+    )
+    chart = "| C . . . | F . . G | . . . . |"
+
+    return mixer_data(
+        pitches, durations, "C", 120, chart, lyric_text=lyrics
+    )
+
+
 def report(value):
     print("[test.py] report() loop_start:", value.get("loop_start") if value else None,
           "loop_end:", value.get("loop_end") if value else None)
@@ -164,6 +212,7 @@ with gr.Blocks() as demo:
     build_button = gr.Button("Build the mixer", variant="primary")
     build_other_button = gr.Button("Load a different song")
     build_intro_button = gr.Button("Load a wordless intro")
+    build_syncopated_button = gr.Button("Load a syncopated duet")
 
     mixer = MusicMixer(label="Mix it live", key="mixer")
 
@@ -172,6 +221,7 @@ with gr.Blocks() as demo:
     build_button.click(fn=build, inputs=None, outputs=mixer)
     build_other_button.click(fn=build_other, inputs=None, outputs=mixer)
     build_intro_button.click(fn=build_intro, inputs=None, outputs=mixer)
+    build_syncopated_button.click(fn=build_syncopated, inputs=None, outputs=mixer)
 
     mixer.change(fn=report, inputs=mixer, outputs=readout)
 
