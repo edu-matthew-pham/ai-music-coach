@@ -3,6 +3,7 @@
 	import { onMount } from "svelte";
 	import type { MixerBar, MixerNote, MixerPhrase } from "./types";
 	import { columnItems } from "./columnItems";
+	import { groupByColumn, packByHeight } from "./tabPacking";
 	import {
 		barEvents as buildBarEvents,
 		chordEvents as buildChordEvents,
@@ -296,14 +297,25 @@
 	let columnsElement = $state<HTMLElement | null>(null);
 	let availableHeight = $state(0);
 	let availableWidth = $state(0);
-	let lineHeight = $state(0);
-	// The reserve: how much taller the CURRENT line is than a
-	// typical one, so it can be subtracted from the budget
-	// before dividing. See measure()'s own comment for why this
-	// exists - the original design's intent was a generous
-	// budget that leaves headroom, not one that exactly fills
-	// the space and treats overflow as routine.
-	let currentLineExtra = $state(0);
+	// Every line's REAL rendered height, in phrase order -
+	// what the packer consumes. Replaces the old single
+	// sampled "typical" line height: one sample assumed all
+	// lines were alike, and a real regression proved they
+	// aren't (a line that wraps, or carries a denser chord
+	// row than the sampled one, silently overflowed its
+	// assumed slot - a first column nearly double the
+	// intended height on a real song).
+	let measuredLineHeights = $state<number[]>([]);
+	// Every line's height AS IF it were the line being sung -
+	// the second real height each line has. Measured by the
+	// probe in measure(), consumed by the packer so each
+	// column reserves room for whichever of ITS OWN lines
+	// inflates most. Replaces a single sampled reserve
+	// (current line minus first other line), which
+	// under-reserved whenever a longer line's turn came
+	// later - the case that started this: a first column
+	// running nearly double the intended height.
+	let currentLineHeights = $state<number[]>([]);
 
 	function measure(): void {
 		if (typeof window === "undefined") return;
@@ -360,54 +372,52 @@
 			availableHeight = Math.max(0, window.innerHeight - boxTopInMixer - BOTTOM_MARGIN_PX);
 		}
 		if (columnsElement) {
-			// The yardstick is a TYPICAL line, deliberately not the
-			// first one. Real bug, seen in production right after
-			// the scroll fix above landed: the first line of the
-			// first column is the CURRENT line at the start of a
-			// song, and the current line is drawn bigger (its own
-			// font-size, see .sentence.current) and here wrapped
-			// onto two rows - measured 117px against 52px for every
-			// other line. Dividing the height budget by that
-			// inflated number gave 5 lines a column instead of 10.
-			// The scroll bug had been masking this one: fixing it
-			// just let this second wrong number through, which is
-			// exactly why the columns still looked short.
-			// So: the first line that is NOT current. There is
-			// always at least one unless the song is a single
-			// phrase, in which case fall back to whatever line
-			// exists - a one-line song does not need a line budget
-			// anyway.
-			const typical =
-				columnsElement.querySelector<HTMLElement>(".lyrics-line:not(.current)") ??
-				columnsElement.querySelector<HTMLElement>(".lyrics-line");
-			if (typical) {
-				// offsetHeight is the line's own box; the column's
-				// flex gap (10px, .lyrics-column below) sits between
-				// lines and is not part of any one line's box, so it
-				// is added here to get the true per-line stride.
-				lineHeight = typical.offsetHeight + COLUMN_LINE_GAP_PX;
+			// Every line, measured for real, in document order -
+			// columns render sequentially, so document order IS
+			// phrase order. Each .lyrics-line's offsetHeight
+			// already includes its lead-in row and chord tags,
+			// which is the point: the old single-sample
+			// "typical" height (deliberately the first
+			// non-current line, to dodge the current line's
+			// bigger font - a real production bug in its day)
+			// could never represent a line in different
+			// wrapping shoes than the one sampled, and its own
+			// comment said so. Only trusted when the count
+			// matches the phrase list - a stale measurement
+			// from a previous song must not pack this one; the
+			// packer's bootstrap handles the gap until the
+			// next measure lands.
+			const lines = columnsElement.querySelectorAll<HTMLElement>(".lyrics-line");
+			const matched = lines.length === effectivePhrases.length;
+
+			measuredLineHeights = matched
+				? Array.from(lines, (line) => line.offsetHeight)
+				: [];
+
+			// The probe. Every line also has a SECOND real
+			// height - the taller one it renders at while it
+			// is the line being sung (bigger font, which can
+			// push a long line to wrap an extra row). Only the
+			// one current line shows that height on screen, but
+			// the current line moves through every line in
+			// turn, so the packer needs all of them.
+			//
+			// Measured rather than derived: a scale factor
+			// would not know where a given line happens to
+			// wrap, which is exactly the variation that made
+			// the old single-sample reserve wrong. Every line
+			// is forced to current-line styling at once (one
+			// class on the container), read, and unforced -
+			// all inside this synchronous block, so the
+			// browser reflows for the measurements but never
+			// paints the probed state; nothing flickers.
+			if (matched) {
+				columnsElement.classList.add("measuring-current");
+				currentLineHeights = Array.from(lines, (line) => line.offsetHeight);
+				columnsElement.classList.remove("measuring-current");
+			} else {
+				currentLineHeights = [];
 			}
-			// The reserve. The current line is drawn bigger (its
-			// own font-size, .sentence.current) and often wraps
-			// where a typical line doesn't - measured 117px against
-			// 52px, a 65px difference on a real song. The current
-			// line always exists SOMEWHERE, and moves between
-			// columns as the song plays, so every column will
-			// eventually hold it - this is not a rare case to
-			// shrug off, it is the routine one. linesPerColumn
-			// reserves this delta so the column that currently
-			// holds it still fits, restoring the original design's
-			// intent (a generous budget that leaves headroom) that
-			// dividing by a bare typical height had quietly lost.
-			// A phrase in DIFFERENT wrapping shoes than the one
-			// caught here (e.g. two lines both wrapping unusually)
-			// is what the documented fallback above still covers -
-			// this reserve narrows that gap, it does not claim to
-			// close it completely.
-			const current = columnsElement.querySelector<HTMLElement>(".lyrics-line.current");
-			currentLineExtra = current && typical
-				? Math.max(0, current.offsetHeight - typical.offsetHeight)
-				: 0;
 		}
 	}
 
@@ -432,29 +442,54 @@
 		};
 	});
 
-	// Re-measure the line height whenever the scale changes -
-	// the font, and so the rendered line, changes with it. The
-	// scale is read here only so this effect depends on it;
-	// measure() itself reads the DOM. Runs after the DOM has
-	// updated for the new scale, which is what makes the
-	// measurement land on the new size rather than the old one.
+	// Re-measure whenever anything that changes a line's real
+	// height changes: the text scale (font size), the mode, the
+	// Chords/Bars toggles (a chord row above the words is real
+	// height), and the phrase list itself (a new song's lines
+	// are new elements). The values are read here only so this
+	// effect depends on them; measure() itself reads the DOM.
+	// Runs after the DOM has updated for the change, which is
+	// what makes the measurement land on the new layout rather
+	// than the old one.
 	$effect(() => {
 		void lyricsScale.value;
 		void mode;
+		void lyricsShowChords.value;
+		void lyricsShowBars.value;
+		void effectivePhrases;
 		measure();
 	});
 
-	const linesPerColumn = $derived(
-		availableHeight > 0 && lineHeight > 0
-			? Math.max(3, Math.floor((availableHeight - currentLineExtra) / lineHeight))
-			: FALLBACK_LINES
-	);
-
 	const tabColumns = $derived.by((): MixerPhrase[][] => {
 		if (mode !== "tab" || tabLayout !== "columns") return [];
+
+		// The full screen budget - no reserve subtracted here
+		// any more. The packer now reserves per column, from
+		// each column's own lines' measured inflation, which
+		// is both tighter and correct for a long line whose
+		// turn comes later.
+		const budget = availableHeight;
+
+		if (
+			budget > 0 &&
+			measuredLineHeights.length > 0 &&
+			measuredLineHeights.length === effectivePhrases.length
+		) {
+			const columnOf = packByHeight(
+				measuredLineHeights, budget, COLUMN_LINE_GAP_PX, currentLineHeights
+			);
+			return groupByColumn(effectivePhrases, columnOf);
+		}
+
+		// Bootstrap: before the first measurement lands (or
+		// right after a song change, when the stored heights
+		// belong to the previous song's lines), a plain count
+		// keeps the first paint sane. The measure effect above
+		// runs against this rendering and the real packing
+		// replaces it immediately.
 		const columns: MixerPhrase[][] = [];
-		for (let i = 0; i < effectivePhrases.length; i += linesPerColumn) {
-			columns.push(effectivePhrases.slice(i, i + linesPerColumn));
+		for (let i = 0; i < effectivePhrases.length; i += FALLBACK_LINES) {
+			columns.push(effectivePhrases.slice(i, i + FALLBACK_LINES));
 		}
 		return columns;
 	});
@@ -493,7 +528,11 @@
 
 	$effect(() => {
 		if (mode === "tab" && tabLayout === "columns" && currentIndex >= 0) {
-			const columnIndex = Math.floor(currentIndex / linesPerColumn);
+			const currentPhraseEntry = effectivePhrases[currentIndex];
+			const columnIndex = tabColumns.findIndex(
+				(column) => column.includes(currentPhraseEntry)
+			);
+			if (columnIndex < 0) return;
 			// block: "nearest" rather than "center" - the panel
 			// no longer caps its own height in tab mode (a
 			// column is free to run long), so this is scrolling
@@ -898,6 +937,27 @@
 	.sentence {
 		font-size: calc(20px * var(--lyrics-scale, 1));
 		margin: 4px 0;
+	}
+	/* The probe (see measure() in the script). While this
+	   class is on the columns box, every line renders at the
+	   size the CURRENT line renders at, so each line's own
+	   "when it's my turn" height can be read - including
+	   where a longer line wraps an extra row, which no scale
+	   factor could predict. Added and removed inside one
+	   synchronous block: the browser reflows to answer the
+	   measurements but never paints this state, so nothing
+	   flickers on screen. It only needs to override the
+	   smaller non-current size below; .sentence's own
+	   current-size rule above is what it falls back to. */
+	/* :global on the class specifically because it is only
+	   ever added from JavaScript - Svelte's scoped CSS
+	   strips selectors it cannot see used in the markup, and
+	   svelte-check caught exactly that here: without this,
+	   the rule is removed from the bundle and the probe
+	   silently measures nothing, reporting every line as
+	   already current-sized. */
+	.lyrics-columns:global(.measuring-current) .sentence:not(.current) {
+		font-size: calc(20px * var(--lyrics-scale, 1));
 	}
 	.sentence:not(.current) {
 		/* Smaller than the current line, but full-strength
