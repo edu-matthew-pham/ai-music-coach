@@ -10,5 +10,5 @@ miditoolkit
 music21
 torchcrepe
 pretty_midi
-gradio_musicmixer @ https://raw.githubusercontent.com/edu-matthew-pham/ai-music-coach/main/musicmixer/dist/gradio_musicmixer-0.0.17-py3-none-any.whl
+gradio_musicmixer @ https://raw.githubusercontent.com/edu-matthew-pham/ai-music-coach/main/musicmixer/dist/gradio_musicmixer-0.0.18-py3-none-any.whl
 mir_eval
