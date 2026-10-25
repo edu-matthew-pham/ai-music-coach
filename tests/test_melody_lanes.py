@@ -339,19 +339,19 @@ def test_no_red_strip_unless_a_note_fits_no_octave():
     )
 
 
-def test_a_moved_note_is_dashed_with_an_octave_flag_and_a_hover():
+def test_a_moved_note_gets_an_amber_8va_pill_and_a_hover():
     page = _html(_piece("B3"))
 
-    assert 'stroke-dasharray="3 2"' in page
     assert 'class="octave-flag"' in page
-    assert "↑8" in page
+    assert 'fill="#ffb300"' in page
+    assert "▲ 8va" in page
     assert "written B3" in page
     assert "shown an octave higher on B4" in page
 
 
-def test_two_octaves_say_16_and_a_note_moved_down_says_a_down_arrow():
-    assert "↑16" in _html(_piece("C2"))
-    assert "↓8" in _html(_piece("G6"), KALIMBA_41)
+def test_two_octaves_say_16va_and_a_note_moved_down_says_a_down_arrow():
+    assert "▲ 16va" in _html(_piece("C2"))
+    assert "▼ 8va" in _html(_piece("G6"), KALIMBA_41)
     assert "shown an octave lower on G5" in _html(
         _piece("G6"), KALIMBA_41
     )
@@ -361,13 +361,12 @@ def test_a_note_on_the_instrument_has_no_flag():
     page = _html(_piece("C4"))
 
     assert "octave-flag" not in page
-    assert "stroke-dasharray" not in page
-    assert "dashed" not in page
+    assert "#ffb300" not in page
 
 
 def test_the_legend_explains_the_flag_only_when_there_is_one():
-    assert "small flag like" in melody_view(_piece("B3"), KALIMBA_34)
-    assert "small flag like" not in melody_view(_piece("C4"), KALIMBA_34)
+    assert "amber pill" in melody_view(_piece("B3"), KALIMBA_34)
+    assert "amber pill" not in melody_view(_piece("C4"), KALIMBA_34)
 
 
 def test_the_message_says_shown_an_octave_away_and_a_stranded_note_fits_nowhere():
@@ -375,7 +374,7 @@ def test_the_message_says_shown_an_octave_away_and_a_stranded_note_fits_nowhere(
         melody_blocks(_piece("B3 C4 B3"), KALIMBA_34), KALIMBA_34
     )
 
-    assert "shown an octave or more away (dashed" in message
+    assert "shown an octave or more away (amber 8va pill)" in message
 
     stranded = range_message(_stranded_blocks(), KALIMBA_34)
 
@@ -383,12 +382,20 @@ def test_the_message_says_shown_an_octave_away_and_a_stranded_note_fits_nowhere(
     assert "red strip" in stranded
 
 
-def test_a_top_row_note_is_marked_with_an_up_triangle():
-    assert "F#▲" in _html(_piece("F#4"))
+def test_a_note_is_coloured_by_its_row_not_marked_with_a_triangle():
+    """
+    Middle row blue, top row (F#4 is a sharp) purple, bass row (B3 on
+    the 41 keys) green; no ▲ or ▼ on the block any more.
+    """
 
+    middle = _html(_piece("E4"))
+    top = _html(_piece("F#4"))
+    bass = _html(_piece("B3"), KALIMBA_41)
 
-def test_a_bass_note_is_marked_with_a_down_triangle():
-    assert "B▼" in _html(_piece("B3"), KALIMBA_41)
+    assert 'rx="6" fill="#1565c0"' in middle
+    assert 'rx="6" fill="#8e24aa"' in top
+    assert 'rx="6" fill="#00897b"' in bass
+    assert "▲" not in top and "▼" not in bass
 
 
 def test_a_lyric_with_markup_in_it_is_escaped():
@@ -486,9 +493,10 @@ def test_kalimba_harp_and_piano_have_lanes_and_the_kalimba_starts_on_41_keys():
     assert default_variant("Piano", families["Piano"]) == "Piano, 3 octaves"
 
 
-def test_the_legend_explains_the_colours_and_triangles():
-    assert "blue" in LEGEND and "purple" in LEGEND and "grey" in LEGEND
-    assert "▲" in LEGEND and "▼" in LEGEND
+def test_the_legend_explains_the_row_colours():
+    assert "blue" in LEGEND and "purple" in LEGEND and "green" in LEGEND
+    assert "middle row" in LEGEND and "top row" in LEGEND
+    assert "bass row" in LEGEND
 
 
 # --- the song's boxes are never written --------------------------

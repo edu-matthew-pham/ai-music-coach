@@ -300,13 +300,12 @@ the note lasts, with the word sung beside it. Pick **Whole
 part** or one phrase from the dropdown there; it is separate
 from the Song section's own phrase choice and never changes it.
 
-On the kalimba a block is blue for the left thumb, purple for
-the right, and grey for the centre tine (either thumb). Each
-lane is named by its middle-row note, with the top-row note
-under it. A note on the top row (a sharp or flat) is marked
-with a small up triangle, and one on the bass row with a down
-triangle. A note that appears twice on the kalimba is drawn on
-the middle row. Kalimba starts on 41 keys.
+On the kalimba a block's colour is its row: blue for the middle
+row, purple for the top row (the sharps and flats) and green for
+the bass row. Which thumb is just which side of the middle the
+lane is on. Each lane is named by its middle-row note, with the
+top-row note under it. A note that appears twice on the kalimba is
+drawn on the middle row. Kalimba starts on 41 keys.
 
 On the lever harp each lane is a string (C red, F blue, as on
 the harp). A sharp or flat sits on the string below it, with a
@@ -332,12 +331,19 @@ the chord sheet** puts them where the Chords section's beginner
 shape does. A chord the chord sheet has no shape for goes near the
 melody either way.
 
-**Top of the lanes** starts on **Short picture**: the real
-instrument above the lanes, cropped to its upper part, each of its
-columns over its own lane, like the falling-note piano videos.
-**Full picture** keeps the whole instrument, which is tall.
-**Plain labels** is just a row of lane names, the smallest. On the
-piano the picture is cropped to the lanes shown.
+**Top of the lanes** starts on **Compact**: a slim strip over the
+lanes, less a picture of the instrument than a set of cues. On the
+kalimba each tine is a bar the length of the real tine, with a
+blue cap (middle row), a purple dot where the top row has a sharp
+or flat, a green bar under the lanes that have a bass tine, and the
+centre tine outlined. On the harp each string is thin, C red and F
+blue with a lever tab on them; on the piano it is the keys. Only a
+few lanes are named. **Short picture** is the real instrument,
+cropped to its upper part, each of its columns over its own lane;
+**Full picture** keeps the whole instrument, which is tall; **Plain
+labels** is just a row of lane names. The kalimba pictures colour
+their tines by row, as the notes are. On the piano the picture is
+cropped to the lanes shown.
 
 On the guitar and ukulele tabs the melody is drawn as tab: a
 line for each string (the high string on top), the fret number
@@ -378,9 +384,10 @@ The legend and each note's hover text say when it is on.
 
 If the tune has notes the instrument does not have, the kalimba,
 harp and piano lanes move each one to the nearest octave that it
-does have (up from below, down from above) and flag it: a dashed
-block with a small flag like **↑8** (an octave up) or **↓8** (down),
-**↑16** for two. Hover a flagged note to see the real one. The legend
+does have (up from below, down from above) and flag it with an
+amber pill over the block: **▲ 8va** (an octave up), **▼ 8va**
+(down), **▲ 16va** for two. Hover a flagged note to see the real
+one. The legend
 and a line above the picture say how many were moved, and whether
 Octave up or Octave down in the Song section would bring every note
 on properly. The tab for guitar and ukulele still draws such notes

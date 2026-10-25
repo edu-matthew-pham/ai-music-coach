@@ -335,3 +335,33 @@ ninth (advice from played pitch) got a test; 20,526 existing renders
 byte-identical. Live: Wellerman on the 41-key shows the D3s on D4
 dashed with flags; full screen on, sticky header, Escape off, no
 page errors.
+
+
+## Row colours, amber 8va pill, Compact header (2026-10-26, Matthew's review)
+
+- Kalimba blocks are coloured by ROW (middle blue #1565c0, top purple
+  #8e24aa, bass green #00897b), not by thumb: the thumb is only which
+  side of the centre a lane is on. The ▲/▼ row marks are gone; the
+  `thumb` field is still in the blocks. Amber (#ffb300) is used for
+  nothing but a moved note.
+- Octave flag, option A of three mocked: an amber pill over the block,
+  "▲ 8va" / "▼ 8va" / "▲ 16va", the white flag and dashed outline gone.
+  Hover text unchanged.
+- New header **Compact** (default; Short picture, Full picture and
+  Plain labels stay): 72px strip. Kalimba: a bar per tine graded from
+  the centre, blue cap, purple dot for the top row, green bar for the
+  seven 41-key bass lanes, centre outlined, lanes 0/4/8/12/16 named.
+  Harp: thin strings (C red, F blue, lever tab on those), C named.
+  Piano: keys, C named. Draws from the lanes' own positions so it
+  lines up with them.
+- The kalimba Short and Full pictures are recoloured by row (tints
+  #90caf9, #ce93d8, #80cbc4) in the melody header's copy only; the
+  picture in the other sections keeps its greys (tested).
+- Known: the harp strip's lever tabs sit on every C and F string, as
+  the header cannot know which levers a song needs.
+
+Checked: tests rewritten/added (row colours, pill text, header
+choice and sizes, tine and bass counts, named lanes, mirror heights,
+tints and the untouched Chords-section picture); ten mutations, eight
+caught at once and two (named-lane rule, tine heights) got tests;
+20,526 existing renders byte-identical.

@@ -17,6 +17,7 @@ from examples import load_twinkle
 from melody_lanes import (
     AS_IN_SHEET,
     DEFAULT_SHOW,
+    HEADER_COMPACT,
     HEADER_LABELS,
     HEADER_PICTURE,
     HEADER_SHORT,
@@ -239,29 +240,111 @@ CHORDS_LEGEND_MISSING = "Pale pink blocks"
 
 # --- the header toggle -------------------------------------------
 
-def test_the_short_picture_is_the_default_between_labels_and_the_full_picture():
+def test_compact_is_the_default_then_short_full_and_plain_labels():
     piece = _first_phrase()
 
     labels = melody_view(piece, KALIMBA, None, HEADER_LABELS)
-    short = melody_view(piece, KALIMBA)
+    compact = melody_view(piece, KALIMBA)
+    short = melody_view(piece, KALIMBA, None, HEADER_SHORT)
     full = melody_view(piece, KALIMBA, None, HEADER_PICTURE)
 
+    assert compact == melody_view(piece, KALIMBA, None, HEADER_COMPACT)
     assert "The instrument, over its lanes" not in labels
+    assert "The instrument, over its lanes" not in compact
     assert "The instrument, over its lanes" in short
     assert "The instrument, over its lanes" in full
 
     # Short crops the picture's height, so it is the smaller page.
-    assert short == melody_view(piece, KALIMBA, None, HEADER_SHORT)
     assert 'viewBox="-1 0 612 100"' in short
     assert 'viewBox="-1 0 612 148"' in full
+    assert 'viewBox="0 0 878 72"' in compact
 
 
 def test_the_short_picture_keeps_at_least_100_and_a_bit_over_half():
     piece = _first_phrase()
 
     # 41 keys: 206 tall, 55% is 113. Harp: 260, 55% is 143.
-    assert 'viewBox="-1 0 612 113"' in melody_view(piece, "Kalimba, 41 keys")
-    assert 'viewBox="10 0 570 143"' in melody_view(piece, HARP)
+    assert 'viewBox="-1 0 612 113"' in melody_view(
+        piece, "Kalimba, 41 keys", None, HEADER_SHORT
+    )
+    assert 'viewBox="10 0 570 143"' in melody_view(
+        piece, HARP, None, HEADER_SHORT
+    )
+
+
+def test_the_compact_kalimba_strip_has_a_tine_and_a_top_dot_per_lane():
+    piece = _first_phrase()
+    page = melody_view(piece, "Kalimba, 41 keys")
+
+    assert page.count('class="compact-tine"') == 17
+    assert page.count('class="compact-top"') == 17
+    # The 41-key's bass row runs under seven lanes (B3..A#3 are
+    # seven tines); the 34-key has none.
+    assert page.count('class="compact-bass"') == 7
+    assert 'class="compact-bass"' not in melody_view(piece, KALIMBA)
+
+
+def test_the_compact_strip_names_only_a_few_lanes():
+    page = melody_view(_first_phrase(), KALIMBA, None, HEADER_COMPACT)
+    header = page.split("</svg>")[0]
+
+    # Lanes 0, 4, 8, 12 and 16 are D6, C5, C4, D5 and E6.
+    for name in ("D6", "C5", "C4", "D5", "E6"):
+        assert f">{name}</text>" in header
+
+    for name in ("B5", "G5", "E5", "A4", "F4", "D4", "E4"):
+        assert f">{name}</text>" not in header
+
+
+def test_the_compact_tines_are_longest_at_the_centre_and_mirror_each_side():
+    import re
+
+    page = melody_view(_first_phrase(), KALIMBA, None, HEADER_COMPACT)
+    heights = [
+        float(h) for h in re.findall(
+            r'class="compact-tine" x="[^"]*" y="[^"]*" width="18" '
+            r'height="([\d.]+)"', page
+        )
+    ]
+
+    assert len(heights) == 17
+    assert heights[8] == max(heights)
+    assert heights[0] < heights[8]
+    assert heights[0] == heights[16]
+    assert heights[3] == heights[13]
+
+
+def test_the_compact_harp_and_piano_strips():
+    piece = _first_phrase()
+    harp = melody_view(piece, HARP)
+    piano = melody_view(piece, PIANO)
+
+    assert harp.count('class="compact-string"') == 19
+    assert piano.count('class="compact-key"') >= 15
+    assert 'viewBox="0 0' in harp and ' 72"' in harp
+
+
+def test_the_kalimba_pictures_wear_the_row_tints_the_harp_does_not():
+    piece = _first_phrase()
+
+    for header in (HEADER_SHORT, HEADER_PICTURE):
+        page = melody_view(piece, "Kalimba, 41 keys", None, header)
+
+        assert 'fill="#90caf9"' in page      # middle
+        assert 'fill="#ce93d8"' in page      # top
+        assert 'fill="#80cbc4"' in page      # bass
+
+    plain = melody_view(piece, HARP, None, HEADER_PICTURE)
+
+    assert "#90caf9" not in plain
+
+
+def test_the_other_sections_kalimba_picture_keeps_its_greys():
+    from instrument_diagrams import kalimba_structure
+
+    picture = kalimba_structure(True)
+
+    assert 'fill="#cfd8dc"' in picture and "#90caf9" not in picture
 
 
 def test_a_half_beat_chord_gets_a_small_name_and_a_quarter_beat_only_a_bar():

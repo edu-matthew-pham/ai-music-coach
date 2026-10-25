@@ -442,18 +442,17 @@ def range_message(blocks, instrument):
 
     if moved and stranded:
         shown = (
-            f"{moved} are shown an octave or more away (dashed, with "
-            f"the arrow) and {stranded} fit nowhere, in the red strip "
+            f"{moved} are shown an octave or more away (amber 8va "
+            f"pill) and {stranded} fit nowhere, in the red strip "
             f"at the left"
         )
     elif stranded:
         shown = "they fit nowhere and are in the red strip at the left"
     elif moved == 1:
-        shown = "it is shown an octave or more away (dashed, with the arrow)"
+        shown = "it is shown an octave or more away (amber 8va pill)"
     else:
         shown = (
-            "they are shown an octave or more away (dashed, with the "
-            "arrow)"
+            "they are shown an octave or more away (amber 8va pill)"
         )
 
     def fits_after(shift):
@@ -490,13 +489,14 @@ SHOW_CHORDS = "Chords"
 SHOW_CHOICES = [SHOW_MELODY, SHOW_CHORDS]
 DEFAULT_SHOW = [SHOW_MELODY, SHOW_CHORDS]
 
+HEADER_COMPACT = "Compact"
 HEADER_LABELS = "Plain labels"
 HEADER_SHORT = "Short picture"
 HEADER_PICTURE = "Full picture"
 # The short picture first (Matthew, 2026-10-26): the instrument
 # over its lanes, cropped to its upper part. The full picture is
 # tall (kalimba 340px, harp 400px); plain labels are the smallest.
-HEADERS = [HEADER_SHORT, HEADER_PICTURE, HEADER_LABELS]
+HEADERS = [HEADER_COMPACT, HEADER_SHORT, HEADER_PICTURE, HEADER_LABELS]
 
 
 def chord_spans(piece):
@@ -686,7 +686,15 @@ LEFT_MARGIN = 62
 CHORD_MARGIN = 54
 RIGHT_MARGIN = 150
 
-_ROW_MARK = {"top": "▲", "bass": "▼"}
+# The kalimba's three rows, by colour (a note's row is the thing
+# its position does not show): the middle row, the top row's
+# sharps and flats, the bass row. The tints are the same hues
+# lighter, for the tines in the header pictures. Amber is used
+# for nothing else but a note moved an octave.
+ROW_COLOURS = {"middle": "#1565c0", "top": "#8e24aa", "bass": "#00897b"}
+ROW_TINTS = {"middle": "#90caf9", "top": "#ce93d8", "bass": "#80cbc4"}
+OCTAVE_COLOUR = "#ffb300"
+OCTAVE_TEXT_COLOUR = "#3e2723"
 
 # A piano's black key is a narrower lane, sitting over the join
 # between the two white lanes either side of it.
@@ -822,9 +830,152 @@ def _bar_lines(chart_text, total_beats):
     return [float(beat) for beat in range(0, int(total_beats) + 1, 4)]
 
 
+# The greys the kalimba picture draws its three rows in (see
+# instrument_diagrams._kalimba_structure_parts).
+KALIMBA_ROW_GREYS = {
+    "bass": "#90a4ae", "middle": "#cfd8dc", "top": "#607d8b",
+}
+
 # How much of the picture's height the short version keeps.
 SHORT_PICTURE_FRACTION = 0.55
 SHORT_PICTURE_MINIMUM = 100
+
+
+COMPACT_HEIGHT = 72
+
+
+def _compact_header(lanes, positions, instrument, total_width, left,
+                    spare, wide):
+    """
+    A slim strip over the lanes that is less a picture of the
+    instrument than a set of cues: on the kalimba one bar a tine
+    (the tine's length, a cap in the middle row's blue, a purple
+    dot where the top row has a sharp or flat, a green bar where
+    the bass row has a tine, the centre tine outlined); on the
+    harp a thin string each (C red, F blue, a lever tab on those);
+    on the piano the keys. Only a few lanes are named. Returns
+    (svg, height).
+    """
+
+    base = _base_instrument_name(instrument)
+    baseline = 46
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {total_width} {COMPACT_HEIGHT}" width="100%" '
+        f'style="display:block;'
+        f'background:var(--background-fill-primary,#fff)" '
+        f'role="img" aria-label="The instrument, as a strip over '
+        f'its lanes">'
+    ]
+
+    def name(centre, text, bold=False):
+        parts.append(
+            f'<text x="{centre}" y="{COMPACT_HEIGHT - 4}" '
+            f'font-size="10" text-anchor="middle" '
+            f'font-weight="{700 if bold else 400}" '
+            f'fill="#37474f">{html.escape(text)}</text>'
+        )
+
+    if spare:
+        parts.append(
+            f'<rect x="{left + 2}" y="30" width="{wide - 4}" '
+            f'height="12" rx="2" fill="{OUT_OF_RANGE_COLOUR}"/>'
+        )
+        name(left + wide / 2, "off")
+
+    if base == "Kalimba":
+        bass_lanes = set()
+
+        if _kalimba_has_bass(instrument):
+            bass_lanes = {
+                _kalimba_column(tine)
+                for tine in _kalimba_tines(True) if tine["row"] == "bass"
+            }
+
+        middle = len(lanes_for(instrument)) // 2
+
+        for lane in lanes:
+            index = lane["index"]
+            x = positions[index]
+            centre = x + _lane_width(lane, instrument) / 2
+            height = max(14, 30 - abs(index - middle) * 1.5)
+            top = baseline - height
+            is_centre = index == middle
+
+            parts.append(
+                f'<rect class="compact-tine" x="{centre - 9}" y="{top}" '
+                f'width="18" height="{height}" rx="5" '
+                f'fill="{ROW_TINTS["middle"]}"'
+                + (' stroke="#263238" stroke-width="1.5"'
+                   if is_centre else "")
+                + "/>"
+                f'<rect x="{centre - 9}" y="{top}" width="18" '
+                f'height="7" rx="3.5" fill="{ROW_COLOURS["middle"]}"/>'
+                f'<circle class="compact-top" cx="{centre}" '
+                f'cy="{top - 6}" r="3" fill="{ROW_COLOURS["top"]}"/>'
+            )
+
+            if index in bass_lanes:
+                parts.append(
+                    f'<rect class="compact-bass" x="{centre - 5}" '
+                    f'y="{baseline + 2}" width="10" height="7" rx="3" '
+                    f'fill="{ROW_COLOURS["bass"]}"/>'
+                )
+
+            if index % 4 == 0 or is_centre:
+                name(centre, lane["label"], bold=is_centre)
+
+    elif base == "Lever harp":
+        for lane in lanes:
+            index = lane["index"]
+            x = positions[index]
+            centre = x + _lane_width(lane, instrument) / 2
+            height = 40 - index * 1.2
+            marked = lane["colour"] in LEVER_HARP_STRING_COLOURS.values()
+
+            parts.append(
+                f'<rect class="compact-string" x="{centre - 3}" '
+                f'y="{baseline - height}" width="6" height="{height}" '
+                f'rx="3" fill="{lane["colour"]}"/>'
+            )
+
+            if marked:
+                parts.append(
+                    f'<rect x="{centre - 6}" '
+                    f'y="{baseline - height - 5}" width="12" height="4" '
+                    f'rx="2" fill="#eceff1" stroke="#90a4ae" '
+                    f'stroke-width="0.8"/>'
+                )
+
+            if lane["label"].startswith("C"):
+                name(centre, lane["label"])
+
+    else:
+        for lane in lanes:
+            x = positions[lane["index"]]
+            lane_width = _lane_width(lane, instrument)
+
+            if lane["kind"] == "white":
+                parts.append(
+                    f'<rect class="compact-key" x="{x + 2}" y="14" '
+                    f'width="{lane_width - 4}" height="30" rx="3" '
+                    f'fill="#ffffff" stroke="#90a4ae"/>'
+                )
+
+                if lane["label"].startswith("C"):
+                    name(x + lane_width / 2, lane["label"], bold=True)
+
+        for lane in lanes:
+            if lane["kind"] == "black":
+                parts.append(
+                    f'<rect class="compact-key" x="{positions[lane["index"]]}" '
+                    f'y="14" width="{_lane_width(lane, instrument)}" '
+                    f'height="18" rx="3" fill="#263238"/>'
+                )
+
+    parts.append("</svg>")
+
+    return "".join(parts), COMPACT_HEIGHT
 
 
 def _picture_header(lanes, positions, instrument, total_width,
@@ -842,6 +993,15 @@ def _picture_header(lanes, positions, instrument, total_width,
     height = int(re.search(r'viewBox="0 0 [\d.]+ ([\d.]+)"', root).group(1))
     inner = picture[len(root):-len("</svg>")]
     full_height = height
+
+    # The kalimba's tines wear the rows' colours (as the notes do),
+    # in tints, instead of greys. Done to this copy only; the
+    # picture in the other sections is not touched.
+    if _base_instrument_name(instrument) == "Kalimba":
+        for row, grey in KALIMBA_ROW_GREYS.items():
+            inner = inner.replace(
+                f'fill="{grey}"', f'fill="{ROW_TINTS[row]}"'
+            )
 
     if short:
         height = min(
@@ -937,6 +1097,12 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
 
     labels.append("</svg>")
     header_parts = ["".join(labels)]
+
+    if header == HEADER_COMPACT:
+        compact, _height = _compact_header(
+            lanes, positions, instrument, total_width, left, spare, wide
+        )
+        header_parts = [compact]
 
     if header in (HEADER_PICTURE, HEADER_SHORT):
         picture, _height = _picture_header(
@@ -1053,10 +1219,10 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
         if block["in_range"]:
             x = positions[block["lane"]] + 4
             colour = (
-                THUMB_COLOURS[block["thumb"]] if block["thumb"]
+                ROW_COLOURS[block["row"]] if block["row"]
                 else MELODY_COLOUR
             )
-            mark = _ROW_MARK.get(block["row"], "")
+            mark = ""
 
             if block["lever"]:
                 mark = "↑"
@@ -1078,27 +1244,8 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
 
         body.append(
             f'<rect x="{x}" y="{y}" width="{block_width}" '
-            f'height="{height}" rx="6" fill="{colour}"'
-            + (' stroke="#263238" stroke-width="1.5" '
-               'stroke-dasharray="3 2"' if shifted else "")
-            + "/>"
+            f'height="{height}" rx="6" fill="{colour}"/>'
         )
-
-        # An octave flag: ↑8 played an octave higher than written.
-        if shifted:
-            arrow = "↑" if block["shift"] > 0 else "↓"
-            badge = f'{arrow}{8 * abs(block["shift"])}'
-            badge_width = 9 + 5 * len(badge)
-
-            body.append(
-                f'<rect class="octave-flag" '
-                f'x="{x + block_width - badge_width + 2}" y="{y - 5}" '
-                f'width="{badge_width}" height="11" rx="3" fill="#ffffff" '
-                f'stroke="#263238" stroke-width="1"/>'
-                f'<text x="{x + block_width - badge_width / 2 + 2}" '
-                f'y="{y + 3.5}" font-size="8" font-weight="700" '
-                f'text-anchor="middle" fill="#263238">{badge}</text>'
-            )
 
         # A string whose lever must be up wears the lever's tab.
         if block["in_range"] and block["lever"]:
@@ -1117,7 +1264,24 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
                 f'{label}</text>'
             )
 
+        # An amber pill over the block: which way, and how far, the
+        # note was moved to fit the instrument ("8va" as in sheet
+        # music; 16va for two octaves).
         if shifted:
+            arrow = "▲" if block["shift"] > 0 else "▼"
+            text = f'{arrow} {8 * abs(block["shift"])}va'
+            pill_width = 14 + 6.2 * len(text)
+            centre = x + block_width / 2
+
+            body.append(
+                f'<rect class="octave-flag" '
+                f'x="{centre - pill_width / 2}" y="{y - 10}" '
+                f'width="{pill_width}" height="15" rx="7.5" '
+                f'fill="{OCTAVE_COLOUR}"/>'
+                f'<text x="{centre}" y="{y + 0.8}" font-size="10" '
+                f'font-weight="800" text-anchor="middle" '
+                f'fill="{OCTAVE_TEXT_COLOUR}">{text}</text>'
+            )
             body.append("</g>")
 
         if block["lyric"]:
@@ -1147,16 +1311,15 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
 
 
 OCTAVE_LEGEND = (
-    " A dashed block with a small flag like ↑8 is a note the "
+    " An amber pill (▲ 8va up, ▼ 8va down) is a note the "
     "instrument cannot play as written, moved to the nearest octave "
-    "that it can (↑ up, ↓ down; hover for the real note)."
+    "that it can; hover for the real note."
 )
 
 LEGEND = (
     "Time runs down the page, the words beside each note. On the "
-    "kalimba, blue is the left thumb, purple the right and grey "
-    "the centre tine. ▲ is a top-row tine (a sharp or flat), "
-    "▼ a bass-row tine."
+    "kalimba, blue notes are the middle row, purple the top row "
+    "(the sharps and flats) and green the bass row."
 )
 
 LEGENDS = {
@@ -1229,7 +1392,7 @@ FULL_SCREEN_JS = """
 
 # --- one view of the song ---------------------------------------
 
-def melody_view(piece, instrument, show=None, header=HEADER_SHORT,
+def melody_view(piece, instrument, show=None, header=HEADER_COMPACT,
                 placement=NEAR_MELODY, fingering=NEAREST_NUT,
                 width=DEFAULT_WIDTH, open_free=True, prefer_low=False):
     """
@@ -1370,7 +1533,7 @@ def keep_phrase(label, choices):
 
 def melody_page(pitch_text, duration_text, lyric_text, key_text,
                 chart_text, phrase_label, instruments, show=None,
-                header=HEADER_SHORT, placement=NEAR_MELODY,
+                header=HEADER_COMPACT, placement=NEAR_MELODY,
                 fingering=NEAREST_NUT, width=DEFAULT_WIDTH,
                 open_free=True, prefer_low=False):
     """
