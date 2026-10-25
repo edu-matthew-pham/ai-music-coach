@@ -1115,12 +1115,13 @@ def melody_view(piece, instrument, show=None, header=HEADER_SHORT,
     """
 
     # Guitar and ukulele are tab, read across the page, in their
-    # own module (PLAN-fretted-tab.md).
+    # own module (PLAN-fretted-tab.md). The tab is its own picture,
+    # so header and placement do not apply; Show does.
     if _base_instrument_name(instrument) in FRETTED:
         from fretted_tab import fretted_view
 
         return fretted_view(
-            piece, instrument, fingering, width, open_free
+            piece, instrument, fingering, width, open_free, show
         )
 
     show = DEFAULT_SHOW if show is None else list(show)

@@ -31,10 +31,13 @@ from the boxes) and never reads or writes the boxes itself.
 import html
 
 from instrument_diagrams import (
+    CHORD_TONE_COLOUR,
     STRING_TUNINGS,
     _absolute_pitch,
     _base_instrument_name,
     _frets_shown_for,
+    guitar_shape_frets,
+    ukulele_shape_frets,
 )
 from notes import is_rest
 
@@ -449,6 +452,11 @@ HEADING_HEIGHT = 20
 # With hand positions shown, the heading also holds a bracket and
 # its label above the beat numbers.
 HEADING_HEIGHT_WITH_POSITIONS = 46
+
+# With chords shown the heading also holds each chord's name and a
+# small chord box (the kind chord charts and Guitar Pro use).
+CHORD_BLOCK_HEIGHT = 78
+CHORD_BOX_WIDTH = 44
 POSITION_COLOUR = "#00796b"
 LYRIC_HEIGHT = 26
 ROW_GAP = 18
@@ -510,6 +518,158 @@ def _bar_starts(chart_text, total_beats):
     return [float(beat) for beat in range(0, int(total_beats) + 1, 4)]
 
 
+# --- the chords: names with small chord boxes -------------------
+
+def chord_shape(name, instrument):
+    """
+    The beginner's shape the chord sheet uses for a chord on this
+    instrument, as {"frets": [fret or None for each string in the
+    tuning order, None being muted], "fingers": [...], "barre":
+    fret or None}; None when there is no standard shape for it (or
+    the name is not a chord the app knows).
+    """
+
+    from chords import split_chord
+
+    try:
+        root, quality = split_chord(name)
+    except ValueError:
+        return None
+
+    base = _base_instrument_name(instrument)
+    found = (
+        ukulele_shape_frets(root, quality) if base == "Ukulele"
+        else guitar_shape_frets(root, quality)
+    )
+
+    if found is None:
+        return None
+
+    strings, barre = found
+
+    return {
+        "frets": [fret for fret, _finger in strings],
+        "fingers": [finger for _fret, finger in strings],
+        "barre": barre,
+    }
+
+
+def chord_box_svg(shape, x, y):
+    """
+    A small chord box with its top-left corner at (x, y): the
+    strings upright (the first string of the tuning on the left),
+    four frets, a dot where a finger goes (with its finger number
+    when it is known), a bar for a barre, an open ring above an
+    open string and a cross above a muted one. A shape up the neck
+    starts at its lowest fret and says which. Elements carry
+    classes (chord-dot, chord-open, chord-mute, chord-barre) so
+    they can be told apart.
+    """
+
+    frets = shape["frets"]
+    count = len(frets)
+    pressed = [fret for fret in frets if fret]
+    first = 1 if not pressed or max(pressed) <= 4 else min(pressed)
+    left, top = 6, 12
+    gap = (CHORD_BOX_WIDTH - 2 * left) / (count - 1)
+    fret_gap = 10
+    rows = 4
+    bottom = top + rows * fret_gap
+    colour = CHORD_TONE_COLOUR
+
+    def string_x(index):
+        return x + left + index * gap
+
+    def fret_y(fret):
+        return y + top + (fret - first + 0.5) * fret_gap
+
+    parts = [f'<g class="chord-box">']
+
+    # the frets (the nut thick when the box starts at the first fret)
+    for line in range(rows + 1):
+        thick = line == 0 and first == 1
+        parts.append(
+            f'<line x1="{string_x(0)}" x2="{string_x(count - 1)}" '
+            f'y1="{y + top + line * fret_gap}" '
+            f'y2="{y + top + line * fret_gap}" stroke="#78909c" '
+            f'stroke-width="{2.5 if thick else 0.8}"/>'
+        )
+
+    # the strings
+    for index in range(count):
+        parts.append(
+            f'<line x1="{string_x(index)}" x2="{string_x(index)}" '
+            f'y1="{y + top}" y2="{y + bottom}" stroke="#78909c" '
+            f'stroke-width="0.8"/>'
+        )
+
+    # the bar of a barre, under the dots
+    if shape["barre"] and first <= shape["barre"] <= first + rows - 1:
+        covered = [
+            index for index, fret in enumerate(frets)
+            if fret == shape["barre"]
+        ]
+        parts.append(
+            f'<rect class="chord-barre" x="{string_x(min(covered)) - 3.5}" '
+            f'y="{fret_y(shape["barre"]) - 3.5}" '
+            f'width="{string_x(max(covered)) - string_x(min(covered)) + 7}" '
+            f'height="7" rx="3.5" fill="{colour}"/>'
+        )
+
+    for index, fret in enumerate(frets):
+        sx = string_x(index)
+
+        if fret is None:
+            parts.append(
+                f'<text class="chord-mute" x="{sx}" y="{y + top - 3}" '
+                f'font-size="8" text-anchor="middle" fill="#607d8b">'
+                f'x</text>'
+            )
+        elif fret == 0:
+            parts.append(
+                f'<circle class="chord-open" cx="{sx}" '
+                f'cy="{y + top - 6}" r="2.3" fill="none" '
+                f'stroke="#607d8b" stroke-width="0.9"/>'
+            )
+        else:
+            parts.append(
+                f'<circle class="chord-dot" cx="{sx}" cy="{fret_y(fret)}" '
+                f'r="3.6" fill="{colour}"/>'
+            )
+
+            if shape["fingers"][index]:
+                parts.append(
+                    f'<text x="{sx}" y="{fret_y(fret) + 2.4}" '
+                    f'font-size="6.5" text-anchor="middle" '
+                    f'fill="#ffffff">{shape["fingers"][index]}</text>'
+                )
+
+    if first > 1:
+        parts.append(
+            f'<text class="chord-base" x="{string_x(count - 1) + 4}" '
+            f'y="{fret_y(first) + 2.5}" font-size="7" fill="#607d8b">'
+            f'{first}fr</text>'
+        )
+
+    parts.append("</g>")
+
+    return "".join(parts)
+
+
+def chord_layer(piece, instrument):
+    """
+    The chart's chords for the tab: [{"start", "length", "name",
+    "shape"}], shape None where the chord has no standard shape.
+    """
+
+    from melody_lanes import chord_spans
+
+    return [
+        {**span, "shape": chord_shape(span["name"], instrument)}
+        for span in chord_spans(piece)
+    ]
+
+
 def _row_spans(total_beats, starts):
     """[(first, last)] beats of each row. Without starts, rows of
     BEATS_PER_ROW from the beginning."""
@@ -524,7 +684,7 @@ def _row_spans(total_beats, starts):
 
 
 def tab_html(blocks, instrument, total_beats, chart_text="",
-             starts=None):
+             starts=None, chords=None):
     """
     The tab for one instrument as HTML: the strings as lines, the
     fret number of each note on its line, the words under each
@@ -533,6 +693,11 @@ def tab_html(blocks, instrument, total_beats, chart_text="",
     BEATS_PER_ROW beats. A note that cannot be played is a red
     block on a line of its own above the strings. total_beats is
     how long the stretch is.
+
+    chords (see chord_layer) puts each chord's name above the tab
+    where it starts, with its small chord box when the chord lasts
+    long enough to leave room for one (a beat); a chord of half a
+    beat gets its name alone and a shorter one only a tick.
     """
 
     import math
@@ -541,9 +706,10 @@ def tab_html(blocks, instrument, total_beats, chart_text="",
     count = len(names)
     spare = any(not block["in_range"] for block in blocks)
     positioned = any(block["segment"] is not None for block in blocks)
+    chords = chords or []
     heading = (
         HEADING_HEIGHT_WITH_POSITIONS if positioned else HEADING_HEIGHT
-    )
+    ) + (CHORD_BLOCK_HEIGHT if chords else 0)
     spans = _row_spans(total_beats, starts)
     widest = max(last - first for first, last in spans)
     row_width = int(LEFT_MARGIN + widest * BEAT_PX + RIGHT_MARGIN)
@@ -613,10 +779,39 @@ def tab_html(blocks, instrument, total_beats, chart_text="",
             parts.append(
                 f'<line x1="{x}" x2="{x}" y1="{top}" y2="{bottom}" '
                 f'stroke="#90a4ae" stroke-width="1.5"/>'
-                f'<text x="{x + 3}" y="{top - (30 if positioned else 6)}" '
+                f'<text x="{x + 3}" y="{row * row_height + 14}" '
                 f'font-size="10" '
                 f'fill="#78909c">{beat + 1}</text>'
             )
+
+    # The chords, above each row.
+    for chord in chords:
+        row = max(
+            index for index, first in enumerate(row_firsts)
+            if first <= chord["start"] + 0.001
+        )
+        first, last = spans[row]
+        x = LEFT_MARGIN + (chord["start"] - first) * BEAT_PX
+        room = chord["length"] * BEAT_PX
+        y = row * row_height + 20
+        name = html.escape(chord["name"])
+
+        parts.append(
+            f'<line x1="{x}" x2="{x}" y1="{y}" y2="{y + 8}" '
+            f'stroke="{CHORD_TONE_COLOUR}" stroke-width="1.5"/>'
+        )
+
+        if room < 24:
+            continue
+
+        parts.append(
+            f'<text class="chord-name" x="{x + 3}" y="{y + 11}" '
+            f'font-size="12" font-weight="600" '
+            f'fill="{CHORD_TONE_COLOUR}">{name}</text>'
+        )
+
+        if chord["shape"] is not None and room >= CHORD_BOX_WIDTH:
+            parts.append(chord_box_svg(chord["shape"], x + 2, y + 14))
 
     # A bracket and a label over each stretch of notes in one hand
     # position, row by row.
@@ -726,31 +921,43 @@ LEGEND_POSITION = (
     "changing at a pause where it can. {open}"
 )
 
-NOT_YET = (
-    "Chords and the instrument picture are not on the tab yet."
+LEGEND_CHORDS = (
+    "Chord names are over the tab where each chord starts, with a "
+    "small chord box (open ring, cross for a string not played, "
+    "dots for fingers)."
 )
 
 
 def fretted_view(piece, instrument, fingering=NEAREST_NUT,
-                 width=DEFAULT_WIDTH, open_free=True):
+                 width=DEFAULT_WIDTH, open_free=True, show=None):
     """
     Everything a guitar or ukulele tab shows for a piece: the
     line about notes off the neck if there is one, the tab, and a
     legend.
     """
 
-    blocks = fretted_blocks(piece, instrument, fingering, width, open_free)
+    show = ["Melody", "Chords"] if show is None else list(show)
+    want_chords = "Chords" in show
+    want_melody = "Melody" in show or not want_chords
 
-    if not blocks:
+    all_blocks = fretted_blocks(
+        piece, instrument, fingering, width, open_free
+    )
+
+    if not all_blocks:
         return "<p>No notes to show yet.</p>"
 
-    message = range_message(blocks, instrument)
+    blocks = all_blocks if want_melody else []
+    chords = chord_layer(piece, instrument) if want_chords else []
+    message = range_message(blocks, instrument) if blocks else ""
     warning = (
         f'<div style="color:{OUT_OF_RANGE_COLOUR};margin:4px 0">'
         f"{html.escape(message)}</div>" if message else ""
     )
 
-    if fingering == STAY_IN_POSITION:
+    if not blocks:
+        legend = ""
+    elif fingering == STAY_IN_POSITION:
         shown = max(1, min(int(width), _frets_shown_for(instrument)))
         legend = LEGEND + LEGEND_POSITION.format(
             width=shown,
@@ -767,9 +974,11 @@ def fretted_view(piece, instrument, fingering=NEAREST_NUT,
         warning
         + tab_html(
             blocks, instrument, piece.beats(), piece.chart,
-            row_starts(piece)
+            row_starts(piece), chords
         )
         + '<div style="font-size:0.85em;opacity:0.75;margin-top:4px">'
-        + html.escape(legend + " " + NOT_YET)
+        + html.escape(
+            (legend + " " + (LEGEND_CHORDS if chords else "")).strip()
+        )
         + "</div>"
     )

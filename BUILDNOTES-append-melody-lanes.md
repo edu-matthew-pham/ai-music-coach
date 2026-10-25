@@ -241,3 +241,32 @@ Checked
   wider than the width, over 3 instruments x 5 widths on the
   Wellerman. Ten rule mutations, all caught (two survivors, bar
   lines as pauses and the width cap, got new tests).
+
+
+## Chords on the guitar and ukulele tab (follow-up to stage 4)
+
+Decided with Matthew: the picture header is dropped for guitar and
+ukulele (the tab is the picture); chords go on the tab, as printed
+tab does, as names with small Guitar Pro style chord boxes.
+
+- fretted_tab.py: `chord_shape(name, instrument)` (the chord sheet's
+  beginner shapes; None when none exists), `chord_box_svg` (44 px
+  box, 4 frets, x / o above the strings, magenta dots with finger
+  numbers, barre bar, "Nfr" when the shape starts above fret 1),
+  `chord_layer(piece, instrument)` (uses melody_lanes.chord_spans),
+  `tab_html(..., chords)`, `fretted_view(..., show)`.
+- The heading grows by 78 px when chords are shown. A chord of a
+  beat or more gets name + box, half a beat the name, less a tick.
+- Show is honoured (Chords only draws no notes; neither ticked is
+  the melody); `melody_view` passes it through. Header and
+  placement still do not apply to the tab.
+- Elements carry classes (chord-name, chord-box, chord-dot,
+  chord-open, chord-mute, chord-barre, chord-base) for tests.
+
+Checked: 13 new tests (C = x 3 2 0 1 0 gives 1 cross, 2 rings, 3
+dots; F barre at 1; Eb7 starts at 6fr; Twinkle row 1 has 3 boxes;
+Show cases; no chart). Mutations: window rule, nut thickness, size
+thresholds, Show rule, ukulele shapes - all caught after two
+survivors got tests. 20,526 melody renders byte-identical.
+Looked at Twinkle on guitar and ukulele: legible; ukulele G draws
+its 2-fret bar as a barre (from the shape data).

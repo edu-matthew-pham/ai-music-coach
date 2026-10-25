@@ -673,3 +673,162 @@ def test_the_width_in_the_reason_is_held_to_the_neck():
     )
 
     assert "inside the frets 0 to 7 position" in blocks[0]["why"]
+
+
+# --- chords on the tab: names and small chord boxes ---------------
+
+def _count(markup, css_class):
+    return markup.count(f'class="{css_class}"')
+
+
+def test_c_on_the_guitar_is_x_o_o_and_three_dots():
+    """C is x 3 2 0 1 0: one muted string, two open, three fingers."""
+
+    from fretted_tab import chord_box_svg, chord_shape
+
+    shape = chord_shape("C", GUITAR_13)
+    box = chord_box_svg(shape, 0, 0)
+
+    assert shape["frets"] == [None, 3, 2, 0, 1, 0]
+    assert _count(box, "chord-mute") == 1
+    assert _count(box, "chord-open") == 2
+    assert _count(box, "chord-dot") == 3
+    assert "chord-barre" not in box
+
+
+def test_f_on_the_guitar_has_a_barre_at_the_first_fret_and_no_fret_label():
+    from fretted_tab import chord_box_svg, chord_shape
+
+    shape = chord_shape("F", GUITAR_13)
+    box = chord_box_svg(shape, 0, 0)
+
+    assert shape["barre"] == 1
+    assert _count(box, "chord-barre") == 1
+    assert "chord-base" not in box
+
+
+def test_a_shape_up_the_neck_says_where_it_starts():
+    """Eb7 is a barre at fret 6, so the box starts at 6 and says so."""
+
+    from fretted_tab import chord_box_svg, chord_shape
+
+    box = chord_box_svg(chord_shape("Eb7", GUITAR_13), 0, 0)
+
+    assert "6fr" in box
+    assert _count(box, "chord-barre") == 1
+
+
+def test_a_chord_with_no_standard_shape_has_none_and_a_bad_name_is_none():
+    from fretted_tab import chord_shape
+
+    assert chord_shape("Cdim7", GUITAR_13) is None
+    assert chord_shape("Zz", GUITAR_13) is None
+
+
+def test_the_ukulele_uses_its_own_four_string_shapes():
+    from fretted_tab import chord_shape
+
+    assert chord_shape("C", "Ukulele, 10 frets")["frets"] == [0, 0, 0, 3]
+    assert chord_shape("F", "Ukulele, 10 frets")["frets"] == [2, 0, 1, 0]
+
+
+def test_twinkles_first_row_has_three_chords_each_with_a_box():
+    """C (4 beats), F (2) and C (2): three names, three boxes."""
+
+    from melody_lanes import melody_view
+
+    piece = _twinkle().phrase(0)
+    markup = melody_view(piece, GUITAR_13)
+
+    assert _count(markup, "chord-name") == 3
+    assert _count(markup, "chord-box") == 3
+
+
+def test_chords_unticked_means_no_chords_and_a_shorter_heading():
+    from melody_lanes import SHOW_MELODY, melody_view
+
+    piece = _twinkle().phrase(0)
+    with_chords = melody_view(piece, GUITAR_13)
+    without = melody_view(piece, GUITAR_13, show=[SHOW_MELODY])
+
+    assert "chord-name" not in without
+    assert "chord-box" not in without
+    assert "chord-name" in with_chords
+    assert "<rect" in without
+
+
+def test_only_chords_ticked_shows_chords_and_no_notes():
+    from melody_lanes import SHOW_CHORDS, melody_view
+
+    markup = melody_view(
+        _twinkle().phrase(0), GUITAR_13, show=[SHOW_CHORDS]
+    )
+
+    assert _count(markup, "chord-name") == 3
+    assert "Twin-" not in markup
+
+
+def test_neither_ticked_shows_the_melody():
+    from melody_lanes import melody_view
+
+    markup = melody_view(_twinkle().phrase(0), GUITAR_13, show=[])
+
+    assert "Twin-" in markup
+    assert "chord-name" not in markup
+
+
+def test_no_chart_means_no_chord_layer():
+    from melody_lanes import melody_view
+
+    markup = melody_view(_piece("C4 D4 E4"), GUITAR_13)
+
+    assert "chord-name" not in markup
+    assert "chord-box" not in markup
+
+
+def test_a_half_beat_chord_gets_a_name_but_no_box():
+    from fretted_tab import tab_html
+
+    blocks = fretted_blocks(_piece("C4 D4"), GUITAR_13)
+    chords = [{"start": 0, "length": 0.5, "name": "C",
+               "shape": {"frets": [None, 3, 2, 0, 1, 0],
+                         "fingers": [None] * 6, "barre": None}}]
+    markup = tab_html(blocks, GUITAR_13, 2, "", None, chords)
+
+    assert _count(markup, "chord-name") == 1
+    assert _count(markup, "chord-box") == 0
+
+    chords[0]["length"] = 0.25  # a tick only
+    markup = tab_html(blocks, GUITAR_13, 2, "", None, chords)
+
+    assert _count(markup, "chord-name") == 0
+
+    chords[0]["length"] = 1
+    markup = tab_html(blocks, GUITAR_13, 2, "", None, chords)
+
+    assert _count(markup, "chord-name") == 1
+    assert _count(markup, "chord-box") == 1
+
+
+def test_the_box_window_starts_at_the_first_fret_only_up_to_the_fourth():
+    from fretted_tab import chord_box_svg
+
+    four = {"frets": [None, None, 4, 4, 4, 4],
+            "fingers": [None] * 6, "barre": None}
+    five = {"frets": [None, None, 5, 5, 5, 5],
+            "fingers": [None] * 6, "barre": None}
+
+    assert "chord-base" not in chord_box_svg(four, 0, 0)
+    assert "5fr" in chord_box_svg(five, 0, 0)
+
+
+def test_the_nut_is_drawn_thick_only_when_the_box_starts_at_the_first_fret():
+    from fretted_tab import chord_box_svg
+
+    low = {"frets": [None, 3, 2, 0, 1, 0],
+           "fingers": [None] * 6, "barre": None}
+    high = {"frets": [None, None, 5, 5, 5, 5],
+            "fingers": [None] * 6, "barre": None}
+
+    assert 'stroke-width="2.5"' in chord_box_svg(low, 0, 0)
+    assert 'stroke-width="2.5"' not in chord_box_svg(high, 0, 0)

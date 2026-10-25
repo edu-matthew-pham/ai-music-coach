@@ -345,9 +345,15 @@ where each note falls (0 is an open string), the words underneath,
 and a row for each phrase (a long phrase is cut at a bar line, so
 no row is wider than sixteen beats), like printed tab. Hover a note
 to see why it is where it is. Both start on the longer neck. It is
-a suggested fingering, not the only one. Chords and the instrument
-picture are not on the tab yet, and Show, top of the lanes and
-chords go do not change it.
+a suggested fingering, not the only one. The tab is its own
+picture, so there is no instrument picture over it, and top of the
+lanes and chords go do not apply. **Show** does: tick Chords and
+each chord's name sits over the tab where it starts, with a small
+chord box under it (a ring for an open string, a cross for a string
+not played, dots for the fingers, a bar for a barre, and "5fr" when
+the shape is up the neck). A short chord gets just its name, a
+very short one a tick, and a chord with no standard shape just its
+name. Chords alone, with Melody unticked, shows only the chords.
 
 **Guitar and ukulele fingering** has two choices. **Nearest the
 nut** (the default) gives every note its lowest fret, so a note's
