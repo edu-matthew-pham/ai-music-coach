@@ -88,6 +88,30 @@ drawing code changed: `chord_picture(..., show)` only chooses
 which existing overlays to stack. `refresh_sheet` gained one
 input (`show`); its outputs are unchanged.
 
+### More room, full screen, click to enlarge
+
+Asked for more space for the diagrams. Chord sheet only (the mixer
+panel is Svelte and would need a rebuild; not touched).
+
+- **Key, Show and a Full screen button share one row**; the intro
+  is one line; the Size choice lost its box; the key's notes are
+  the first card of the grid instead of a row of their own.
+- **Full screen** is a button that toggles a class on the section
+  (`#chords.sheet-full`: fixed to the window, larger cards, intro
+  hidden). It runs in the browser (`fn=None, js=...`), so it
+  reads and writes none of the song's boxes (pinned by an AST
+  test) and a redraw while full screen does not leave it.
+  Escape leaves it.
+- **Click a card** to enlarge it over a dimmed page; click it
+  again or press Escape to close (Escape closes a card before it
+  leaves full screen). The pictures carry `max-width` inline, so
+  the enlarged style needs `!important`. A card closes if its
+  picture redraws.
+- Layout now lives in `SHEET_CSS` (classes, not inline styles),
+  handed to the page with the existing CSS in `main.py`.
+- Checked live in Chromium: normal, full screen, enlarged, both
+  Escapes, redraw during full screen; no page errors.
+
 ### Open, deliberately not done
 
 - Remembering the last instrument tab (per-viewer convenience).

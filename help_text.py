@@ -260,8 +260,10 @@ Notes panel's own next-phrase preview.
 The **Chords** section, below Playback, is for looking over
 before you play: every chord on one instrument at once, with
 a picture of the key's notes at the top. Pick the instrument
-from its tabs; each has its own **Size** choice, separate
-from the mixer's. Piano starts on 3 octaves.
+from its tabs; each has its own size choice, separate from the
+mixer's. Piano starts on 3 octaves. Click any card to enlarge it
+(click it again, or press Escape, to close), or press **Full
+screen** to give the whole sheet the window (Escape leaves it).
 
 With a song loaded it starts on the song's key and shows the
 chords the song plays, and says so ("from the song"). Pick

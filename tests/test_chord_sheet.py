@@ -542,3 +542,80 @@ def test_two_octave_piano_says_when_a_shape_is_rearranged():
     # Notes alone draw no shape, so there is nothing rearranged.
     _, note = chord_picture("F", "Piano, 2 octaves", "G", [SHOW_NOTES])
     assert note == ""
+
+
+# --- more room, full screen, click to enlarge ------------------
+
+def test_every_card_can_be_enlarged_by_clicking_it():
+    from chord_sheet import sheet_html
+
+    page = sheet_html("browse:C major", "", "", "Piano, 3 octaves")
+
+    # The key's notes plus the key's seven chords.
+    assert page.count('class="sheet-card"') == 8
+    assert page.count("classList.toggle('enlarged')") == 8
+
+
+def test_the_key_notes_are_the_first_card_of_the_grid_not_a_row_of_their_own():
+    from chord_sheet import sheet_html
+
+    page = sheet_html("browse:C major", "", "", "Piano, 3 octaves")
+
+    grid = page.index('class="sheet-grid"')
+    first_card = page.index('class="sheet-card"')
+    key_notes = page.index("Notes of the key")
+
+    assert grid < first_card < key_notes
+
+
+def test_an_enlarged_card_is_allowed_past_the_pictures_own_width_limit():
+    from chord_sheet import SHEET_CSS
+
+    # Each svg carries max-width inline, so only !important wins.
+    assert ".sheet-card.enlarged svg { max-width: none !important" in SHEET_CSS
+
+
+def test_the_page_is_given_the_sheets_css_and_a_full_screen_button():
+    with open(MAIN) as source:
+        text = source.read()
+
+    assert "chord_sheet.SHEET_CSS" in text
+    assert 'elem_id="sheet-full-button"' in text
+    assert "js=chord_sheet.FULL_SCREEN_JS" in text
+
+
+def test_full_screen_runs_in_the_browser_and_touches_no_box():
+    tree = _main_tree()
+
+    for node in ast.walk(tree):
+
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "sheet_full_button"
+            and node.func.attr == "click"
+        ):
+            continue
+
+        keywords = {k.arg: k.value for k in node.keywords}
+
+        # No Python function, no inputs, no outputs: nothing can
+        # be written back to the song's boxes.
+        assert isinstance(keywords["fn"], ast.Constant)
+        assert keywords["fn"].value is None
+        assert "js" in keywords
+        assert "inputs" not in keywords
+        assert "outputs" not in keywords
+        return
+
+    pytest.fail("the full screen button is not wired")
+
+
+def test_escape_closes_an_enlarged_card_before_leaving_full_screen():
+    from chord_sheet import FULL_SCREEN_JS
+
+    assert "Escape" in FULL_SCREEN_JS
+    assert FULL_SCREEN_JS.index("enlarged") < FULL_SCREEN_JS.index(
+        "classList.contains('sheet-full')"
+    )

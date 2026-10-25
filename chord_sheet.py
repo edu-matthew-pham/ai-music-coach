@@ -363,14 +363,90 @@ def scale_picture(signature, home, instrument):
     )
 
 
-_GRID = (
-    "display:grid;grid-template-columns:repeat(auto-fill,minmax(420px,1fr));"
-    "gap:14px;margin-top:10px"
-)
+# The look of the sheet. Classes, not inline styles, so one
+# stylesheet decides the layout. main.py hands SHEET_CSS to the
+# page. The two "enlarge" behaviours are plain classes toggled
+# in the browser - the whole sheet (#chords.sheet-full, from the
+# Full screen button) and a single card (.enlarged, by clicking
+# it) - so neither needs the server, and neither is lost when a
+# picture redraws except the card, which closes.
+SHEET_CSS = """
+.sheet-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 10px;
+}
+.sheet-card {
+    border: 1px solid var(--border-color-primary, #ccc);
+    border-radius: 8px;
+    padding: 6px 8px;
+    cursor: zoom-in;
+    background: var(--background-fill-primary, #fff);
+}
+.sheet-card .sheet-hint { font-size: 0.85em; opacity: 0.75; }
+.sheet-card svg { display: block; }
+.sheet-card.enlarged {
+    position: fixed;
+    top: 4vh;
+    left: 4vw;
+    right: 4vw;
+    max-height: 92vh;
+    z-index: 100001;
+    overflow: auto;
+    cursor: zoom-out;
+    box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.6);
+}
+.sheet-card.enlarged svg { max-width: none !important; width: 100%; }
+.sheet-card.enlarged::after {
+    content: "Click the card to close";
+    display: block;
+    font-size: 0.85em;
+    opacity: 0.7;
+    margin-top: 4px;
+}
+#chords.sheet-full {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    overflow: auto;
+    padding: 10px 16px;
+    background: var(--background-fill-primary, #fff);
+}
+#chords.sheet-full .sheet-grid {
+    grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
+}
+#chords.sheet-full .sheet-intro { display: none; }
+#chords .sheet-size { padding: 2px 6px !important; min-width: 0 !important; }
+"""
 
-_CARD = (
-    "border:1px solid var(--border-color-primary,#ccc);border-radius:8px;"
-    "padding:8px 10px"
+# Toggles the sheet to fill the window and back. Runs in the
+# browser; Escape also leaves it.
+FULL_SCREEN_JS = """
+() => {
+    const sheet = document.getElementById('chords');
+    const button = document.getElementById('sheet-full-button');
+    const set = (on) => {
+        sheet.classList.toggle('sheet-full', on);
+        if (button) {
+            button.textContent = on ? 'Exit full screen' : 'Full screen';
+        }
+    };
+    if (!window.__sheetEscape) {
+        window.__sheetEscape = true;
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            const open = document.querySelector('#chords .sheet-card.enlarged');
+            if (open) { open.classList.remove('enlarged'); return; }
+            if (sheet.classList.contains('sheet-full')) set(false);
+        });
+    }
+    set(!sheet.classList.contains('sheet-full'));
+}
+"""
+
+_CARD_ATTRS = (
+    'class="sheet-card" title="Click to enlarge" '
+    'onclick="this.classList.toggle(\'enlarged\')"'
 )
 
 
@@ -385,11 +461,11 @@ def sheet_html(selection, key_text, chart_text, instrument, show=None):
 
     parts = [
         '<div class="chord-sheet">',
-        f'<div style="{_CARD}"><b>Notes of the key</b>'
-        f'<div style="font-size:0.85em;opacity:0.75">Home is orange; '
+        f'<div class="sheet-grid">',
+        f'<div {_CARD_ATTRS}><b>Notes of the key</b>'
+        f'<div class="sheet-hint">Home is orange; '
         f'green notes are in the key.</div>'
         f'{scale_picture(signature, state["home"], instrument)}</div>',
-        f'<div style="{_GRID}">',
     ]
 
     for name in state["chords"]:
@@ -397,11 +473,11 @@ def sheet_html(selection, key_text, chart_text, instrument, show=None):
             signature, instrument, name, show
         )
         note_html = (
-            f'<div style="font-size:0.85em;opacity:0.75">'
-            f'{html.escape(note)}</div>' if note else ""
+            f'<div class="sheet-hint">{html.escape(note)}</div>'
+            if note else ""
         )
         parts.append(
-            f'<div style="{_CARD}"><b>{html.escape(name)}</b>'
+            f'<div {_CARD_ATTRS}><b>{html.escape(name)}</b>'
             f'{note_html}{picture}</div>'
         )
 

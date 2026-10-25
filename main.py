@@ -534,10 +534,9 @@ with gr.Blocks(
 
             gr.Markdown(
                 "Every chord on one instrument at once, to look "
-                "over before you play. Follows the song's key "
-                "and chords when there is one; pick any other "
-                "key to browse it, which never changes the "
-                "song."
+                "over before you play. Click a card to enlarge "
+                "it, or use Full screen.",
+                elem_classes="sheet-intro"
             )
 
             with gr.Row():
@@ -556,11 +555,19 @@ with gr.Blocks(
                     scale=1
                 )
 
-            sheet_show = gr.CheckboxGroup(
-                chord_sheet.DEFAULT_SHOW,
-                value=chord_sheet.DEFAULT_SHOW,
-                label="Show on every chord"
-            )
+                sheet_show = gr.CheckboxGroup(
+                    chord_sheet.DEFAULT_SHOW,
+                    value=chord_sheet.DEFAULT_SHOW,
+                    label="Show on every chord",
+                    scale=2
+                )
+
+                sheet_full_button = gr.Button(
+                    "Full screen",
+                    size="sm",
+                    elem_id="sheet-full-button",
+                    scale=1
+                )
 
             sheet_source = gr.Markdown()
 
@@ -590,7 +597,9 @@ with gr.Blocks(
                                 family, variants
                             ),
                             label="Size",
-                            visible=len(variants) > 1
+                            visible=len(variants) > 1,
+                            container=False,
+                            elem_classes="sheet-size"
                         ))
 
                         sheet_views.append(gr.HTML())
@@ -1179,6 +1188,13 @@ with gr.Blocks(
         outputs=sheet_key
     )
 
+    # Runs in the browser only: it toggles a class on the
+    # section, so it reads and writes none of the song's boxes.
+    sheet_full_button.click(
+        fn=None,
+        js=chord_sheet.FULL_SCREEN_JS
+    )
+
     def cycle_phrase(step):
         """
         Move the phrase choice on by a step, wrapping.
@@ -1413,5 +1429,5 @@ if __name__ == "__main__":
     demo.launch(
         server_name="0.0.0.0",
         server_port=port,
-        css=ANCHOR_CSS
+        css=ANCHOR_CSS + chord_sheet.SHEET_CSS
     )
