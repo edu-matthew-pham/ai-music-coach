@@ -290,6 +290,30 @@ alternate between thumbs; blue is the left thumb, purple the
 right, grey the centre tine (either), and home has an orange
 ring. A key with sharps or flats uses the top row for them.
 
+## The melody view
+
+The **Melody** section, below Chords, shows the tune in the
+boxes above on an instrument, to look over before you play.
+Time runs down the page like a falling-notes video: one lane
+for each tine, and a block where each note falls, as long as
+the note lasts, with the word sung beside it. Pick **Whole
+part** or one phrase from the dropdown there; it is separate
+from the Song section's own phrase choice and never changes it.
+
+On the kalimba a block is blue for the left thumb, purple for
+the right, and grey for the centre tine (either thumb). Each
+lane is named by its middle-row note, with the top-row note
+under it. A note on the top row (a sharp or flat) is marked
+with a small up triangle, and one on the bass row with a down
+triangle. A note that appears twice on the kalimba is drawn on
+the middle row. Kalimba starts on 41 keys.
+
+If the tune has notes the instrument does not have, they are
+drawn in red in a strip marked "off" at the left, and a line
+above says how many and whether Octave up or Octave down in
+the Song section would bring every note on. The notes are never
+moved for you.
+
 ## Keys and harmony
 
 **Detect key** reads the notes and tells you what key they

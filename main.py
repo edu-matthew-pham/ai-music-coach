@@ -10,8 +10,10 @@ from lyric_merge import merge_lyrics
 from mixer_data import mixer_data
 from help_text import HELP_TEXT
 import chord_sheet
+import melody_lanes
 from music import (
     MusicInputError,
+    WHOLE_PART,
     import_music_file,
     list_music_parts,
     default_music_part,
@@ -190,6 +192,7 @@ with gr.Blocks(
         + anchor_link("Arrange", "arrange")
         + anchor_link("Playback", "playback")
         + anchor_link("Chords", "chords")
+        + anchor_link("Melody", "melody")
         # "Practice" (the record-then-Compare flow below) is
         # hidden for now - the mixer's own live mic covers
         # this need today. Not deleted: the section, its
@@ -603,6 +606,65 @@ with gr.Blocks(
                         ))
 
                         sheet_views.append(gr.HTML())
+
+        # -------------------------------------------------
+        # MELODY: the whole tune, laid out on an instrument
+        #
+        # The song's notes in lanes (one per kalimba tine),
+        # time running down, the words beside each note -
+        # PLAN-melody-lanes.md. A view of what the boxes hold,
+        # like the chord sheet: it reads the pitch, length,
+        # words, key and chart boxes and writes none of them
+        # (pinned by a test). Its phrase dropdown is its own.
+        # -------------------------------------------------
+
+        with gr.Column(elem_id="melody"):
+
+            gr.Markdown("## Melody on the instrument")
+
+            gr.Markdown(
+                "The tune in the boxes above, note by note, on an "
+                "instrument - to look over before you play."
+            )
+
+            melody_phrase = gr.Dropdown(
+                [WHOLE_PART],
+                value=WHOLE_PART,
+                label="Which part of the tune",
+                # Five boxes change at once when a song loads; a
+                # stale label in between must not raise an error -
+                # keep_phrase falls back to the whole part.
+                allow_custom_value=True
+            )
+
+            melody_status = gr.Markdown()
+
+            melody_variants = []
+            melody_views = []
+
+            with gr.Tabs():
+
+                for family, variants in (
+                    melody_lanes.supported_families().items()
+                ):
+
+                    with gr.Tab(family):
+
+                        melody_variants.append(gr.Radio(
+                            [
+                                (chord_sheet.variant_label(name), name)
+                                for name in variants
+                            ],
+                            value=melody_lanes.default_variant(
+                                family, variants
+                            ),
+                            label="Size",
+                            visible=len(variants) > 1,
+                            container=False,
+                            elem_classes="sheet-size"
+                        ))
+
+                        melody_views.append(gr.HTML())
 
         # -------------------------------------------------
         # PRACTICE: sing it and see how it went
@@ -1193,6 +1255,49 @@ with gr.Blocks(
     sheet_full_button.click(
         fn=None,
         js=chord_sheet.FULL_SCREEN_JS
+    )
+
+    def refresh_melody(phrase_label, pitch_text, duration_text,
+                       lyric_text, key_text, chart_text, *variants):
+        """
+        Redraw the Melody section for the boxes as they stand.
+        Reads the five boxes and never writes them: the only
+        things it returns are the section's own dropdown, line
+        and pictures.
+        """
+
+        page = melody_lanes.melody_page(
+            pitch_text, duration_text, lyric_text, key_text,
+            chart_text, phrase_label, list(variants)
+        )
+
+        return (
+            gr.update(choices=page["choices"], value=page["label"]),
+            page["status"]
+        ) + tuple(page["views"])
+
+    melody_inputs = [
+        melody_phrase, pitch_input, duration_input, lyric_input,
+        key_input, chart_input
+    ] + melody_variants
+
+    melody_outputs = [melody_phrase, melody_status] + melody_views
+
+    for trigger in [
+        melody_phrase.change, pitch_input.change,
+        duration_input.change, lyric_input.change,
+        key_input.change, chart_input.change
+    ] + [variant.change for variant in melody_variants]:
+        trigger(
+            fn=refresh_melody,
+            inputs=melody_inputs,
+            outputs=melody_outputs
+        )
+
+    demo.load(
+        fn=refresh_melody,
+        inputs=melody_inputs,
+        outputs=melody_outputs
     )
 
     def cycle_phrase(step):
