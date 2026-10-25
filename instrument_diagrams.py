@@ -20,6 +20,8 @@ instrument and a figure to close; a fretboard is a few
 rectangles and circles, and text is cheaper.
 """
 
+from functools import lru_cache
+
 from harmony import MAJOR_SCALES, RELATIVE_MINORS
 from notes import NOTE_SEMITONES, SHARP_NAMES
 
@@ -1576,6 +1578,9 @@ def structure_for(instrument):
     if base == "Kalimba":
         return kalimba_structure(_kalimba_has_bass(instrument))
 
+    if base == "Lever harp":
+        return lever_harp_structure()
+
     if base.startswith("Violin"):
         if _violin_shows_both(instrument):
             # Structurally identical to third position alone -
@@ -1600,6 +1605,9 @@ def scale_overlay_for(key, instrument):
 
     if base == "Kalimba":
         return kalimba_scale_overlay(key, _kalimba_has_bass(instrument))
+
+    if base == "Lever harp":
+        return lever_harp_scale_overlay(key)
 
     if base.startswith("Violin"):
         if _violin_shows_both(instrument):
@@ -2098,6 +2106,9 @@ def chord_overlay_for(key, instrument, chord_name):
         return kalimba_chord_overlay(
             key, tones, _kalimba_has_bass(instrument)
         )
+
+    if base == "Lever harp":
+        return lever_harp_chord_overlay(key, tones)
 
     if base.startswith("Violin"):
         if _violin_shows_both(instrument):
@@ -2818,6 +2829,10 @@ def shape_overlay_for(key, instrument, chord_name):
         # then the caller falls back to Chord notes.
         return None
 
+    if base == "Lever harp":
+        # Likewise stage 2 of PLAN-lever-harp.md.
+        return None
+
     if base.startswith("Violin"):
         if _violin_shows_both(instrument):
             return violin_chord_shape_overlay_both(key, chord_name)
@@ -3098,6 +3113,419 @@ def kalimba_diagram(key, bass=True):
     )
 
 
+# The Haze 19-string lever harp (the WH19MHEQ / WH19BH body),
+# read off the maker's listing and a photo of the instrument:
+# 19 strings, F3 to C6, every string a natural note with its
+# lever down - so the harp is C major as it stands. The pegs'
+# colour bands in the photo fall on strings 1, 5, 8, 12, 15 and
+# 19, which is exactly F3 C4 F4 C5 F5 C6 in this list: F blue,
+# C red, the rest white. Each string has a sharpening lever
+# that raises it one semitone (a silver hook per string in the
+# photo; not counted tine-for-tine on the real instrument yet -
+# see PLAN-lever-harp.md, stage 0).
+#
+# Strings are listed in physical left-to-right order, lowest
+# first, and every drawing function indexes this list by
+# position, never by pitch.
+LEVER_HARP_STRINGS = [
+    "F3", "G3", "A3", "B3", "C4", "D4", "E4", "F4", "G4", "A4",
+    "B4", "C5", "D5", "E5", "F5", "G5", "A5", "B5", "C6",
+]
+
+# The conventional harp colouring, as pictured: C red, F blue.
+LEVER_HARP_STRING_COLOURS = {"C": "#e57373", "F": "#64b5f6"}
+LEVER_HARP_PLAIN_STRING_COLOUR = "#b0bec5"
+
+# Shared by every layer so they stack in register. Whole
+# numbers throughout: the frontend reads the viewBox, and the
+# height test parses it as integers.
+LEVER_HARP_LAYOUT = {
+    "left": 10,
+    "column_width": 30,
+    "neck_top": 30,
+    "neck_height": 10,
+    "string_top": 40,
+    "longest_bottom": 226,
+    "bottom_step": 6,
+    "tab_width": 10,
+    "tab_height": 14,
+    "tab_down_y": 14,
+    "tab_up_y": 4,
+    "mark_radius": 10,
+    "mark_offset": 16,
+    "footer_height": 26,
+}
+
+_HARP_LETTER_PITCH = {
+    "C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11
+}
+
+
+@lru_cache(maxsize=None)
+def lever_harp_setting(key):
+    """
+    Which levers to raise for a key, and which of the key's
+    notes the harp then cannot sound.
+
+    A lever harp does not mark a key onto a fixed picture the
+    way every other instrument here does - the key is a
+    setting of the instrument. Each letter (C D E F G A B) is
+    either down (the natural note) or up (a semitone higher),
+    the same for every octave of that letter.
+
+    All 128 settings are tried and the best taken: most of
+    the key's seven notes sounded first, then fewest strings
+    left sounding a note outside the key, then fewest levers
+    raised. Searching rather than reading off a key signature
+    is what finds the enharmonic cases a signature misses -
+    F sharp major needs E raised to sound E sharp (an F), and
+    D flat major is C sharp major, every lever up - and what
+    reports honestly the keys that lose notes (F, B flat,
+    E flat, A flat: a flatted note has no lever to make it).
+
+    Returns (raised_letters, missing_pitch_classes). Missing
+    pitch classes come back in the key's own scale order.
+    """
+
+    in_key = semitones_in(key)
+    letters = list(_HARP_LETTER_PITCH)
+
+    best = None
+
+    for mask in range(1 << len(letters)):
+
+        raised = {
+            letter for bit, letter in enumerate(letters)
+            if mask >> bit & 1
+        }
+
+        sounding = {
+            letter: (pitch + (letter in raised)) % 12
+            for letter, pitch in _HARP_LETTER_PITCH.items()
+        }
+
+        covered = len(in_key & set(sounding.values()))
+        outside = sum(1 for pc in sounding.values() if pc not in in_key)
+
+        score = (-covered, outside, len(raised), mask)
+
+        if best is None or score < best[0]:
+            best = (score, raised, set(sounding.values()))
+
+    _, raised, sounding = best
+
+    scale_order = [
+        NOTE_SEMITONES[note] % 12 for note in MAJOR_SCALES[key]
+    ]
+
+    missing = tuple(pc for pc in scale_order if pc not in sounding)
+
+    return frozenset(raised), missing
+
+
+def _lever_harp_positions():
+    """
+    Where each string sits - key-independent, so the structure
+    layer and every overlay agree.
+    """
+
+    layout = LEVER_HARP_LAYOUT
+
+    return [
+        {
+            "note": note,
+            "x": layout["left"] + index * layout["column_width"]
+                 + layout["column_width"] // 2,
+            "bottom": layout["longest_bottom"]
+                      - index * layout["bottom_step"],
+        }
+        for index, note in enumerate(LEVER_HARP_STRINGS)
+    ]
+
+
+def _lever_harp_strings(key):
+    """
+    Every string with the key's lever setting applied: whether
+    it is raised, the pitch it sounds, and the pitch it would
+    sound with its lever flipped.
+    """
+
+    raised, _ = lever_harp_setting(key)
+    strings = []
+
+    for position in _lever_harp_positions():
+        natural = _absolute_pitch(position["note"])
+        up = position["note"][0] in raised
+
+        strings.append({
+            **position,
+            "up": up,
+            "sounding": natural + (1 if up else 0),
+            "other": natural + (0 if up else 1),
+        })
+
+    return strings
+
+
+def _lever_harp_size():
+    layout = LEVER_HARP_LAYOUT
+
+    width = (
+        2 * layout["left"]
+        + len(LEVER_HARP_STRINGS) * layout["column_width"]
+    )
+    height = layout["longest_bottom"] + 8 + layout["footer_height"]
+
+    return width, height
+
+
+def _lever_harp_svg(parts, label):
+    width, height = _lever_harp_size()
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="{_escape(label)}">'
+        + "".join(parts) +
+        "</svg>"
+    )
+
+
+def _svg_attrs(style):
+    """
+    Keyword arguments as SVG attributes: stroke_width becomes
+    stroke-width.
+    """
+
+    return " ".join(
+        f'{name.replace("_", "-")}="{value}"'
+        for name, value in style.items()
+    )
+
+
+def _lever_harp_tab(x, y, **style):
+    layout = LEVER_HARP_LAYOUT
+    attrs = _svg_attrs(style)
+
+    return (
+        f'<rect x="{x - layout["tab_width"] // 2}" y="{y}" '
+        f'width="{layout["tab_width"]}" '
+        f'height="{layout["tab_height"]}" rx="3" {attrs}/>'
+    )
+
+
+def _lever_harp_mark(string, **style):
+    """
+    A spot at the foot of one string; _lever_harp_label puts
+    the note's name on it.
+    """
+
+    layout = LEVER_HARP_LAYOUT
+    y = string["bottom"] - layout["mark_offset"]
+    attrs = _svg_attrs(style)
+
+    return (
+        f'<circle cx="{string["x"]}" cy="{y}" '
+        f'r="{layout["mark_radius"]}" {attrs}/>'
+    )
+
+
+def _lever_harp_label(string, key, pitch, colour):
+    layout = LEVER_HARP_LAYOUT
+    y = string["bottom"] - layout["mark_offset"]
+
+    return (
+        f'<text x="{string["x"]}" y="{y + 4}" text-anchor="middle" '
+        f'font-size="10" font-family="sans-serif" fill="{colour}">'
+        f'{_escape(name_for(pitch, key))}</text>'
+    )
+
+
+def _lever_harp_structure_parts():
+    """
+    The frame, the soundboard edge, the strings in their
+    colours and a lever at the head of each, all down.
+    Key-independent, the mixer's always-there background.
+    """
+
+    layout = LEVER_HARP_LAYOUT
+    width, height = _lever_harp_size()
+    positions = _lever_harp_positions()
+    first, last = positions[0], positions[-1]
+
+    parts = [
+        f'<rect x="0" y="0" width="{width}" height="{height}" '
+        f'rx="10" fill="#f3e5d0" stroke="{LINE_COLOUR}" '
+        f'stroke-width="1"/>',
+
+        f'<line x1="{first["x"]}" y1="{first["bottom"]}" '
+        f'x2="{last["x"]}" y2="{last["bottom"]}" '
+        f'stroke="#8d6e63" stroke-width="8" stroke-linecap="round"/>',
+
+        f'<rect x="{layout["left"] - 4}" y="{layout["neck_top"]}" '
+        f'width="{width - 2 * layout["left"] + 8}" '
+        f'height="{layout["neck_height"]}" rx="4" '
+        f'fill="#c9a66b" stroke="{LINE_COLOUR}" stroke-width="1"/>',
+    ]
+
+    for position in positions:
+        colour = LEVER_HARP_STRING_COLOURS.get(
+            position["note"][0], LEVER_HARP_PLAIN_STRING_COLOUR
+        )
+        parts.append(
+            f'<line x1="{position["x"]}" y1="{layout["string_top"]}" '
+            f'x2="{position["x"]}" y2="{position["bottom"]}" '
+            f'stroke="{colour}" stroke-width="2"/>'
+        )
+        parts.append(
+            _lever_harp_tab(
+                position["x"], layout["tab_down_y"],
+                fill="#cfd8dc", stroke=LINE_COLOUR, stroke_width=1
+            )
+        )
+
+    return parts
+
+
+def _lever_harp_scale_parts(key):
+    """
+    The strings that sound a note of the key, each marked with
+    its name (home apart from the rest), with a raised lever
+    tab on every string the key needs set up. A key note no
+    string can sound is named in a line at the foot, so the
+    layer carries its own explanation.
+    """
+
+    layout = LEVER_HARP_LAYOUT
+    home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
+    in_key = semitones_in(key)
+
+    parts = []
+
+    for string in _lever_harp_strings(key):
+
+        pitch_class = string["sounding"] % 12
+
+        if pitch_class not in in_key:
+            continue
+
+        colour = HOME_COLOUR if pitch_class == home else IN_KEY_COLOUR
+
+        if string["up"]:
+            parts.append(
+                _lever_harp_tab(
+                    string["x"], layout["tab_up_y"],
+                    fill=colour, stroke=LINE_COLOUR, stroke_width=1
+                )
+            )
+
+        parts.append(
+            _lever_harp_mark(string, fill=colour)
+        )
+        parts.append(
+            _lever_harp_label(string, key, string["sounding"], "#ffffff")
+        )
+
+    _, missing = lever_harp_setting(key)
+
+    if missing:
+        names = ", ".join(name_for(pc, key) for pc in missing)
+        parts.append(
+            f'<text x="{layout["left"]}" '
+            f'y="{layout["longest_bottom"] + 8 + 18}" font-size="12" '
+            f'font-family="sans-serif" fill="{LABEL_COLOUR}">'
+            f'{_escape("Not on this harp: " + names)}</text>'
+        )
+
+    return parts
+
+
+def lever_harp_structure():
+    return _lever_harp_svg(
+        _lever_harp_structure_parts(), "A 19-string lever harp"
+    )
+
+
+def lever_harp_scale_overlay(key):
+    return _lever_harp_svg(
+        _lever_harp_scale_parts(key),
+        f"The notes of {describe_key(key)} on a lever harp, with the "
+        f"levers to raise"
+    )
+
+
+def lever_harp_chord_overlay(key, chord_semitone_set):
+    """
+    Chord tones on the harp as the key has it set: a solid
+    mark on every string already sounding a chord tone. A
+    string that would sound a chord tone no string sounds yet
+    if its lever were flipped - a borrowed chord's note, the
+    usual case - gets a ring instead, with its lever tab
+    outlined where it would have to move to.
+    """
+
+    layout = LEVER_HARP_LAYOUT
+    parts = []
+
+    strings = _lever_harp_strings(key)
+
+    # A flip is only worth showing for a note nothing else
+    # already sounds: raising a B just to get a second C
+    # (when C is on three strings already) is clutter, not
+    # information.
+    sounded = {string["sounding"] % 12 for string in strings}
+
+    for string in strings:
+
+        if string["sounding"] % 12 in chord_semitone_set:
+            parts.append(
+                _lever_harp_mark(string, fill=CHORD_TONE_COLOUR)
+            )
+            parts.append(
+                _lever_harp_label(
+                    string, key, string["sounding"], "#ffffff"
+                )
+            )
+
+        elif (
+            string["other"] % 12 in chord_semitone_set
+            and string["other"] % 12 not in sounded
+        ):
+            target_y = (
+                layout["tab_down_y"] if string["up"]
+                else layout["tab_up_y"]
+            )
+            parts.append(
+                _lever_harp_tab(
+                    string["x"], target_y,
+                    fill="none", stroke=CHORD_TONE_COLOUR, stroke_width=2
+                )
+            )
+            parts.append(
+                _lever_harp_mark(
+                    string, fill="#ffffff", stroke=CHORD_TONE_COLOUR,
+                    stroke_width=2
+                )
+            )
+            parts.append(
+                _lever_harp_label(
+                    string, key, string["other"], CHORD_TONE_COLOUR
+                )
+            )
+
+    return _lever_harp_svg(
+        parts, "The chord tones on a lever harp"
+    )
+
+
+def lever_harp_diagram(key):
+    return _lever_harp_svg(
+        _lever_harp_structure_parts() + _lever_harp_scale_parts(key),
+        f"A lever harp set for {describe_key(key)}"
+    )
+
+
 INSTRUMENTS = [
     "Piano, 2 octaves",
     "Piano, 3 octaves",
@@ -3109,6 +3537,7 @@ INSTRUMENTS = [
     "Violin, both positions",
     "Kalimba, 34 keys",
     "Kalimba, 41 keys",
+    "Lever harp, 19 strings",
 ]
 
 
@@ -3124,6 +3553,9 @@ def diagram_for(key, instrument):
 
     if base == "Kalimba":
         return kalimba_diagram(key, _kalimba_has_bass(instrument))
+
+    if base == "Lever harp":
+        return lever_harp_diagram(key)
 
     if base.startswith("Violin"):
         if _violin_shows_both(instrument):

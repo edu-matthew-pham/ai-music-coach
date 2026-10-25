@@ -182,8 +182,8 @@ shows the words, either as pills that light up one at a
 time or a line of text coloured as it is sung.
 
 **Instruments** draws the key on a piano, a guitar, a
-ukulele, a violin chart, or a chromatic kalimba. Each has
-its own size toggle
+ukulele, a violin chart, a chromatic kalimba, or a 19-string
+lever harp. Each except the harp has its own size toggle
 once it's ticked on - piano between two and three octaves,
 guitar between a compact eight frets and the full thirteen,
 ukulele between six and ten (its own shapes stay lower on
@@ -191,7 +191,14 @@ the neck than guitar's, and its short scale makes a player
 less likely to go far up it at all), kalimba between 34
 keys and 41 (the 41 adds a row of seven bass tines, F3 to
 B3, under the centre). Four kalimba notes - F4, C5, F5, C6
-- have a tine on both rows, and both are marked. Violin's
+- have a tine on both rows, and both are marked. The lever
+harp is set to the key: Scale marks the strings that sound
+the key's notes and lifts a lever tab on each string that
+has to be raised. Its levers only sharpen, so a flat key
+loses notes (F needs a B-flat) - a key note no string can
+sound is named under the picture. Chord notes rings a
+string that is one lever flip from a chord tone, which is
+how a borrowed chord shows up. Violin's
 toggle is
 between first position alone and both positions together:
 the full view adds first position's marks in one colour and
@@ -228,8 +235,8 @@ natural-note roots, major and minor, since it has no single
 settled convention the way guitar's shapes do and a shape
 here is only shown where that's genuinely confident, not
 just correct. A handful of guitar chords have no standard
-open or barre shape either, and the kalimba has no shapes
-yet - only Chord notes. Any of these says so rather than
+open or barre shape either, and the kalimba and the lever
+harp have no shapes yet - only Chord notes. Any of these says so rather than
 showing nothing.
 
 **Preview next chord** dims in a second picture underneath

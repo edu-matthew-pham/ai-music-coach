@@ -142,7 +142,8 @@ def test_every_instrument_is_rendered_a_consistent_height_on_screen():
     on it. Kalimba is outside it for the same reason: a
     board of tines is its own shape, and its two variants
     differ in height from each other (the 41 carries a bass
-    row the 34 does not).
+    row the 34 does not). So is the lever harp: strings
+    sloping down to a soundboard, with a footer line.
     """
 
     import re
@@ -158,7 +159,9 @@ def test_every_instrument_is_rendered_a_consistent_height_on_screen():
 
     fretted_and_keyed = {
         name: height for name, height in heights.items()
-        if _base_instrument_name(name) not in ("Ukulele", "Kalimba")
+        if _base_instrument_name(name) not in (
+            "Ukulele", "Kalimba", "Lever harp"
+        )
     }
 
     assert len(set(fretted_and_keyed.values())) == 1
