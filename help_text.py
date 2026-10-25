@@ -270,8 +270,13 @@ until you pick another. A minor key uses its major key's
 notes with its own home note marked, so A minor is C
 major's seven notes with A as home.
 
-Where an instrument has no standard shape for a chord it
-shows every place the chord's notes fall, and says so.
+Above the tabs, **Show on every chord** has two ticks, Chord
+shape and Chord notes, both on to start. They are different
+colours, so together they read as the shape sitting on top of
+the notes; untick one to see the other alone. Where an
+instrument has no standard shape for a chord it shows every
+place the chord's notes fall, and says so. If you untick both,
+the notes are shown, so a chord is never left blank.
 
 ## Keys and harmony
 

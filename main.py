@@ -556,6 +556,12 @@ with gr.Blocks(
                     scale=1
                 )
 
+            sheet_show = gr.CheckboxGroup(
+                chord_sheet.DEFAULT_SHOW,
+                value=chord_sheet.DEFAULT_SHOW,
+                label="Show on every chord"
+            )
+
             sheet_source = gr.Markdown()
 
             # Remembers which key text the sheet last saw, so a
@@ -1101,7 +1107,7 @@ with gr.Blocks(
     )
 
     def refresh_sheet(selection, key_text, chart_text, last_key_text,
-                      *variants):
+                      show, *variants):
         """
         Redraw the chord sheet for whatever the key dropdown,
         the key box and the chart box now say. Reads the two
@@ -1126,7 +1132,7 @@ with gr.Blocks(
 
         pictures = [
             chord_sheet.sheet_html(
-                selection, key_text, chart_text, variant
+                selection, key_text, chart_text, variant, show
             )
             for variant in variants
         ]
@@ -1143,7 +1149,7 @@ with gr.Blocks(
         ) + tuple(pictures)
 
     sheet_inputs = [
-        sheet_key, key_input, chart_input, sheet_last_key
+        sheet_key, key_input, chart_input, sheet_last_key, sheet_show
     ] + sheet_variants
 
     sheet_outputs = [
@@ -1151,7 +1157,7 @@ with gr.Blocks(
     ] + sheet_views
 
     for trigger in [sheet_key.change, key_input.change,
-                    chart_input.change] + [
+                    chart_input.change, sheet_show.change] + [
         variant.change for variant in sheet_variants
     ]:
         trigger(

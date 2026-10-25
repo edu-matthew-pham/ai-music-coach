@@ -16,7 +16,11 @@ import re
 import pytest
 
 from chord_sheet import (
+    DEFAULT_SHOW,
+    SHOW_NOTES,
+    SHOW_SHAPE,
     browse_keys,
+    chord_picture,
     choices,
     default_selection,
     instrument_families,
@@ -30,8 +34,10 @@ from chord_sheet import (
 from chords import chord_semitones, split_chord
 from harmony import MAJOR_SCALES
 from instrument_diagrams import (
+    CHORD_TONE_COLOUR,
     HOME_COLOUR,
     INSTRUMENTS,
+    SHAPE_COLOUR,
     scale_overlay_for,
     semitones_in,
 )
@@ -301,6 +307,74 @@ def test_chord_names_are_escaped_in_the_page():
     assert "<script" not in page
 
 
+# --- the Show control ------------------------------------------
+
+def _has(svg, colour):
+    return colour in svg
+
+
+def test_both_chord_layers_are_on_to_start():
+    assert DEFAULT_SHOW == [SHOW_SHAPE, SHOW_NOTES]
+
+    svg, note = chord_picture("C", "Piano, 2 octaves", "C")
+
+    assert _has(svg, SHAPE_COLOUR)
+    assert _has(svg, CHORD_TONE_COLOUR)
+    assert note == ""
+
+
+def test_shape_alone_has_no_chord_note_marks():
+    svg, _ = chord_picture("C", "Piano, 2 octaves", "C", [SHOW_SHAPE])
+
+    assert _has(svg, SHAPE_COLOUR)
+    assert not _has(svg, CHORD_TONE_COLOUR)
+
+
+def test_notes_alone_has_no_shape_marks_and_no_note():
+    svg, note = chord_picture("C", "Piano, 2 octaves", "C", [SHOW_NOTES])
+
+    assert _has(svg, CHORD_TONE_COLOUR)
+    assert not _has(svg, SHAPE_COLOUR)
+    assert note == ""
+
+
+def test_nothing_ticked_still_shows_the_notes_and_says_so():
+    svg, note = chord_picture("C", "Piano, 2 octaves", "C", [])
+
+    assert _has(svg, CHORD_TONE_COLOUR)
+    assert not _has(svg, SHAPE_COLOUR)
+    assert "Nothing ticked" in note
+
+
+def test_a_chord_with_no_shape_shows_its_notes_and_says_so():
+    # Kalimba has no shape for Gm.
+    for show in (DEFAULT_SHOW, [SHOW_SHAPE]):
+        svg, note = chord_picture(
+            "F", "Kalimba, 34 keys", "Gm", show
+        )
+
+        assert _has(svg, CHORD_TONE_COLOUR)
+        assert note == "No standard shape - showing the chord's notes."
+
+
+def test_notes_alone_does_not_claim_a_missing_shape():
+    _, note = chord_picture("F", "Kalimba, 34 keys", "Gm", [SHOW_NOTES])
+
+    assert note == ""
+
+
+def test_the_page_follows_the_show_setting():
+    shape_only = sheet_html(
+        "browse:C major", "", "", "Piano, 2 octaves", [SHOW_SHAPE]
+    )
+    both = sheet_html("browse:C major", "", "", "Piano, 2 octaves")
+
+    assert both.count(CHORD_TONE_COLOUR) > shape_only.count(CHORD_TONE_COLOUR)
+    assert both == sheet_html(
+        "browse:C major", "", "", "Piano, 2 octaves", DEFAULT_SHOW
+    )
+
+
 # --- the key box is never written ------------------------------
 
 MAIN = os.path.join(os.path.dirname(__file__), "..", "main.py")
@@ -401,6 +475,27 @@ def test_the_refresh_handler_returns_what_it_is_wired_to():
             assert isinstance(value, ast.BinOp)
             assert isinstance(value.left, ast.Tuple)
             assert len(value.left.elts) == 4
+            return
+
+    pytest.fail("refresh_sheet is missing")
+
+
+def test_the_show_control_feeds_and_triggers_the_sheet():
+    with open(MAIN) as source:
+        text = source.read()
+
+    assert "sheet_show" in text.split("def refresh_sheet")[1].split("sheet_outputs")[0]
+    assert "sheet_show.change" in text
+
+    tree = _main_tree()
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "refresh_sheet":
+            names = [a.arg for a in node.args.args]
+            assert names == [
+                "selection", "key_text", "chart_text",
+                "last_key_text", "show",
+            ]
             return
 
     pytest.fail("refresh_sheet is missing")

@@ -75,6 +75,19 @@ no song loaded.
   full suite - left for Matthew, as agreed. main.py changed, so
   those are the ones to watch.
 
+### Show control (added after the first push)
+
+One **Show on every chord** CheckboxGroup above the tabs: Chord
+shape and Chord notes, both on by default (different colours, so
+they stack readably; notes drawn first, shape on top). It applies
+to every card on every tab. Nothing ticked falls back to the
+notes ("Nothing ticked - showing the chord's notes."), so a card
+is never blank; a chord with no shape still says "No standard
+shape". The key's Scale picture at the top is always shown. No
+drawing code changed: `chord_picture(..., show)` only chooses
+which existing overlays to stack. `refresh_sheet` gained one
+input (`show`); its outputs are unchanged.
+
 ### Open, deliberately not done
 
 - Remembering the last instrument tab (per-viewer convenience).

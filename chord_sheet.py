@@ -273,24 +273,57 @@ def stack(structure, *overlays):
     return structure[: structure.rindex("</svg>")] + inner + "</svg>"
 
 
-def chord_picture(signature, instrument, chord_name):
+SHOW_SHAPE = "Chord shape"
+SHOW_NOTES = "Chord notes"
+
+# Both on to start: the two layers are different colours, so
+# together they stay readable.
+DEFAULT_SHOW = [SHOW_SHAPE, SHOW_NOTES]
+
+
+def chord_picture(signature, instrument, chord_name, show=None):
     """
-    One chord's picture on one instrument: the beginner shape
-    where there is one, else every place the chord's notes
-    fall - the same fallback the mixer makes. Returns
-    (svg, note) where note says which it is.
+    One chord's picture on one instrument. `show` is which of
+    the two chord layers to draw: the beginner shape, every
+    place the chord's notes fall, or both (the default).
+    Returns (svg, note) where note says anything the reader
+    needs to know about what they are looking at.
+
+    A card is never blank. A chord with no shape shows its
+    notes whatever is ticked (and says so, if the shape was
+    asked for); with nothing ticked, the notes are shown too.
     """
+
+    show = DEFAULT_SHOW if show is None else list(show)
+
+    want_shape = SHOW_SHAPE in show
+    want_notes = SHOW_NOTES in show
 
     structure = structure_for(instrument)
-    shape = shape_overlay_for(signature, instrument, chord_name)
-
-    if shape is not None:
-        return stack(structure, shape), ""
-
-    return (
-        stack(structure, chord_overlay_for(signature, instrument, chord_name)),
-        "No standard shape - showing the chord's notes.",
+    shape = (
+        shape_overlay_for(signature, instrument, chord_name)
+        if want_shape else None
     )
+    notes = chord_overlay_for(signature, instrument, chord_name)
+
+    if not want_shape and not want_notes:
+        return (
+            stack(structure, notes),
+            "Nothing ticked - showing the chord's notes.",
+        )
+
+    if want_shape and shape is None:
+        return (
+            stack(structure, notes),
+            "No standard shape - showing the chord's notes.",
+        )
+
+    # Notes underneath, the shape on top of them.
+    layers = ([notes] if want_notes else []) + (
+        [shape] if want_shape else []
+    )
+
+    return stack(structure, *layers), ""
 
 
 def scale_picture(signature, home, instrument):
@@ -311,7 +344,7 @@ _CARD = (
 )
 
 
-def sheet_html(selection, key_text, chart_text, instrument):
+def sheet_html(selection, key_text, chart_text, instrument, show=None):
     """
     The sheet for one instrument: the key's notes, then a card
     for every chord. HTML for a gr.HTML block.
@@ -330,7 +363,9 @@ def sheet_html(selection, key_text, chart_text, instrument):
     ]
 
     for name in state["chords"]:
-        picture, note = chord_picture(signature, instrument, name)
+        picture, note = chord_picture(
+            signature, instrument, name, show
+        )
         note_html = (
             f'<div style="font-size:0.85em;opacity:0.75">'
             f'{html.escape(note)}</div>' if note else ""
