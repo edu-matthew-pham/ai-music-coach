@@ -368,7 +368,13 @@ Each group is a green bracket labelled with its lowest fret. **Open
 strings are free** (ticked to start) means an open string does not
 count toward the width, so it fits in any position; untick it to
 make open strings count, which means they only fit the lowest
-position.
+position. **Prefer lower positions** (unticked to start) is for
+Stay in a position only: instead of as few positions as possible,
+the position may change at the start of each phrase, and each is the
+lowest one that holds that phrase. The hand sits lower on the neck
+but moves more, which is the trade; a long song like the Wellerman
+goes from one high position to about a dozen low-and-middle ones.
+The legend and each note's hover text say when it is on.
 
 If the tune has notes the instrument does not have, they are
 drawn in red in a strip marked "off" at the left, and a line

@@ -832,3 +832,122 @@ def test_the_nut_is_drawn_thick_only_when_the_box_starts_at_the_first_fret():
 
     assert 'stroke-width="2.5"' in chord_box_svg(low, 0, 0)
     assert 'stroke-width="2.5"' not in chord_box_svg(high, 0, 0)
+
+
+# --- Prefer lower positions ---------------------------------------
+
+def test_prefer_low_splits_to_get_a_lower_window_when_cuts_are_allowed():
+    """
+    Windows are bits: note 0 fits windows 0 and 1, notes 1 and 2
+    fit windows 1 and 2. One run needs window 1 (lowest frets 1
+    for all three: 3); splitting gives window 0 for note 0 and 1
+    for the other two (0 + 2 = 2), which is lower.
+    """
+
+    from fretted_tab import _group_notes
+
+    masks = [0b011, 0b110, 0b110]
+    cuts = [True, True, True]
+
+    assert _group_notes(masks, cuts) == [(0, 2)]
+    assert _group_notes(masks, cuts, prefer_low=True) == [(0, 0), (1, 2)]
+
+
+def test_prefer_low_does_not_cut_where_a_cut_is_not_allowed():
+    from fretted_tab import _group_notes
+
+    masks = [0b011, 0b110, 0b110]
+
+    assert _group_notes(
+        masks, [True, False, False], prefer_low=True
+    ) == [(0, 2)]
+
+
+def test_prefer_low_still_cuts_where_one_position_cannot_hold_the_notes():
+    from fretted_tab import _group_notes
+
+    masks = [0b001, 0b100]
+
+    assert _group_notes(
+        masks, [True, False], prefer_low=True
+    ) == [(0, 0), (1, 1)]
+
+
+def _wellerman():
+    pitches, durations, lyrics, key, chart, _tempo = load_wellerman()
+
+    return Piece.read(pitches, durations, lyrics, key, chart)
+
+
+def test_prefer_low_is_off_by_default_and_changes_nothing_then():
+    piece = _wellerman()
+    plain = fretted_blocks(piece, GUITAR_13, "Stay in a position", 5, True)
+    off = fretted_blocks(
+        piece, GUITAR_13, "Stay in a position", 5, True, False
+    )
+
+    assert plain == off
+
+
+def test_prefer_low_on_the_wellerman_sits_lower_and_never_wider():
+    """Same notes, a lower total of frets, every box still 5 wide."""
+
+    piece = _wellerman()
+    off = fretted_blocks(piece, GUITAR_13, "Stay in a position", 5, True)
+    on = fretted_blocks(
+        piece, GUITAR_13, "Stay in a position", 5, True, True
+    )
+
+    def total(blocks):
+        return sum(b["fret"] or 0 for b in blocks if b["in_range"])
+
+    assert [b["pitch"] for b in on] == [b["pitch"] for b in off]
+    assert total(on) < total(off)
+    assert len({b["segment"] for b in on if b["in_range"]}) > len(
+        {b["segment"] for b in off if b["in_range"]}
+    )
+
+    for number in {b["segment"] for b in on if b["in_range"]}:
+        frets = [
+            b["fret"] for b in on
+            if b["segment"] == number and b["fret"]
+        ]
+
+        assert not frets or max(frets) - min(frets) <= 4
+
+
+def test_prefer_low_changes_position_only_at_phrase_starts():
+    piece = _wellerman()
+    starts = piece.starts()
+    phrase_starts = {
+        round(starts[first], 3) for first, _last in piece.phrases()
+    }
+    on = fretted_blocks(
+        piece, GUITAR_13, "Stay in a position", 5, True, True
+    )
+    previous = None
+
+    for block in on:
+        if block["segment"] != previous and previous is not None:
+            assert round(block["start"], 3) in phrase_starts
+
+        previous = block["segment"]
+
+
+def test_prefer_low_is_said_in_the_legend_and_the_hover_text():
+    piece = _wellerman()
+    markup = melody_view(
+        piece, GUITAR_13, fingering="Stay in a position", prefer_low=True
+    )
+    plain = melody_view(piece, GUITAR_13, fingering="Stay in a position")
+
+    assert "Prefer lower positions is on" in markup
+    assert "Prefer lower positions" not in plain
+
+
+def test_nearest_the_nut_ignores_prefer_low():
+    piece = _wellerman()
+
+    assert fretted_blocks(
+        piece, GUITAR_13, "Nearest the nut", 5, True, True
+    ) == fretted_blocks(piece, GUITAR_13, "Nearest the nut", 5, True)

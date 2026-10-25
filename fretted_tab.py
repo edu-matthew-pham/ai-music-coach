@@ -158,7 +158,7 @@ def _position_masks(places_list, width, reach, open_free):
     return masks
 
 
-def _group_notes(masks, natural_cut):
+def _group_notes(masks, natural_cut, prefer_low=False):
     """
     Split the notes (in order) into the fewest runs that each fit
     one window, looking at the whole tune first: among the splits
@@ -167,11 +167,20 @@ def _group_notes(masks, natural_cut):
     line or a phrase start), then the most even runs (smallest sum
     of squared sizes). Returns [(first, last)] note indexes. The
     same input always gives the same answer.
+
+    prefer_low changes the ranking (the caller then passes cuts
+    that are phrase starts only): fewest cuts away from a phrase
+    start, then the lowest frets - each run's window is the lowest
+    one that holds all its notes, and the splits are ranked by the
+    total of those windows' lowest frets, counted once per note -
+    then fewest runs, then the most even. So the position may change
+    at every phrase, to keep to lower frets, but nowhere else unless
+    a phrase cannot be held in one position.
     """
 
     count = len(masks)
     best = [None] * (count + 1)
-    best[0] = ((0, 0, 0), None)
+    best[0] = ((0, 0, 0, 0), None)
 
     for first in range(count):
         if best[first] is None:
@@ -187,12 +196,23 @@ def _group_notes(masks, natural_cut):
                 break
 
             size = last - first + 1
-            cost = (
-                cost_before[0] + 1,
-                cost_before[1]
-                + (0 if first == 0 or natural_cut[first] else 1),
-                cost_before[2] + size * size,
-            )
+            low = (run & -run).bit_length() - 1
+            unnatural = 0 if first == 0 or natural_cut[first] else 1
+
+            if prefer_low:
+                cost = (
+                    cost_before[0] + unnatural,
+                    cost_before[1] + low * size,
+                    cost_before[2] + 1,
+                    cost_before[3] + size * size,
+                )
+            else:
+                cost = (
+                    cost_before[0] + 1,
+                    cost_before[1] + unnatural,
+                    0,
+                    cost_before[3] + size * size,
+                )
 
             if best[last + 1] is None or cost < best[last + 1][0]:
                 best[last + 1] = (cost, first)
@@ -208,7 +228,7 @@ def _group_notes(masks, natural_cut):
     return list(reversed(groups))
 
 
-def _natural_cuts(grouped, piece):
+def _natural_cuts(grouped, piece, phrases_only=False):
     """
     For each grouped note, whether a cut just before it is at a
     natural pause: after a rest, on a bar line, or at the start of
@@ -232,14 +252,19 @@ def _natural_cuts(grouped, piece):
             previous_end is not None and start > previous_end + 0.001
         )
 
-        cuts.append(after_rest or start in phrase_starts or start in bars)
+        if phrases_only:
+            cuts.append(start in phrase_starts)
+        else:
+            cuts.append(
+                after_rest or start in phrase_starts or start in bars
+            )
         previous_end = block["start"] + block["length"]
 
     return cuts
 
 
 def _place_in_positions(blocks, places_list, instrument, piece, width,
-                        open_free):
+                        open_free, prefer_low=False):
     """
     Layer 2: give each playable block a place inside a hand
     position. Fills in string, fret, why, segment and position on
@@ -256,7 +281,9 @@ def _place_in_positions(blocks, places_list, instrument, piece, width,
     grouped = [blocks[i] for i in playable]
     places = [places_list[i] for i in playable]
     masks = _position_masks(places, width, reach, open_free)
-    groups = _group_notes(masks, _natural_cuts(grouped, piece))
+    groups = _group_notes(
+        masks, _natural_cuts(grouped, piece, prefer_low), prefer_low
+    )
 
     for number, (first, last) in enumerate(groups):
         window = -1
@@ -282,7 +309,8 @@ def _place_in_positions(blocks, places_list, instrument, piece, width,
             block["segment"] = number
             used.append(fret)
             block["why"] = _why_in_position(
-                note, string, fret, lo, width, instrument, open_free
+                note, string, fret, lo, width, instrument, open_free,
+                prefer_low
             )
 
         fretted = [fret for fret in used if fret > 0]
@@ -292,7 +320,20 @@ def _place_in_positions(blocks, places_list, instrument, piece, width,
             grouped[index]["position"] = label
 
 
-def _why_in_position(note, string, fret, lo, width, instrument, open_free):
+def _why_in_position(note, string, fret, lo, width, instrument, open_free,
+                     prefer_low=False):
+    text = _why_in_position_text(
+        note, string, fret, lo, width, instrument, open_free
+    )
+
+    return text + (
+        "; Prefer lower positions is on, so this position is the "
+        "lowest that holds its phrase" if prefer_low else ""
+    )
+
+
+def _why_in_position_text(note, string, fret, lo, width, instrument,
+                          open_free):
     name = string_names(instrument)[string]
     span = f"frets {lo} to {lo + width - 1}"
 
@@ -311,7 +352,8 @@ def _why_in_position(note, string, fret, lo, width, instrument, open_free):
 
 
 def fretted_blocks(piece, instrument, fingering=NEAREST_NUT,
-                   width=DEFAULT_WIDTH, open_free=True):
+                   width=DEFAULT_WIDTH, open_free=True,
+                   prefer_low=False):
     """
     Every sounding note of the piece as one block:
 
@@ -382,7 +424,8 @@ def fretted_blocks(piece, instrument, fingering=NEAREST_NUT,
 
     if fingering == STAY_IN_POSITION:
         _place_in_positions(
-            blocks, places_list, instrument, piece, width, open_free
+            blocks, places_list, instrument, piece, width, open_free,
+            prefer_low
         )
 
     return blocks
@@ -921,6 +964,12 @@ LEGEND_POSITION = (
     "changing at a pause where it can. {open}"
 )
 
+LEGEND_LOW = (
+    " Prefer lower positions is on: the position may change at each "
+    "phrase, and each is the lowest that holds the phrase, so the "
+    "hand sits lower on the neck but moves more than with it off."
+)
+
 LEGEND_CHORDS = (
     "Chord names are over the tab where each chord starts, with a "
     "small chord box (open ring, cross for a string not played, "
@@ -929,7 +978,8 @@ LEGEND_CHORDS = (
 
 
 def fretted_view(piece, instrument, fingering=NEAREST_NUT,
-                 width=DEFAULT_WIDTH, open_free=True, show=None):
+                 width=DEFAULT_WIDTH, open_free=True, show=None,
+                 prefer_low=False):
     """
     Everything a guitar or ukulele tab shows for a piece: the
     line about notes off the neck if there is one, the tab, and a
@@ -941,7 +991,7 @@ def fretted_view(piece, instrument, fingering=NEAREST_NUT,
     want_melody = "Melody" in show or not want_chords
 
     all_blocks = fretted_blocks(
-        piece, instrument, fingering, width, open_free
+        piece, instrument, fingering, width, open_free, prefer_low
     )
 
     if not all_blocks:
@@ -966,7 +1016,7 @@ def fretted_view(piece, instrument, fingering=NEAREST_NUT,
                 "width." if open_free else
                 "Open strings count toward the width."
             ),
-        )
+        ) + (LEGEND_LOW if prefer_low else "")
     else:
         legend = LEGEND + LEGEND_NUT
 

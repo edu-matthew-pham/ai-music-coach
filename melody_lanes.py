@@ -1101,7 +1101,7 @@ CHORD_LEGEND = (
 
 def melody_view(piece, instrument, show=None, header=HEADER_SHORT,
                 placement=NEAR_MELODY, fingering=NEAREST_NUT,
-                width=DEFAULT_WIDTH, open_free=True):
+                width=DEFAULT_WIDTH, open_free=True, prefer_low=False):
     """
     Everything one instrument tab shows for a piece (a phrase
     or the whole tune), as HTML: the out-of-range line if there
@@ -1121,7 +1121,8 @@ def melody_view(piece, instrument, show=None, header=HEADER_SHORT,
         from fretted_tab import fretted_view
 
         return fretted_view(
-            piece, instrument, fingering, width, open_free, show
+            piece, instrument, fingering, width, open_free, show,
+            prefer_low
         )
 
     show = DEFAULT_SHOW if show is None else list(show)
@@ -1238,7 +1239,7 @@ def melody_page(pitch_text, duration_text, lyric_text, key_text,
                 chart_text, phrase_label, instruments, show=None,
                 header=HEADER_SHORT, placement=NEAR_MELODY,
                 fingering=NEAREST_NUT, width=DEFAULT_WIDTH,
-                open_free=True):
+                open_free=True, prefer_low=False):
     """
     What the Melody section shows for the text of the boxes:
     {"choices", "label", "views", "status"}. Reads the boxes'
@@ -1279,7 +1280,7 @@ def melody_page(pitch_text, duration_text, lyric_text, key_text,
         "views": [
             melody_view(
                 piece, name, show, header, placement, fingering,
-                width, open_free
+                width, open_free, prefer_low
             )
             for name in instruments
         ],

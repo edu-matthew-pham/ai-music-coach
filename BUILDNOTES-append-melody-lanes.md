@@ -270,3 +270,30 @@ thresholds, Show rule, ukulele shapes - all caught after two
 survivors got tests. 20,526 melody renders byte-identical.
 Looked at Twinkle on guitar and ukulele: legible; ukulele G draws
 its 2-fret bar as a barre (from the shape data).
+
+
+## Prefer lower positions toggle (2026-10-26, Matthew asked for it)
+
+Checkbox in the Melody section, off by default; only changes Stay in
+a position (Nearest the nut ignores it). Named in the legend and in
+each note's hover text when on.
+
+- First try, "lowest frets first, then fewest changes" over any cut,
+  was degenerate: the Wellerman split into 61 positions, i.e. nearest
+  the nut with brackets. Dropped.
+- Built rule: when on, `_group_notes` ranks (cuts away from a phrase
+  start, total of each run's lowest window fret counted once per
+  note, fewest runs, most even). So a position can change at each
+  phrase, never mid-phrase unless one position cannot hold the
+  phrase. No tuned weights; deterministic.
+- Wellerman, guitar 13 frets, width 5: off = 1 position (frets
+  6-10, fret total 1431); on = 13 positions alternating about frets
+  1-5 and 6-10 (total 1052). Width 6: 11 positions, total 882.
+  Width 4: 13 positions, total 1218.
+- Known: it hops between the low and the 6-10 block phrase by phrase
+  on the Wellerman; that is the trade the toggle states.
+
+Checked: 8 new tests (hand-worked masks, off changes nothing, only at
+phrase starts, never wider than the width, legend/hover text, nearest
+the nut ignores it); five rule mutations all caught; 20,526 melody
+renders byte-identical.
