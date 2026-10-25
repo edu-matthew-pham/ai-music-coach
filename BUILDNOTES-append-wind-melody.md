@@ -44,7 +44,7 @@ Built
   EMPTY: a note with no entry draws a grey dashed "no fingering yet"
   chart, the legend says so, and nothing is guessed.
 
-NOT BUILT / BLOCKED
+NOT BUILT / BLOCKED (fingerings: done in stage 2, below)
 - The fingering tables. Whether a fingering is right cannot be
   tested; typing a whole chromatic range from memory was judged
   unsafe (students would be taught it). Matthew is to supply a
@@ -92,3 +92,78 @@ Checked
 - Not run: the full pytest suite, the interface test files that
   need gradio, the Playwright browser tests of the real app, a
   click-through of the live app.
+
+
+## Stage 2 - the fingerings, from Matthew's charts (2026-10-26)
+
+Charts (Matthew's, not in the repo - publishers' copyright):
+- Flute: "Basic Flute Fingering Chart", Karen Evans Moratz, Flute For
+  Dummies (Wiley) - symbols, B3 to G7, three B-flats.
+- Flute: Yamaha flute fingering chart - a drawn flute with the
+  pressed keys red, C4 to C7, with alternates.
+- Sax: McGill Music Sax School "Saxophone Finger Chart, All Saxes" -
+  standard range B-flat 3 to F-sharp 6, plus altissimo (not used).
+
+How they were read (no fingering typed from memory)
+- Each page rendered at 300-400 dpi. Key positions found once on a
+  reference diagram (low B-flat on the sax, low B on the flute), then
+  every key of every diagram measured at those points (filled or
+  not). Readings were clean (near 0 or 1) except the Dummies foot
+  rollers (striped) and the gizmo; those, the sax alternates and the
+  top sax notes were looked at by eye.
+- The flute was read from BOTH charts independently and compared.
+  They agree on every note's keys except three, at the top:
+  B-flat 6 and B 6 (Dummies also holds the D-sharp key) and C7
+  (Dummies adds the gizmo, B-foot only). The Yamaha fingering is the
+  one drawn (no B-foot or extra key needed); the Dummies one is kept
+  as an alternate; `FLUTE_DIFFERENCES` lists them. FOR A PLAYER TO
+  SETTLE.
+- A script re-read all three charts and compared them with the
+  tables: 125 diagrams, 0 mismatches. Four planted errors (a missing
+  pinky key, a missing G-sharp, a wrong alternate, a wrong side key)
+  were all caught by it. The script lives outside the repo (it needs
+  the PDFs).
+
+What the charts corrected (things memory would have got wrong)
+- Flute: the right pinky holds the D-sharp key down for nearly every
+  note, and comes UP for low D and middle D; C5 is the first finger
+  only (not the second).
+- Sax: side B-flat is the A fingering (L1 L2) plus the side key;
+  McGill's other B-flat is L1 + R2; high F-sharp on this chart is a
+  front-F fingering; there are two small right-hand keys (high F-sharp,
+  alternate F-sharp) drawn only where used.
+- Stage 1 had the flute's top note at pitch 96; C7 is 84 (C4 = 48).
+  Fixed, with a test that says why.
+
+Built
+- `wind_fingerings.py` filled: flute 48-84, sax 46-78, every note.
+  Each entry: keys, a short tag where the chart's fingering is worth
+  naming ("1-and-1 B-flat", "thumb off", "foot C roller"),
+  alternates (kept for the toggle, not drawn), and
+  `same_as_lower_octave` on the flute notes fingered as an octave
+  below (E5 to C#6), which the view tags "same keys as an octave
+  lower" so two identical charts are not a puzzle.
+- Key layouts grown to the charts' keys: flute 16 (thumb B and
+  B-flat lever, G-sharp, B-flat lever, two trill keys, D-sharp, C-sharp
+  and C rollers, gizmo), drawn upright; sax 23, placed as McGill
+  draws them (octave, front F, bis, three palm keys, the left pinky
+  table, three side keys, high and alternate F-sharp, E-flat, low C).
+- The view shows each note's tag under its name; charts are bigger
+  (scale 0.95, the sax's 23 keys were cramped at 0.72) and the cells
+  line up at the top.
+
+Checked
+- tests/test_wind_fingerings.py: the four completeness tests no longer
+  skip and pass (every note has an entry; no two notes draw alike
+  except the flagged flute octave pairs). 252 pass with the melody,
+  harp, piano, chord and fretted-tab files; 14 mutations still all
+  caught.
+- Looked at in a browser (Frere Jacques, both instruments): C5 to D5
+  on the flute shows the "8 keys" pill, as it should.
+
+Still open
+- The three flute differences above, for a player.
+- Alternates are stored, not drawn (stage 3's toggle).
+- A flautist or saxophonist should look over the drawn charts once:
+  the transcription is checked against the charts, not against an
+  instrument.

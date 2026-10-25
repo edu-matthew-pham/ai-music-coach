@@ -61,10 +61,11 @@ from wind_fingerings import WINDS
 # major sixth above what sounds.
 TRANSPOSE = {"Flute": 0, "Alto sax": 9}
 
-# The written range each can finger, low to high, as pitch numbers:
-# the flute C4 to C7 (concert pitch); the alto sax low B-flat to
-# high F-sharp (written B-flat 3 to F-sharp 6).
-WRITTEN_RANGE = {"Flute": (48, 96), "Alto sax": (46, 78)}
+# The written range each can finger, low to high, as pitch numbers
+# (C4 = 48): the flute C4 to C7, 48 to 84 (concert pitch); the alto
+# sax low B-flat to high F-sharp, written B-flat 3 to F-sharp 6, 46 to
+# 78. The fingering charts cover exactly these.
+WRITTEN_RANGE = {"Flute": (48, 84), "Alto sax": (46, 78)}
 
 # The alto's written key for each major key it sounds in: the key
 # a major sixth up. Anything not listed (a minor key, say) is
@@ -385,7 +386,7 @@ def fold_repeats(rows):
 
 # --- the drawing ------------------------------------------------
 
-CHART_SCALE = 0.72
+CHART_SCALE = 0.95
 CHART_WIDTH = 44
 CHART_HEIGHT = 100
 
@@ -506,6 +507,11 @@ def _cell_html(block, instrument, previous, show_roles):
         f'color:#6b7280;height:12px">{block["concert"]} concert</span>'
         if block["concert"] else ""
     )
+    tag = (
+        f'<span class="wind-tag" style="font-size:9px;color:#92400e;'
+        f'text-align:center;line-height:1.1;max-width:{width:g}px">'
+        f'{html.escape(block["tag"])}</span>' if block["tag"] else ""
+    )
     lyric = html.escape(block["lyric"] or "")
     bar = max(14, width - 12)
 
@@ -520,7 +526,7 @@ def _cell_html(block, instrument, previous, show_roles):
         f'<span class="wind-role" style="font-size:10px;font-weight:700;'
         f'color:{CHORD_TONE_COLOUR};height:12px">{role or ""}</span>'
         f'<span style="font-size:13px;font-weight:600">{block["note"]}</span>'
-        f"{concert}"
+        f"{concert}{tag}"
         f'<span style="font-size:12px">{lyric}</span>'
         f'<div style="height:3px;border-radius:2px;background:#94a3b8;'
         f'width:{bar:g}px;margin-top:2px"></div>'
@@ -605,7 +611,7 @@ def _row_html(row, instrument, show_melody, show_chords, number, many):
         f"{badge}"
         f'<span class="wind-times" style="font-size:11px;font-weight:600;'
         f'color:#4b5563">{times}</span></div>'
-        f'<div style="display:flex;gap:6px;align-items:flex-end;'
+        f'<div style="display:flex;gap:6px;align-items:flex-start;'
         f'flex-wrap:wrap">{"".join(cells)}</div>'
         f"{missing}</div>"
     )

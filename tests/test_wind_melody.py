@@ -139,9 +139,19 @@ def test_rests_leave_a_gap_and_are_not_blocks():
 
 # --- out of range moves an octave, flagged ----------------------
 
-def test_flute_range_is_c4_to_c7():
-    assert WRITTEN_RANGE[FLUTE] == (48, 96)
+def test_flute_range_is_c4_to_c7_and_sax_b_flat_3_to_f_sharp_6():
+    # C4 = 48, so C7 = 48 + 36 = 84; B-flat 3 = 48 - 2 = 46 and
+    # F-sharp 6 = 48 + 24 + 6 = 78. (Stage 1 had the flute at 96,
+    # caught when the first chart was transcribed.)
+    assert WRITTEN_RANGE[FLUTE] == (48, 84)
     assert WRITTEN_RANGE[SAX] == (46, 78)
+
+
+def test_a_note_above_the_flute_comes_down_an_octave():
+    # D7 (86) is above C7 (84): played D6 (74).
+    block = wind_blocks(_piece("D7"), FLUTE)[0]
+
+    assert block["shift"] == -1 and block["written_pitch"] == 74
 
 
 def test_a_note_below_the_flute_goes_up_an_octave_and_is_flagged():
@@ -429,7 +439,8 @@ def test_the_keys_pressed_are_filled():
     page = wind_view(_piece("F4", chart=""), FLUTE, table=table)
 
     assert _count(page, "wind-key wind-down") == 2
-    assert _count(page, 'class="wind-key"') == 6  # the other six
+    others = len(wind_fingerings.KEY_LAYOUT[FLUTE]) - 2
+    assert _count(page, 'class="wind-key"') == others
 
 
 def test_every_key_ring_is_drawn_for_a_known_note():
