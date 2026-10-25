@@ -123,6 +123,69 @@ def chord_semitones(name):
     ]
 
 
+# How many letters above the root each interval is written -
+# a third is two letters up whether major or minor, a fifth
+# four whether diminished, perfect or augmented. Covers every
+# interval CHORD_QUALITIES uses.
+_LETTERS_UP = {
+    0: 0, 2: 1, 3: 2, 4: 2, 5: 3, 6: 4,
+    7: 4, 8: 4, 9: 5, 10: 6, 11: 6,
+}
+
+_LETTERS = "CDEFGAB"
+
+
+def chord_spellings(name):
+    """
+    How each of a chord's tones is written when the chord
+    spells itself: {pitch class: note name}. Spelled by
+    letter, the way theory writes a chord - the third two
+    letters above the root, the fifth four, the seventh six -
+    with whatever sharp or flat lands that letter on the
+    pitch: Db = Db F Ab, Gm = G Bb D, E = E G# B, Bb7 = Bb D
+    F Ab.
+
+    A tone that would need a double sharp or flat (Gbm's
+    third would be Bbb) falls back to the plain name in the
+    root's own direction - flats for a flat root, sharps
+    otherwise - so Gbm reads Gb A Db. Rare, and a double
+    accidental is no help to a beginner reading a diagram.
+
+    Independent of any key: what a chord's marks are called
+    is the chord's business, not the key signature's.
+    """
+
+    from notes import FLAT_NAMES, SHARP_NAMES
+
+    root, quality = split_chord(name)
+
+    root_semitone = NOTE_SEMITONES[root] % 12
+    root_letter = _LETTERS.index(root[0])
+    plain = FLAT_NAMES if root.endswith("b") else SHARP_NAMES
+
+    spellings = {}
+
+    for interval in CHORD_QUALITIES[quality]:
+
+        pitch = (root_semitone + interval) % 12
+        letter = _LETTERS[(root_letter + _LETTERS_UP[interval]) % 7]
+        offset = (pitch - NOTE_SEMITONES[letter]) % 12
+
+        if offset > 6:
+            offset -= 12
+
+        if offset == 0:
+            spellings[pitch] = letter
+        elif offset == 1:
+            spellings[pitch] = letter + "#"
+        elif offset == -1:
+            spellings[pitch] = letter + "b"
+        else:
+            spellings[pitch] = plain[pitch]
+
+    return spellings
+
+
 def chord_root(name):
     """
     The pitch class a chord is built on, which is what a

@@ -513,3 +513,56 @@ def test_violin_both_positions_chord_notes_use_a_fixed_ring():
     svg = violin_chord_overlay_both("C", {0, 4, 7})  # C major triad
 
     assert f'stroke="{CHORD_TONE_COLOUR}"' in svg
+
+def _labels(svg):
+    return re.findall(r">([A-G][#b]?)</text>", svg)
+
+
+@pytest.mark.parametrize("instrument", [
+    name for name in INSTRUMENTS if not name.startswith("Lever harp")
+])
+def test_chord_marks_are_spelled_by_the_chord_not_the_key(instrument):
+    """
+    A Db chord's marks read Db F Ab in C, in G and in F
+    alike - what a chord's tones are called is the chord's
+    business. The marks themselves do not move with the key
+    either way; only the words did. The lever harp is left
+    on its own key spelling for PLAN-lever-harp.md.
+
+    Violin is checked for spelling only: its chord layer
+    marks just the notes inside the key's own fingering
+    pattern, so which tones appear depends on the key by
+    design (found when this test first assumed otherwise).
+    """
+
+    from instrument_diagrams import chord_overlay_for, shape_overlay_for
+
+    violin = instrument.startswith("Violin")
+
+    for chord, expected in (("Db", {"Db", "F", "Ab"}),
+                            ("E", {"E", "G#", "B"}),
+                            ("Gm", {"G", "Bb", "D"})):
+        per_key = [
+            chord_overlay_for(key, instrument, chord)
+            for key in ("C", "G", "F")
+        ]
+
+        for picture in per_key:
+            assert set(_labels(picture)) <= expected
+
+        if not violin:
+            assert set(_labels(per_key[0])) == expected
+            assert per_key[0] == per_key[1] == per_key[2]
+
+        shape = shape_overlay_for("C", instrument, chord)
+
+        if shape is not None and _labels(shape):
+            assert set(_labels(shape)) <= expected
+
+
+def test_the_scale_layer_still_spells_by_the_key():
+    from instrument_diagrams import scale_overlay_for
+
+    assert "Bb" in _labels(scale_overlay_for("F", "Piano, 3 octaves"))
+    assert "A#" not in _labels(scale_overlay_for("F", "Piano, 3 octaves"))
+    assert "F#" in _labels(scale_overlay_for("G", "Guitar, 13 frets"))

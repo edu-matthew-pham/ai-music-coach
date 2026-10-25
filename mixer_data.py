@@ -332,17 +332,17 @@ def _diagrams(key, timeline):
 
             try:
 
-                # Spelled in the piece's opening key. The
-                # marks themselves never move with the key -
-                # checked directly: chord_overlay_for("G", ...)
-                # and chord_overlay_for("Ab", ...) for the
-                # same chord differ only in their text labels,
-                # never in a mark's position - and a single
-                # chord name can occur in more than one key's
-                # section of a modulating piece, so there is
-                # no one key that is straightforwardly
-                # "correct" to spell it in. Left as a smaller,
-                # cosmetic known gap rather than solved here.
+                # Chord marks spell themselves by the chord
+                # (chords.chord_spellings: Db reads Db F Ab
+                # in any key), which closed the gap this
+                # comment used to record - a chord name can
+                # occur in more than one key's section of a
+                # modulating piece, so no one key was
+                # "correct" to spell it in. The opening key is
+                # still passed: the lever harp's chord layer
+                # is key-spelled until PLAN-lever-harp.md
+                # takes it up, and the marks never move with
+                # the key either way.
                 chords[instrument][chord_name] = chord_overlay_for(
                     opening_key, instrument, chord_name
                 )

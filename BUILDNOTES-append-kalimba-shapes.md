@@ -64,3 +64,37 @@ not yet played on the real instrument.
 - Only the four qualities are shaped; maj7, sus, 6 etc. return
   None. Extending is a tuple and a test parameter, once
   checked.
+
+
+## Chord marks spell themselves by the chord
+
+Same session, after Matthew spotted "C#" on a Db shape render
+(drawn in C). The shape was right; the label came from the key.
+
+- **New: `chords.chord_spellings(name)`** - each tone spelled
+  by letter from the root (third two letters up, fifth four,
+  seventh six) plus whatever sharp or flat lands it: Db = Db F
+  Ab, Gm = G Bb D, E = E G# B, Bb7 = Bb D F Ab. A tone needing
+  a double accidental falls back to the plain name in the
+  root's direction (Gbm = Gb A Db) - agreed with Matthew, rare.
+  Single-accidental letters theory requires are kept: Abm = Ab
+  Cb Eb, C# = C# E# G#, Fdim = F Ab Cb.
+- **Where it applies:** the Chord-notes layer on piano, guitar,
+  ukulele, violin and kalimba, and the Chord-shape labels on
+  violin and kalimba (piano/guitar/ukulele shapes show finger
+  numbers). Scale stays key-spelled. **Lever harp left on key
+  spelling** - its chord layer belongs to PLAN-lever-harp.md's
+  chat; a handover prompt was given to Matthew.
+- **Measured, not assumed:** every render (20526 across all
+  instruments, six keys, 14 roots, all 11 qualities) diffed
+  before/after. Changes only in Chord-notes and Chord-shape
+  label text; zero changes once label text is stripped (no mark
+  moved); lever harp, Scale and structure byte-identical.
+- **A test that was wrong, not the code:** the new "same labels
+  in every key" test failed on violin. Violin's chord layer
+  marks only notes inside the key's own fingering pattern, so
+  which tones appear is key-dependent by design. The test now
+  checks violin for spelling only.
+- `mixer_data.py`: comment only - the "spelled in the opening
+  key, cosmetic known gap" note described exactly this gap and
+  was rewritten. DESIGN.md invariant 4 updated (project doc).

@@ -193,6 +193,21 @@ def name_for(semitone, key):
     return SHARP_NAMES[semitone % 12]
 
 
+def _spelled(semitone, key, spelling=None):
+    """
+    A chord mark's label: the chord's own spelling of that
+    tone when one is given (chords.chord_spellings - Db reads
+    Db F Ab in any key), else the key's dialect. Chord-notes
+    and chord-shape layers pass a spelling; Scale never does,
+    since a scale's notes are the key's business.
+    """
+
+    if spelling is not None and semitone % 12 in spelling:
+        return spelling[semitone % 12]
+
+    return name_for(semitone, key)
+
+
 def describe_key(key):
     """
     The key written the way the app names it elsewhere.
@@ -1131,7 +1146,8 @@ HIGHER_SHAPE_COLOUR = "#00838f"
 MUTED_COLOUR = "#c62828"
 
 
-def piano_chord_overlay(key, chord_semitone_set, octaves=None):
+def piano_chord_overlay(key, chord_semitone_set, octaves=None,
+                        spelling=None):
     """
     Chord tones only, on a transparent piano, positioned
     exactly as piano_diagram places its marks - same
@@ -1171,7 +1187,7 @@ def piano_chord_overlay(key, chord_semitone_set, octaves=None):
             f'<text x="{x}" y="{y + 4}" text-anchor="middle" '
             f'font-size="11" font-family="sans-serif" '
             f'fill="#ffffff">'
-            f'{_escape(name_for(semitone, key))}</text>'
+            f'{_escape(_spelled(semitone, key, spelling))}</text>'
         )
 
     for index, semitone in enumerate(white_semitones):
@@ -1212,7 +1228,7 @@ def piano_chord_overlay(key, chord_semitone_set, octaves=None):
 
 
 def fretboard_chord_overlay(key, chord_semitone_set, instrument="Guitar",
-                             frets_shown=FRETS_SHOWN):
+                             frets_shown=FRETS_SHOWN, spelling=None):
     """
     Chord tones only, on a transparent fretboard, at the
     same coordinates fretboard_diagram uses - same
@@ -1261,7 +1277,7 @@ def fretboard_chord_overlay(key, chord_semitone_set, instrument="Guitar",
                 f'<text x="{x}" y="{y + 4}" '
                 f'text-anchor="middle" font-size="10" '
                 f'font-family="sans-serif" fill="#ffffff">'
-                f'{_escape(name_for(semitone, key))}</text>'
+                f'{_escape(_spelled(semitone, key, spelling))}</text>'
             )
 
     return (
@@ -1275,7 +1291,8 @@ def fretboard_chord_overlay(key, chord_semitone_set, instrument="Guitar",
     )
 
 
-def violin_chord_overlay(key, chord_semitone_set, position="First position"):
+def violin_chord_overlay(key, chord_semitone_set, position="First position",
+                         spelling=None):
     """
     Chord tones only, on a transparent violin chart, at the
     same coordinates violin_chart uses - same VIOLIN_LAYOUT
@@ -1327,7 +1344,7 @@ def violin_chord_overlay(key, chord_semitone_set, position="First position"):
                 f'<text x="{x + 15}" y="{y - 9}" '
                 f'text-anchor="start" font-size="9" '
                 f'font-family="sans-serif" fill="{LABEL_COLOUR}">'
-                f'{_escape(name_for(semitone, key))}</text>'
+                f'{_escape(_spelled(semitone, key, spelling))}</text>'
             )
 
         mark(0, 0)
@@ -1346,7 +1363,7 @@ def violin_chord_overlay(key, chord_semitone_set, position="First position"):
     )
 
 
-def violin_chord_overlay_both(key, chord_semitone_set):
+def violin_chord_overlay_both(key, chord_semitone_set, spelling=None):
     """
     The Chord-notes layer for "Violin, both positions" - the
     fill still means position (split where both positions
@@ -1415,7 +1432,7 @@ def violin_chord_overlay_both(key, chord_semitone_set):
                 f'<text x="{x + 15}" y="{y - 9}" '
                 f'text-anchor="start" font-size="9" '
                 f'font-family="sans-serif" fill="{LABEL_COLOUR}">'
-                f'{_escape(name_for(semitone, key))}</text>'
+                f'{_escape(_spelled(semitone, key, spelling))}</text>'
             )
 
     return (
@@ -2094,18 +2111,27 @@ def chord_overlay_for(key, instrument, chord_name):
     diagram_for would refuse an unreadable key.
     """
 
-    from chords import chord_semitones
+    from chords import chord_semitones, chord_spellings
 
     tones = set(chord_semitones(chord_name))
+
+    # Marks are labelled by the chord's own spelling (Db reads
+    # Db F Ab in any key) - the chord's business, not the key
+    # signature's. The lever harp is not passed one yet: its
+    # chord layer belongs to PLAN-lever-harp.md's own work.
+    spelling = chord_spellings(chord_name)
 
     base = _base_instrument_name(instrument)
 
     if base == "Piano":
-        return piano_chord_overlay(key, tones, _octaves_for(instrument))
+        return piano_chord_overlay(
+            key, tones, _octaves_for(instrument), spelling=spelling
+        )
 
     if base == "Kalimba":
         return kalimba_chord_overlay(
-            key, tones, _kalimba_has_bass(instrument)
+            key, tones, _kalimba_has_bass(instrument),
+            spelling=spelling,
         )
 
     if base == "Lever harp":
@@ -2113,13 +2139,17 @@ def chord_overlay_for(key, instrument, chord_name):
 
     if base.startswith("Violin"):
         if _violin_shows_both(instrument):
-            return violin_chord_overlay_both(key, tones)
+            return violin_chord_overlay_both(
+                key, tones, spelling=spelling
+            )
         return violin_chord_overlay(
-            key, tones, _violin_position_for(instrument)
+            key, tones, _violin_position_for(instrument),
+            spelling=spelling,
         )
 
     return fretboard_chord_overlay(
-        key, tones, base, _frets_shown_for(instrument)
+        key, tones, base, _frets_shown_for(instrument),
+        spelling=spelling,
     )
 
 
@@ -2650,9 +2680,10 @@ def violin_chord_shape_overlay(key, chord_name, position="First position"):
     shape.
     """
 
-    from chords import split_chord
+    from chords import chord_spellings, split_chord
 
     root, quality = split_chord(chord_name)
+    spelling = chord_spellings(chord_name)
 
     shaped = violin_shape_strings(root, quality)
 
@@ -2680,7 +2711,7 @@ def violin_chord_shape_overlay(key, chord_name, position="First position"):
         x = left + fret * semitone_width
 
         semitone = _note_at(VIOLIN_STRINGS[string_index], fret)
-        label = name_for(semitone, key)
+        label = _spelled(semitone, key, spelling)
 
         parts.append(
             f'<circle cx="{x}" cy="{y}" r="15" '
@@ -2729,9 +2760,10 @@ def violin_chord_shape_overlay_both(key, chord_name):
     shape at all.
     """
 
-    from chords import split_chord
+    from chords import chord_spellings, split_chord
 
     root, quality = split_chord(chord_name)
+    spelling = chord_spellings(chord_name)
 
     first = violin_shape_strings(root, quality)
     higher = violin_shape_strings_higher(root, quality)
@@ -2763,7 +2795,7 @@ def violin_chord_shape_overlay_both(key, chord_name):
         y = top + row * string_gap
         x = left + fret * semitone_width
         semitone = _note_at(VIOLIN_STRINGS[string_index], fret)
-        label = name_for(semitone, key)
+        label = _spelled(semitone, key, spelling)
         return _dual_position_dot(x, y, in_first, in_third, "#ffffff", label)
 
     parts = []
@@ -3035,7 +3067,7 @@ def _kalimba_structure_parts(bass=True):
     return parts
 
 
-def _kalimba_marks(key, colour_of, bass=True):
+def _kalimba_marks(key, colour_of, bass=True, spelling=None):
     """
     A spot at the tip of every tine colour_of gives a
     colour for (None leaves it unmarked). Every tine is
@@ -3063,7 +3095,7 @@ def _kalimba_marks(key, colour_of, bass=True):
             f'<text x="{x}" y="{y + 4}" text-anchor="middle" '
             f'font-size="11" font-family="sans-serif" '
             f'fill="#ffffff">'
-            f'{_escape(name_for(tine["pitch"], key))}</text>'
+            f'{_escape(_spelled(tine["pitch"], key, spelling))}</text>'
         )
 
     return parts
@@ -3096,12 +3128,13 @@ def kalimba_scale_overlay(key, bass=True):
     )
 
 
-def kalimba_chord_overlay(key, chord_semitone_set, bass=True):
+def kalimba_chord_overlay(key, chord_semitone_set, bass=True,
+                          spelling=None):
     def colour_of(semitone):
         return CHORD_TONE_COLOUR if semitone in chord_semitone_set else None
 
     return _kalimba_svg(
-        _kalimba_marks(key, colour_of, bass), bass,
+        _kalimba_marks(key, colour_of, bass, spelling), bass,
         "The chord tones highlighted on a kalimba"
     )
 
@@ -3266,11 +3299,12 @@ def kalimba_chord_shape_overlay(key, chord_name, bass=True):
     None if kalimba_shape_tines has no shape for this chord.
     """
 
-    from chords import split_chord
+    from chords import chord_spellings, split_chord
 
     root, quality = split_chord(chord_name)
 
     shape = kalimba_shape_tines(root, quality, bass)
+    spelling = chord_spellings(chord_name)
 
     if shape is None:
         return None
@@ -3289,7 +3323,7 @@ def kalimba_chord_shape_overlay(key, chord_name, bass=True):
             f'<text x="{x}" y="{y + 4}" text-anchor="middle" '
             f'font-size="11" font-family="sans-serif" '
             f'fill="#ffffff">'
-            f'{_escape(name_for(tine["pitch"], key))}</text>'
+            f'{_escape(_spelled(tine["pitch"], key, spelling))}</text>'
         )
 
     return _kalimba_svg(
