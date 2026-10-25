@@ -240,12 +240,43 @@ HEADING_HEIGHT = 20
 LYRIC_HEIGHT = 26
 ROW_GAP = 18
 
-# Tab wraps like printed tab: this many beats to a line.
+# A row of tab is never longer than this many beats.
 BEATS_PER_ROW = 16
 
 
-def _row_count(total_beats):
-    return max(1, -(-int(total_beats + 0.999) // BEATS_PER_ROW))
+def row_starts(piece):
+    """
+    Where each row of tab begins, in beats: at the start of every
+    phrase (the lyric lines; a rest between two belongs to the
+    phrase it follows), so a row is a phrase and a change of hand
+    position, when there is one, falls at a row break. A phrase
+    longer than BEATS_PER_ROW is cut at the latest bar line that
+    keeps the row within it (the chart's bars, else every four
+    beats), or at the limit itself if there is no bar line to use.
+    """
+
+    starts = piece.starts()
+    total = piece.beats()
+    bars = sorted(_bar_starts(piece.chart, total))
+    cuts = [starts[first] for first, _last in piece.phrases()] or [0.0]
+    cuts[0] = 0.0
+
+    rows = []
+
+    for index, begin in enumerate(cuts):
+        end = cuts[index + 1] if index + 1 < len(cuts) else total
+        here = begin
+        rows.append(here)
+
+        while end - here > BEATS_PER_ROW + 0.001:
+            usable = [
+                bar for bar in bars
+                if here + 0.001 < bar <= here + BEATS_PER_ROW + 0.001
+            ]
+            here = max(usable) if usable else here + BEATS_PER_ROW
+            rows.append(here)
+
+    return rows
 
 
 def _bar_starts(chart_text, total_beats):
@@ -266,27 +297,47 @@ def _bar_starts(chart_text, total_beats):
     return [float(beat) for beat in range(0, int(total_beats) + 1, 4)]
 
 
-def tab_html(blocks, instrument, total_beats, chart_text=""):
+def _row_spans(total_beats, starts):
+    """[(first, last)] beats of each row. Without starts, rows of
+    BEATS_PER_ROW from the beginning."""
+
+    if not starts:
+        count = max(1, -(-int(total_beats + 0.999) // BEATS_PER_ROW))
+        starts = [row * BEATS_PER_ROW for row in range(count)]
+
+    ends = list(starts[1:]) + [total_beats]
+
+    return list(zip(starts, ends))
+
+
+def tab_html(blocks, instrument, total_beats, chart_text="",
+             starts=None):
     """
     The tab for one instrument as HTML: the strings as lines, the
-    fret number of each note on its line, wrapped into rows of
-    BEATS_PER_ROW beats, the words under each note. A note that
-    cannot be played is a red block on a line of its own above
-    the strings. total_beats is how long the stretch is.
+    fret number of each note on its line, the words under each
+    note. It wraps into rows that begin at `starts` (beats; see
+    row_starts) - a row a phrase - or, without them, into rows of
+    BEATS_PER_ROW beats. A note that cannot be played is a red
+    block on a line of its own above the strings. total_beats is
+    how long the stretch is.
     """
+
+    import math
 
     names = string_names(instrument)
     count = len(names)
     spare = any(not block["in_range"] for block in blocks)
-    rows = _row_count(total_beats)
-    row_width = LEFT_MARGIN + BEATS_PER_ROW * BEAT_PX + RIGHT_MARGIN
+    spans = _row_spans(total_beats, starts)
+    widest = max(last - first for first, last in spans)
+    row_width = int(LEFT_MARGIN + widest * BEAT_PX + RIGHT_MARGIN)
     lines = count + (1 if spare else 0)
     row_height = (
         HEADING_HEIGHT + lines * LINE_GAP + LYRIC_HEIGHT + ROW_GAP
     )
-    height = rows * row_height
+    height = len(spans) * row_height
 
     bars = {round(start, 4) for start in _bar_starts(chart_text, total_beats)}
+    row_firsts = [first for first, _last in spans]
 
     def line_y(row, string):
         """Centre of a string's line in a row; 0 is the bottom."""
@@ -305,9 +356,7 @@ def tab_html(blocks, instrument, total_beats, chart_text=""):
         f'role="img" aria-label="The melody as tab">'
     ]
 
-    for row in range(rows):
-        first = row * BEATS_PER_ROW
-        last = min(first + BEATS_PER_ROW, total_beats)
+    for row, (first, last) in enumerate(spans):
         right = LEFT_MARGIN + (last - first) * BEAT_PX
 
         # the strings, named at the left
@@ -328,35 +377,37 @@ def tab_html(blocks, instrument, total_beats, chart_text=""):
                 f'text-anchor="end" fill="{OUT_OF_RANGE_COLOUR}">off</text>'
             )
 
-        # bar lines and beat numbers
+        # the row's two ends, then bar lines and beat numbers
         top = row * row_height + HEADING_HEIGHT
         bottom = top + lines * LINE_GAP
 
-        for beat in range(int(first), int(last) + 1):
+        for x in (LEFT_MARGIN, right):
+            parts.append(
+                f'<line x1="{x}" x2="{x}" y1="{top}" y2="{bottom}" '
+                f'stroke="#90a4ae" stroke-width="1.5"/>'
+            )
+
+        for beat in range(math.ceil(first - 0.001), int(last) + 1):
             x = LEFT_MARGIN + (beat - first) * BEAT_PX
-            is_bar = float(beat) in bars
 
-            if is_bar or beat == int(last):
-                parts.append(
-                    f'<line x1="{x}" x2="{x}" y1="{top}" y2="{bottom}" '
-                    f'stroke="#90a4ae" stroke-width="1.5"/>'
-                )
+            if float(beat) not in bars or not first < beat < last - 0.001:
+                continue
 
-            if is_bar and beat < last:
-                parts.append(
-                    f'<text x="{x + 3}" y="{top - 6}" font-size="10" '
-                    f'fill="#78909c">{beat + 1}</text>'
-                )
+            parts.append(
+                f'<line x1="{x}" x2="{x}" y1="{top}" y2="{bottom}" '
+                f'stroke="#90a4ae" stroke-width="1.5"/>'
+                f'<text x="{x + 3}" y="{top - 6}" font-size="10" '
+                f'fill="#78909c">{beat + 1}</text>'
+            )
 
     for block in blocks:
-        row = int(block["start"] // BEATS_PER_ROW)
-
-        if row >= rows:
-            continue
-
-        first = row * BEATS_PER_ROW
+        row = max(
+            index for index, first in enumerate(row_firsts)
+            if first <= block["start"] + 0.001
+        )
+        first, last = spans[row]
         x = LEFT_MARGIN + (block["start"] - first) * BEAT_PX
-        room = LEFT_MARGIN + BEATS_PER_ROW * BEAT_PX - x
+        room = LEFT_MARGIN + (last - first) * BEAT_PX - x
         width = max(min(block["length"] * BEAT_PX - 4, room), 18)
 
         if block["in_range"]:
@@ -388,8 +439,11 @@ def tab_html(blocks, instrument, total_beats, chart_text=""):
 
     parts.append("</svg>")
 
+    # Natural size is the most it grows to: one beat is BEAT_PX
+    # wide on a wide page, never stretched to fill it.
     return (
-        '<div class="melody-tab" style="max-height:70vh;overflow-y:auto;'
+        f'<div class="melody-tab" style="max-width:{row_width + 10}px;'
+        'max-height:70vh;overflow-y:auto;'
         'border:1px solid var(--border-color-primary,#ccc);'
         'border-radius:8px;padding:4px">'
         + "".join(parts)
@@ -399,8 +453,8 @@ def tab_html(blocks, instrument, total_beats, chart_text=""):
 
 LEGEND = (
     "Tab: each line is a string, the number is the fret (0 is open), "
-    "and the words are under each note. Time runs left to right and "
-    "wraps like printed tab. Nearest the nut: every note takes its "
+    "and the words are under each note. Time runs left to right, a "
+    "row for each phrase (a long one is cut at a bar line). Nearest the nut: every note takes its "
     "lowest fret. A suggested fingering, not the only one - hover a "
     "note for why."
 )
@@ -430,7 +484,10 @@ def fretted_view(piece, instrument, fingering=NEAREST_NUT):
 
     return (
         warning
-        + tab_html(blocks, instrument, piece.beats(), piece.chart)
+        + tab_html(
+            blocks, instrument, piece.beats(), piece.chart,
+            row_starts(piece)
+        )
         + '<div style="font-size:0.85em;opacity:0.75;margin-top:4px">'
         + html.escape(LEGEND + " " + NOT_YET)
         + "</div>"

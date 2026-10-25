@@ -325,3 +325,87 @@ def test_the_tab_module_never_touches_the_interface_or_the_boxes():
 
     assert "import gradio" not in text and "gr." not in text
     assert "import main" not in text
+
+
+# --- rows follow the phrases ------------------------------------
+
+from fretted_tab import row_starts
+
+
+def test_a_row_starts_at_each_phrase():
+    """Twinkle has six phrases of eight beats."""
+
+    assert row_starts(_twinkle()) == [0, 8, 16, 24, 32, 40]
+
+
+def test_a_single_phrase_is_one_row():
+    assert row_starts(_twinkle().phrase(2)) == [0]
+
+
+def test_a_long_phrase_is_cut_at_the_latest_bar_that_fits():
+    """
+    Twenty-four one-beat notes, no lyrics, no chart: bars every four
+    beats. From 0 the latest bar within sixteen beats is 16, and what
+    is left (8 beats) is one row.
+    """
+
+    piece = _piece(" ".join(["C4"] * 24))
+
+    assert row_starts(piece) == [0, 16]
+
+
+def test_a_chart_with_odd_bars_decides_where_the_cut_goes():
+    """Three-beat bars (0, 3, 6, ...): the latest within 16 is 15."""
+
+    piece = Piece.read(
+        " ".join(["C4"] * 24), " ".join(["1"] * 24), "", "C",
+        "| " + " | ".join(["C . ."] * 8) + " |",
+    )
+
+    assert row_starts(piece) == [0, 15]
+
+
+def test_a_phrase_cut_never_leaves_a_row_over_sixteen_beats():
+    piece = _piece(" ".join(["C4"] * 50))
+    starts = row_starts(piece) + [50]
+
+    assert all(b - a <= 16 for a, b in zip(starts, starts[1:]))
+
+
+def test_rows_are_drawn_one_per_start_and_as_wide_as_their_phrase():
+    piece = _twinkle()
+    blocks = fretted_blocks(piece, GUITAR_13)
+    page = tab_html(
+        blocks, GUITAR_13, piece.beats(), piece.chart, row_starts(piece)
+    )
+
+    assert page.count(">high E</text>") == 6
+    # Eight beats of 48 plus the margins: 62 + 384 + 12 = 458.
+    assert 'viewBox="0 0 458 ' in page
+    # Never stretched past its natural size.
+    assert "max-width:468px" in page
+
+
+def test_a_note_goes_in_the_row_of_its_phrase():
+    """The first note of phrase two starts at beat 8, row two, at x=62."""
+
+    piece = _twinkle()
+    blocks = fretted_blocks(piece, GUITAR_13)
+    page = tab_html(
+        blocks, GUITAR_13, piece.beats(), piece.chart, row_starts(piece)
+    )
+
+    # Every phrase opens on a note at the row's own left edge, so
+    # six rows put six note blocks at x=62.
+    assert page.count('<rect x="62.0" y=') == 6
+
+
+def test_with_no_bar_line_to_cut_at_a_long_phrase_is_cut_at_sixteen():
+    """One 20-beat bar: nowhere to cut but the limit."""
+
+    piece = Piece.read(
+        " ".join(["C4"] * 20), " ".join(["1"] * 20), "", "C",
+        "| C " + " ".join(["."] * 19) + " |",
+    )
+
+    assert row_starts(piece) == [0, 16]

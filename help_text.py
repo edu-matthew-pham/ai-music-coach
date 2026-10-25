@@ -342,8 +342,8 @@ piano the picture is cropped to the lanes shown.
 On the guitar and ukulele tabs the melody is drawn as tab: a
 line for each string (the high string on top), the fret number
 where each note falls (0 is an open string), the words underneath,
-and the tab wraps onto new rows every sixteen beats like printed
-tab. Every note takes the lowest fret that plays it, the nearest the
+and the tab has a row for each phrase (a long phrase is cut at a
+bar line, so no row is wider than sixteen beats), like printed tab. Every note takes the lowest fret that plays it, the nearest the
 nut, so a note's place never depends on the others; hover a note to
 see why it is there. It is a suggested fingering, not the only one:
 a high passage can jump about, and a later choice will keep your

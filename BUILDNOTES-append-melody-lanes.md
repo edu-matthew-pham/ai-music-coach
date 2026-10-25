@@ -179,3 +179,21 @@ Checked
 - tests/test_fretted_tab.py (26 tests, frets worked out by hand
   from the tunings); seven of eight mutations caught (the eighth
   is the equivalent mutant above).
+
+## Tab rows follow the phrases (2026-10-26, Matthew's review)
+
+- Matthew: rows should break at the most logical pause, where a
+  hand position could switch, not every 16 beats. Now `row_starts
+  (piece)`: a row begins at every phrase (the lyric lines), and a
+  phrase longer than 16 beats is cut at the latest bar line that
+  keeps the row within 16 (the chart's bars, else every four beats),
+  or at 16 itself if there is no bar line to use. Rows are as wide
+  as their phrase. Layer 2 (a position per phrase) will therefore be
+  a position per row, with its label at the row's start.
+- Width cap: the tab never stretches past its natural size (48px a
+  beat), so it no longer spreads across a wide page.
+- `tab_html(..., starts=None)` still wraps every 16 beats if given
+  no row starts (used by tests and as a fallback).
+- Tests: 34 in tests/test_fretted_tab.py; six row mutations, all
+  caught (the limit-fallback one needed a test for a bar line
+  longer than 16 beats, added).
