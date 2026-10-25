@@ -24,6 +24,7 @@ from melody_lanes import (
     keep_phrase,
     lanes_for,
     lanes_html,
+    melody_view,
     melody_blocks,
     melody_page,
     range_message,
@@ -159,20 +160,48 @@ def test_the_41_key_has_the_bass_row_under_the_centre():
 
 # --- off the instrument ------------------------------------------
 
-def test_a_note_below_the_34_key_is_flagged_not_moved():
+def test_a_note_below_the_34_key_moves_up_an_octave_and_is_flagged():
+    """B3 = 47 is below C4 (48); B4 = 59 is a tine."""
+
     (block,) = melody_blocks(_piece("B3"), KALIMBA_34)
+    (real,) = melody_blocks(_piece("B4"), KALIMBA_34)
 
-    assert block["in_range"] is False
-    assert block["lane"] is None
+    assert block["in_range"] is True
+    assert block["lane"] == real["lane"]
     assert block["where"] == "below"
-    assert block["pitch"] == 47
+    assert block["written_pitch"] == 47
+    assert block["pitch"] == 59
+    assert block["shift"] == 1
 
 
-def test_a_note_above_the_highest_tine_is_flagged_above():
+def test_a_note_a_whole_two_octaves_low_moves_the_two_it_needs():
+    """C2 = 24; C3 = 36 is still below C4 (48); C4 fits."""
+
+    (block,) = melody_blocks(_piece("C2"), KALIMBA_34)
+
+    assert block["shift"] == 2
+    assert block["pitch"] == 48
+    assert block["in_range"] is True
+
+
+def test_a_note_that_is_on_the_instrument_is_not_moved():
+    (block,) = melody_blocks(_piece("C4"), KALIMBA_34)
+
+    assert block["shift"] == 0
+    assert block["where"] is None
+    assert block["pitch"] == block["written_pitch"] == 48
+
+
+def test_a_note_above_the_highest_tine_moves_down_an_octave():
+    """G6 = 79; G5 = 67 is a tine."""
+
     (block,) = melody_blocks(_piece("G6"), KALIMBA_41)
 
-    assert block["in_range"] is False
+    assert block["in_range"] is True
     assert block["where"] == "above"
+    assert block["shift"] == -1
+    assert block["pitch"] == 67
+    assert block["written_pitch"] == 79
 
 
 def test_nothing_is_said_when_every_note_is_on_the_instrument():
@@ -239,10 +268,12 @@ def test_the_wellerman_needs_an_octave_up_on_the_kalimba():
 
     for instrument in (KALIMBA_34, KALIMBA_41):
         blocks = melody_blocks(pieces, instrument)
-        off = [block for block in blocks if not block["in_range"]]
+        moved = [block for block in blocks if block["shift"]]
 
-        assert off, instrument
-        assert all(block["where"] == "below" for block in off)
+        assert moved, instrument
+        assert all(block["where"] == "below" for block in moved)
+        assert all(block["shift"] > 0 for block in moved)
+        assert all(block["in_range"] for block in blocks)
         assert "Octave up" in range_message(blocks, instrument)
 
     sounding = [p for p in pieces.pitches if p != "R"]
@@ -290,9 +321,66 @@ def test_the_header_names_every_lane():
         assert f">{name}</text>" in page
 
 
-def test_no_red_strip_unless_a_note_is_off_the_instrument():
+def _stranded_blocks():
+    """A note no octave fits (none exists on these instruments, so
+    built by hand): it stays in the red strip."""
+
+    (block,) = melody_blocks(_piece("C4"), KALIMBA_34)
+
+    return [{**block, "in_range": False, "lane": None,
+             "where": "below", "shift": 0}]
+
+
+def test_no_red_strip_unless_a_note_fits_no_octave():
     assert "off</text>" not in _html(_twinkle().phrase(0))
-    assert "off</text>" in _html(_piece("B3 C4"))
+    assert "off</text>" not in _html(_piece("B3 C4"))
+    assert "off</text>" in lanes_html(
+        _stranded_blocks(), KALIMBA_34, 1.0
+    )
+
+
+def test_a_moved_note_is_dashed_with_an_octave_flag_and_a_hover():
+    page = _html(_piece("B3"))
+
+    assert 'stroke-dasharray="3 2"' in page
+    assert 'class="octave-flag"' in page
+    assert "↑8" in page
+    assert "written B3" in page
+    assert "shown an octave higher on B4" in page
+
+
+def test_two_octaves_say_16_and_a_note_moved_down_says_a_down_arrow():
+    assert "↑16" in _html(_piece("C2"))
+    assert "↓8" in _html(_piece("G6"), KALIMBA_41)
+    assert "shown an octave lower on G5" in _html(
+        _piece("G6"), KALIMBA_41
+    )
+
+
+def test_a_note_on_the_instrument_has_no_flag():
+    page = _html(_piece("C4"))
+
+    assert "octave-flag" not in page
+    assert "stroke-dasharray" not in page
+    assert "dashed" not in page
+
+
+def test_the_legend_explains_the_flag_only_when_there_is_one():
+    assert "small flag like" in melody_view(_piece("B3"), KALIMBA_34)
+    assert "small flag like" not in melody_view(_piece("C4"), KALIMBA_34)
+
+
+def test_the_message_says_shown_an_octave_away_and_a_stranded_note_fits_nowhere():
+    message = range_message(
+        melody_blocks(_piece("B3 C4 B3"), KALIMBA_34), KALIMBA_34
+    )
+
+    assert "shown an octave or more away (dashed" in message
+
+    stranded = range_message(_stranded_blocks(), KALIMBA_34)
+
+    assert "fit nowhere" in stranded
+    assert "red strip" in stranded
 
 
 def test_a_top_row_note_is_marked_with_an_up_triangle():
@@ -491,3 +579,36 @@ def test_the_melody_section_sits_after_chords_and_before_practice():
 
     assert chords < melody < practice
     assert 'anchor_link("Melody", "melody")' in text
+
+
+def test_the_octave_advice_is_about_the_written_notes_not_the_moved_ones():
+    """
+    C2 written is two octaves low: Octave up (one octave) would not
+    bring it on, even though it is already drawn two octaves up.
+    """
+
+    message = range_message(
+        melody_blocks(_piece("C2 C4"), KALIMBA_34), KALIMBA_34
+    )
+
+    assert "No single octave shift" in message
+
+
+# --- full screen --------------------------------------------------
+
+def test_the_full_screen_button_runs_in_the_browser_only():
+    """Like the chord sheet's: fn=None with js, so no server call and
+    nothing that could write a box."""
+
+    import melody_lanes
+
+    with open(MAIN) as source:
+        text = source.read()
+
+    assert 'elem_id="melody-full-button"' in text
+    assert "melody_full_button.click(\n        fn=None,\n        js=melody_lanes.FULL_SCREEN_JS" in text
+    assert "melody_lanes.MELODY_CSS" in text
+    assert "getElementById('melody')" in melody_lanes.FULL_SCREEN_JS
+    assert "melody-full" in melody_lanes.MELODY_CSS
+    assert "Escape" in melody_lanes.FULL_SCREEN_JS
+    assert "value" not in melody_lanes.FULL_SCREEN_JS

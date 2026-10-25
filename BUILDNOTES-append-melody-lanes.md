@@ -297,3 +297,41 @@ Checked: 8 new tests (hand-worked masks, off changes nothing, only at
 phrase starts, never wider than the width, legend/hover text, nearest
 the nut ignores it); five rule mutations all caught; 20,526 melody
 renders byte-identical.
+
+
+## Out-of-range notes move an octave, flagged; Melody full screen (2026-10-26)
+
+Matthew: the red "off" strip was confusing (its ▼ looked like the
+bass-row ▼); instead let the note be played an octave away, with a
+flag for the real octave.
+
+- `melody_blocks` (kalimba, harp, piano): a note with no lane is moved
+  by whole octaves, nearest first (up from below, down from above)
+  until a lane fits. `pitch` is now where it is played,
+  `written_pitch` what the boxes say, `shift` octaves moved (+up),
+  `where` still says below/above. `in_range` is True for a moved
+  note; only a note no octave fits stays False (cannot happen on
+  these instruments; the red strip code stays for that case).
+- Drawing: dashed dark outline, a white flag "↑8"/"↓8"/"↑16" at the
+  block's top-right, hover "written D3, which this instrument cannot
+  play - shown an octave higher on D4". Legend line added when any
+  note is moved. Thumb colour and bass/top row marks unchanged.
+- `range_message` counts below/above as before, says how they are
+  shown, and the Octave up/down advice is judged on the WRITTEN notes
+  (a C2 on a kalimba is not fixed by one octave).
+- Chord layer and piano crop read the played pitch, so they follow.
+- Guitar and ukulele tab unchanged (red block above the strings): a
+  moved note there would sit on a different string and fret.
+- Full screen: button in the Melody controls; browser-only JS
+  (fn=None) toggles `melody-full` on #melody; in it the pictures lose
+  their height cap and the section scrolls, the lanes' header sticks
+  to the top. Escape leaves. Same pattern as the chord sheet.
+
+Checked: new/updated tests (hand worked: B3->B4, C2 two octaves,
+G6->G5, harp E3->E4 and D6->D5, 2-octave piano C5->C4, flag text,
+legend only when moved, stranded note, advice on written notes,
+full screen wiring); nine mutations, eight caught at once and the
+ninth (advice from played pitch) got a test; 20,526 existing renders
+byte-identical. Live: Wellerman on the 41-key shows the D3s on D4
+dashed with flags; full screen on, sticky header, Escape off, no
+page errors.

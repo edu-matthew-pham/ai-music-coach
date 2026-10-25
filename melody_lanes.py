@@ -309,7 +309,8 @@ def melody_blocks(piece, instrument):
     Every sounding note of the piece as one block:
 
         {"lane", "start", "length", "note", "pitch", "lyric",
-         "thumb", "row", "lever", "black", "in_range", "where"}
+         "thumb", "row", "lever", "black", "in_range", "where",
+         "written_pitch", "shift"}
 
     start and length are in beats from the start of the piece
     handed in (a phrase's own start, when it was sliced). lane
@@ -318,9 +319,13 @@ def melody_blocks(piece, instrument):
     "middle", "top" or "bass" (kalimba only), lever is True
     where a harp string needs its lever up for the note (None
     off the harp), black marks a piano's black key, and where is "below" or "above"
-    for a note off the instrument. note is the name as written
-    in the boxes, without its octave. Rests leave a gap and
-    are not blocks.
+    for a note the instrument cannot sound as written. Such a note
+    is moved to the nearest octave that fits: pitch is where it is
+    played, written_pitch what the boxes say, and shift how many
+    octaves it was moved (+1 up, -1 down, 0 not moved). Only a note
+    with no octave that fits keeps in_range False. note is the name
+    as written in the boxes, without its octave. Rests leave a gap
+    and are not blocks.
     """
 
     base = _base_instrument_name(instrument)
@@ -338,18 +343,30 @@ def melody_blocks(piece, instrument):
         if is_rest(written):
             continue
 
-        pitch = _absolute_pitch(written)
+        written_pitch = _absolute_pitch(written)
+        pitch = written_pitch
         lane, row, lever = _place(pitch, instrument)
-
-        # A pitch inside the range with no tine (cannot happen on
-        # a chromatic kalimba, but the check costs nothing) is
-        # off the instrument too.
-        in_range = lane is not None
-
         where = None
+        shift = 0
 
-        if not in_range:
+        # A note the instrument cannot sound goes to the nearest
+        # octave that it can (up from below, down from above), and
+        # is flagged. Only a note with no octave that fits at all
+        # stays off, in the red strip.
+        if lane is None:
             where = "below" if pitch < low["pitch"] else "above"
+            step = 12 if where == "below" else -12
+
+            for octaves in range(1, 9):
+                found = _place(written_pitch + step * octaves, instrument)
+
+                if found[0] is not None:
+                    shift = octaves if step > 0 else -octaves
+                    pitch = written_pitch + step * octaves
+                    lane, row, lever = found
+                    break
+
+        in_range = lane is not None
 
         blocks.append({
             "lane": lane,
@@ -357,6 +374,8 @@ def melody_blocks(piece, instrument):
             "length": piece.durations[index],
             "note": written[:-1],
             "pitch": pitch,
+            "written_pitch": written_pitch,
+            "shift": shift,
             "lyric": lyrics[index],
             "thumb": (
                 _kalimba_thumb(lane)
@@ -374,11 +393,26 @@ def melody_blocks(piece, instrument):
     return blocks
 
 
+def _shift_title(block):
+    """Hover text for a note moved to another octave."""
+
+    octaves = abs(block["shift"])
+    way = "higher" if block["shift"] > 0 else "lower"
+    written = _name(block["written_pitch"])
+    played = _name(block["pitch"])
+    amount = "an octave" if octaves == 1 else f"{octaves} octaves"
+
+    return (
+        f"written {written}, which this instrument cannot play - "
+        f"shown {amount} {way} on {played}"
+    )
+
+
 def range_message(blocks, instrument):
     """
-    In words, how many notes are off the instrument, and what
-    would fix it. "" when every note is on it. Never moves a
-    note: the octave buttons stay the player's to press.
+    In words, how many notes the instrument cannot sound as
+    written, where they were drawn, and what would fix it. ""
+    when every note is on it as written.
     """
 
     below = sum(1 for block in blocks if block["where"] == "below")
@@ -403,9 +437,29 @@ def range_message(blocks, instrument):
             f"above the highest ({high['note']})"
         )
 
+    stranded = sum(1 for block in blocks if not block["in_range"])
+    moved = sum(1 for block in blocks if block["shift"])
+
+    if moved and stranded:
+        shown = (
+            f"{moved} are shown an octave or more away (dashed, with "
+            f"the arrow) and {stranded} fit nowhere, in the red strip "
+            f"at the left"
+        )
+    elif stranded:
+        shown = "they fit nowhere and are in the red strip at the left"
+    elif moved == 1:
+        shown = "it is shown an octave or more away (dashed, with the arrow)"
+    else:
+        shown = (
+            "they are shown an octave or more away (dashed, with the "
+            "arrow)"
+        )
+
     def fits_after(shift):
         return all(
-            _place(block["pitch"] + shift, instrument)[0] is not None
+            _place(block["written_pitch"] + shift, instrument)[0]
+            is not None
             for block in blocks
         )
 
@@ -419,11 +473,7 @@ def range_message(blocks, instrument):
             "song is wider than this instrument."
         )
 
-    return (
-        " and ".join(parts)
-        + ". They are drawn in red in the strip at the left. "
-        + fix
-    )
+    return " and ".join(parts) + f"; {shown}. " + fix
 
 
 # --- the chords --------------------------------------------------
@@ -1020,11 +1070,35 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
             mark = "▼" if block["where"] == "below" else "▲"
 
         label = html.escape(block["note"]) + mark
+        shifted = block["in_range"] and block["shift"]
+
+        if shifted:
+            body.append(f'<g class="melody-shifted"><title>'
+                        f'{html.escape(_shift_title(block))}</title>')
 
         body.append(
             f'<rect x="{x}" y="{y}" width="{block_width}" '
-            f'height="{height}" rx="6" fill="{colour}"/>'
+            f'height="{height}" rx="6" fill="{colour}"'
+            + (' stroke="#263238" stroke-width="1.5" '
+               'stroke-dasharray="3 2"' if shifted else "")
+            + "/>"
         )
+
+        # An octave flag: ↑8 played an octave higher than written.
+        if shifted:
+            arrow = "↑" if block["shift"] > 0 else "↓"
+            badge = f'{arrow}{8 * abs(block["shift"])}'
+            badge_width = 9 + 5 * len(badge)
+
+            body.append(
+                f'<rect class="octave-flag" '
+                f'x="{x + block_width - badge_width + 2}" y="{y - 5}" '
+                f'width="{badge_width}" height="11" rx="3" fill="#ffffff" '
+                f'stroke="#263238" stroke-width="1"/>'
+                f'<text x="{x + block_width - badge_width / 2 + 2}" '
+                f'y="{y + 3.5}" font-size="8" font-weight="700" '
+                f'text-anchor="middle" fill="#263238">{badge}</text>'
+            )
 
         # A string whose lever must be up wears the lever's tab.
         if block["in_range"] and block["lever"]:
@@ -1042,6 +1116,9 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
                 f'text-anchor="middle" fill="#ffffff">'
                 f'{label}</text>'
             )
+
+        if shifted:
+            body.append("</g>")
 
         if block["lyric"]:
             body.append(
@@ -1069,6 +1146,12 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
     )
 
 
+OCTAVE_LEGEND = (
+    " A dashed block with a small flag like ↑8 is a note the "
+    "instrument cannot play as written, moved to the nearest octave "
+    "that it can (↑ up, ↓ down; hover for the real note)."
+)
+
 LEGEND = (
     "Time runs down the page, the words beside each note. On the "
     "kalimba, blue is the left thumb, purple the right and grey "
@@ -1095,6 +1178,53 @@ CHORD_LEGEND = (
     "Pale pink blocks are the chords, behind the melody; each "
     "chord's name and length are in the left margin."
 )
+
+
+# --- full screen ------------------------------------------------
+
+# Like the chord sheet's: a class on the whole section, toggled in
+# the browser, so it reads and writes none of the song's boxes.
+# Escape leaves it.
+MELODY_CSS = """
+#melody.melody-full {
+    position: fixed;
+    inset: 0;
+    z-index: 100000;
+    overflow: auto;
+    padding: 10px 16px;
+    background: var(--background-fill-primary, #fff);
+}
+/* The section itself scrolls, so the pictures get the whole
+   height; the lanes' header still sticks to the top. */
+#melody.melody-full .melody-lanes,
+#melody.melody-full .melody-tab {
+    max-height: none !important;
+    overflow: visible !important;
+}
+#melody.melody-full .melody-lanes { max-width: none !important; }
+"""
+
+FULL_SCREEN_JS = """
+() => {
+    const section = document.getElementById('melody');
+    const button = document.getElementById('melody-full-button');
+    const set = (on) => {
+        section.classList.toggle('melody-full', on);
+        if (button) {
+            button.textContent = on ? 'Exit full screen' : 'Full screen';
+        }
+    };
+    if (!window.__melodyEscape) {
+        window.__melodyEscape = true;
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && section.classList.contains('melody-full')) {
+                set(false);
+            }
+        });
+    }
+    set(!section.classList.contains('melody-full'));
+}
+"""
 
 
 # --- one view of the song ---------------------------------------
@@ -1148,6 +1278,9 @@ def melody_view(piece, instrument, show=None, header=HEADER_SHORT,
     )
 
     legend = LEGENDS[_base_instrument_name(instrument)]
+
+    if want_melody and any(block["shift"] for block in blocks):
+        legend += OCTAVE_LEGEND
 
     if chords:
         legend += " " + CHORD_LEGEND

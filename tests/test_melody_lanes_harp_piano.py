@@ -88,12 +88,15 @@ def test_the_harp_spans_f3_to_c6_and_one_more_by_the_top_lever():
     low = melody_blocks(_piece("E3 F3"), HARP)
     high = melody_blocks(_piece("C#6 D6"), HARP)
 
-    assert [block["in_range"] for block in low] == [False, True]
+    # E3 is below F3 and moves up to E4; nothing else moves.
+    assert [block["shift"] for block in low] == [1, 0]
     assert low[0]["where"] == "below"
+    assert low[0]["pitch"] == 52
 
-    # C#6 is C6's lever; D6 is above everything.
-    assert [block["in_range"] for block in high] == [True, False]
+    # C#6 is C6's lever; D6 is above everything, so D5 plays it.
+    assert [block["shift"] for block in high] == [0, -1]
     assert high[1]["where"] == "above"
+    assert high[1]["pitch"] == 62
 
 
 def test_the_harp_message_says_strings_and_what_octave_shift_fits():
@@ -151,7 +154,8 @@ def test_a_black_key_is_marked_as_black():
 def test_the_two_octave_piano_runs_out_at_b4():
     blocks = melody_blocks(_piece("B4 C5"), PIANO_2)
 
-    assert [block["in_range"] for block in blocks] == [True, False]
+    assert [block["shift"] for block in blocks] == [0, -1]
+    assert blocks[1]["pitch"] == 48
     assert "above the highest (B4)" in range_message(blocks, PIANO_2)
 
 

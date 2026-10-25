@@ -376,11 +376,20 @@ but moves more, which is the trade; a long song like the Wellerman
 goes from one high position to about a dozen low-and-middle ones.
 The legend and each note's hover text say when it is on.
 
-If the tune has notes the instrument does not have, they are
-drawn in red in a strip marked "off" at the left, and a line
-above says how many and whether Octave up or Octave down in
-the Song section would bring every note on. The notes are never
-moved for you.
+If the tune has notes the instrument does not have, the kalimba,
+harp and piano lanes move each one to the nearest octave that it
+does have (up from below, down from above) and flag it: a dashed
+block with a small flag like **↑8** (an octave up) or **↓8** (down),
+**↑16** for two. Hover a flagged note to see the real one. The legend
+and a line above the picture say how many were moved, and whether
+Octave up or Octave down in the Song section would bring every note
+on properly. The tab for guitar and ukulele still draws such notes
+in red on a line of its own above the strings, never moved. A red
+strip marked "off" is left at the left of the lanes only for a note
+no octave fits, which does not happen on these instruments.
+
+**Full screen** (top right of the Melody section) fills the window
+with the Melody section, like the chord sheet's; Escape leaves it.
 
 ## Keys and harmony
 

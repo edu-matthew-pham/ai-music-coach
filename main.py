@@ -661,6 +661,13 @@ with gr.Blocks(
                     scale=2
                 )
 
+                melody_full_button = gr.Button(
+                    "Full screen",
+                    size="sm",
+                    elem_id="melody-full-button",
+                    scale=1
+                )
+
             # Guitar and ukulele tab only (PLAN-fretted-tab.md).
             with gr.Row():
 
@@ -1310,6 +1317,12 @@ with gr.Blocks(
         js=chord_sheet.FULL_SCREEN_JS
     )
 
+    # Same again for the Melody section (browser only).
+    melody_full_button.click(
+        fn=None,
+        js=melody_lanes.FULL_SCREEN_JS
+    )
+
     def refresh_melody(phrase_label, pitch_text, duration_text,
                        lyric_text, key_text, chart_text, show,
                        header, placement, fingering, width,
@@ -1595,5 +1608,5 @@ if __name__ == "__main__":
     demo.launch(
         server_name="0.0.0.0",
         server_port=port,
-        css=ANCHOR_CSS + chord_sheet.SHEET_CSS
+        css=ANCHOR_CSS + chord_sheet.SHEET_CSS + melody_lanes.MELODY_CSS
     )
