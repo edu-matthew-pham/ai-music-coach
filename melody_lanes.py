@@ -45,6 +45,7 @@ from instrument_diagrams import (
     piano_shape_voicing,
     structure_for,
 )
+from fretted_tab import DEFAULT_WIDTH, FINGERINGS, NEAREST_NUT
 from notes import is_rest
 
 
@@ -1099,7 +1100,8 @@ CHORD_LEGEND = (
 # --- one view of the song ---------------------------------------
 
 def melody_view(piece, instrument, show=None, header=HEADER_SHORT,
-                placement=NEAR_MELODY):
+                placement=NEAR_MELODY, fingering=NEAREST_NUT,
+                width=DEFAULT_WIDTH, open_free=True):
     """
     Everything one instrument tab shows for a piece (a phrase
     or the whole tune), as HTML: the out-of-range line if there
@@ -1117,7 +1119,9 @@ def melody_view(piece, instrument, show=None, header=HEADER_SHORT,
     if _base_instrument_name(instrument) in FRETTED:
         from fretted_tab import fretted_view
 
-        return fretted_view(piece, instrument)
+        return fretted_view(
+            piece, instrument, fingering, width, open_free
+        )
 
     show = DEFAULT_SHOW if show is None else list(show)
     want_melody = SHOW_MELODY in show or SHOW_CHORDS not in show
@@ -1231,7 +1235,9 @@ def keep_phrase(label, choices):
 
 def melody_page(pitch_text, duration_text, lyric_text, key_text,
                 chart_text, phrase_label, instruments, show=None,
-                header=HEADER_SHORT, placement=NEAR_MELODY):
+                header=HEADER_SHORT, placement=NEAR_MELODY,
+                fingering=NEAREST_NUT, width=DEFAULT_WIDTH,
+                open_free=True):
     """
     What the Melody section shows for the text of the boxes:
     {"choices", "label", "views", "status"}. Reads the boxes'
@@ -1270,7 +1276,10 @@ def melody_page(pitch_text, duration_text, lyric_text, key_text,
         "choices": choices,
         "label": label,
         "views": [
-            melody_view(piece, name, show, header, placement)
+            melody_view(
+                piece, name, show, header, placement, fingering,
+                width, open_free
+            )
             for name in instruments
         ],
         "status": status,

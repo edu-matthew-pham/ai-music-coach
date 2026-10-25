@@ -342,14 +342,27 @@ piano the picture is cropped to the lanes shown.
 On the guitar and ukulele tabs the melody is drawn as tab: a
 line for each string (the high string on top), the fret number
 where each note falls (0 is an open string), the words underneath,
-and the tab has a row for each phrase (a long phrase is cut at a
-bar line, so no row is wider than sixteen beats), like printed tab. Every note takes the lowest fret that plays it, the nearest the
-nut, so a note's place never depends on the others; hover a note to
-see why it is there. It is a suggested fingering, not the only one:
-a high passage can jump about, and a later choice will keep your
-hand in one position. Both start on the longer neck. Chords and the
-instrument picture are not on the tab yet, and the Show, top of the
-lanes and chords-go choices do not change it.
+and a row for each phrase (a long phrase is cut at a bar line, so
+no row is wider than sixteen beats), like printed tab. Hover a note
+to see why it is where it is. Both start on the longer neck. It is
+a suggested fingering, not the only one. Chords and the instrument
+picture are not on the tab yet, and Show, top of the lanes and
+chords go do not change it.
+
+**Guitar and ukulele fingering** has two choices. **Nearest the
+nut** (the default) gives every note its lowest fret, so a note's
+place never depends on the others; a high passage can jump about.
+**Stay in a position** groups the whole tune, in advance, into hand
+positions of at most **Position width** frets (4 to 8; a hand
+covers about 5 without moving), with as few changes of position as
+the tune allows. Where a change is forced, it goes at a pause (after
+a rest, on a bar line, at the start of a phrase) when one is
+available, and otherwise it splits the notes as evenly as it can.
+Each group is a green bracket labelled with its lowest fret. **Open
+strings are free** (ticked to start) means an open string does not
+count toward the width, so it fits in any position; untick it to
+make open strings count, which means they only fit the lowest
+position.
 
 If the tune has notes the instrument does not have, they are
 drawn in red in a strip marked "off" at the left, and a line

@@ -12,8 +12,11 @@ the last, so a strange result can be traced to one layer:
 
     1. Nearest the nut: for every note, the lowest fret that
        plays it. Built.
-    2. Stay in a position: one hand position per phrase.
-       (Not built yet.)
+    2. Stay in a position: notes are grouped, in advance and over
+       the whole tune, into hand positions no wider than a chosen
+       number of frets (open strings are free by default), with
+       the fewest changes of position, cut at a rest, bar line or
+       phrase end where possible. Built.
     3. Smart shifting. (Parked, a later lever.)
 
 Two halves, kept apart like melody_lanes.py:
@@ -39,8 +42,15 @@ from notes import is_rest
 # --- the fingering choices --------------------------------------
 
 NEAREST_NUT = "Nearest the nut"
+STAY_IN_POSITION = "Stay in a position"
 
-FINGERINGS = [NEAREST_NUT]
+FINGERINGS = [NEAREST_NUT, STAY_IN_POSITION]
+
+# How many frets a hand position spans (the span a hand covers
+# without moving), and the choices offered. Matthew's idea: a
+# width the player can change.
+DEFAULT_WIDTH = 5
+WIDTHS = [4, 5, 6, 7, 8]
 
 
 # --- the instrument ---------------------------------------------
@@ -117,12 +127,193 @@ def _why(note, string, fret, instrument):
     )
 
 
-def fretted_blocks(piece, instrument, fingering=NEAREST_NUT):
+def _position_masks(places_list, width, reach, open_free):
+    """
+    For each note, which windows it fits, as a bit mask: bit lo is
+    set when the window of `width` frets starting at fret lo
+    (lo = 0 is the open position) holds one of the note's places.
+    A note with an open-string place fits every window when open
+    strings are free.
+    """
+
+    everywhere = (1 << (reach + 1)) - 1
+    masks = []
+
+    for places in places_list:
+        mask = 0
+
+        for _string, fret in places:
+            if fret == 0 and open_free:
+                mask = everywhere
+                break
+
+            for lo in range(max(0, fret - width + 1), min(fret, reach) + 1):
+                mask |= 1 << lo
+
+        masks.append(mask)
+
+    return masks
+
+
+def _group_notes(masks, natural_cut):
+    """
+    Split the notes (in order) into the fewest runs that each fit
+    one window, looking at the whole tune first: among the splits
+    with the fewest runs, the fewest cuts at an unnatural place
+    (natural_cut[k] says a cut before note k is at a rest, a bar
+    line or a phrase start), then the most even runs (smallest sum
+    of squared sizes). Returns [(first, last)] note indexes. The
+    same input always gives the same answer.
+    """
+
+    count = len(masks)
+    best = [None] * (count + 1)
+    best[0] = ((0, 0, 0), None)
+
+    for first in range(count):
+        if best[first] is None:
+            continue
+
+        cost_before = best[first][0]
+        run = None
+
+        for last in range(first, count):
+            run = masks[last] if run is None else run & masks[last]
+
+            if not run:
+                break
+
+            size = last - first + 1
+            cost = (
+                cost_before[0] + 1,
+                cost_before[1]
+                + (0 if first == 0 or natural_cut[first] else 1),
+                cost_before[2] + size * size,
+            )
+
+            if best[last + 1] is None or cost < best[last + 1][0]:
+                best[last + 1] = (cost, first)
+
+    groups = []
+    end = count
+
+    while end > 0:
+        first = best[end][1]
+        groups.append((first, end - 1))
+        end = first
+
+    return list(reversed(groups))
+
+
+def _natural_cuts(grouped, piece):
+    """
+    For each grouped note, whether a cut just before it is at a
+    natural pause: after a rest, on a bar line, or at the start of
+    a phrase.
+    """
+
+    starts = piece.starts()
+    phrase_starts = {
+        round(starts[first], 3) for first, _last in piece.phrases()
+    }
+    bars = {
+        round(bar, 3)
+        for bar in _bar_starts(piece.chart, piece.beats())
+    }
+    cuts = []
+    previous_end = None
+
+    for block in grouped:
+        start = round(block["start"], 3)
+        after_rest = (
+            previous_end is not None and start > previous_end + 0.001
+        )
+
+        cuts.append(after_rest or start in phrase_starts or start in bars)
+        previous_end = block["start"] + block["length"]
+
+    return cuts
+
+
+def _place_in_positions(blocks, places_list, instrument, piece, width,
+                        open_free):
+    """
+    Layer 2: give each playable block a place inside a hand
+    position. Fills in string, fret, why, segment and position on
+    the blocks that have a place.
+    """
+
+    reach = _frets_shown_for(instrument)
+    width = max(1, min(int(width), reach))
+    playable = [i for i, block in enumerate(blocks) if block["in_range"]]
+
+    if not playable:
+        return
+
+    grouped = [blocks[i] for i in playable]
+    places = [places_list[i] for i in playable]
+    masks = _position_masks(places, width, reach, open_free)
+    groups = _group_notes(masks, _natural_cuts(grouped, piece))
+
+    for number, (first, last) in enumerate(groups):
+        window = -1
+
+        run = masks[first]
+        for index in range(first + 1, last + 1):
+            run &= masks[index]
+
+        lo = (run & -run).bit_length() - 1
+        window = lo
+        used = []
+
+        for index in range(first, last + 1):
+            block = grouped[index]
+            fits = [
+                (fret, string) for string, fret in places[index]
+                if (fret == 0 and open_free) or lo <= fret <= lo + width - 1
+            ]
+            fret, string = min(fits)
+            note = block["note"]
+            block["string"] = string
+            block["fret"] = fret
+            block["segment"] = number
+            used.append(fret)
+            block["why"] = _why_in_position(
+                note, string, fret, lo, width, instrument, open_free
+            )
+
+        fretted = [fret for fret in used if fret > 0]
+        label = min(fretted) if fretted else None
+
+        for index in range(first, last + 1):
+            grouped[index]["position"] = label
+
+
+def _why_in_position(note, string, fret, lo, width, instrument, open_free):
+    name = string_names(instrument)[string]
+    span = f"frets {lo} to {lo + width - 1}"
+
+    if fret == 0:
+        return (
+            f"open {name} string - open strings are free, so they "
+            f"do not count toward the {width}-fret width"
+            if open_free else
+            f"open {name} string - inside the {span} position"
+        )
+
+    return (
+        f"fret {fret} on the {name} string - the lowest fret that "
+        f"plays {note} inside the {span} position"
+    )
+
+
+def fretted_blocks(piece, instrument, fingering=NEAREST_NUT,
+                   width=DEFAULT_WIDTH, open_free=True):
     """
     Every sounding note of the piece as one block:
 
         {"string", "fret", "start", "length", "note", "pitch",
-         "lyric", "in_range", "where", "why"}
+         "lyric", "in_range", "where", "why", "segment", "position"}
 
     start and length are in beats from the start of the piece
     handed in. string counts from the bottom line of the tab (0)
@@ -131,9 +322,17 @@ def fretted_blocks(piece, instrument, fingering=NEAREST_NUT):
     "above"). note is the name as written in the boxes, without
     its octave. why says in a line how the place was chosen.
     Rests leave a gap and are not blocks.
+
+    fingering is NEAREST_NUT (the lowest fret for every note) or
+    STAY_IN_POSITION, which groups the notes into hand positions
+    of at most `width` frets (open strings are free unless
+    open_free is False). segment numbers the position a note is
+    in and position is its lowest fretted fret (None for an open-
+    strings-only group); both are None for NEAREST_NUT and for
+    notes off the neck.
     """
 
-    if fingering != NEAREST_NUT:
+    if fingering not in FINGERINGS:
         raise ValueError(f"No fingering called {fingering}.")
 
     from melody_lanes import _lyrics_per_note
@@ -142,6 +341,7 @@ def fretted_blocks(piece, instrument, fingering=NEAREST_NUT):
     starts = piece.starts()
     lyrics = _lyrics_per_note(piece)
     blocks = []
+    places_list = []
 
     for index, written in enumerate(piece.pitches):
 
@@ -161,6 +361,7 @@ def fretted_blocks(piece, instrument, fingering=NEAREST_NUT):
             where = "below" if pitch < low["pitch"] else "above"
             why = f"{note} is {where} the neck"
 
+        places_list.append(places)
         blocks.append({
             "string": string,
             "fret": fret,
@@ -172,7 +373,14 @@ def fretted_blocks(piece, instrument, fingering=NEAREST_NUT):
             "in_range": bool(places),
             "where": where,
             "why": why,
+            "segment": None,
+            "position": None,
         })
+
+    if fingering == STAY_IN_POSITION:
+        _place_in_positions(
+            blocks, places_list, instrument, piece, width, open_free
+        )
 
     return blocks
 
@@ -237,6 +445,11 @@ LINE_GAP = 26
 LEFT_MARGIN = 62
 RIGHT_MARGIN = 12
 HEADING_HEIGHT = 20
+
+# With hand positions shown, the heading also holds a bracket and
+# its label above the beat numbers.
+HEADING_HEIGHT_WITH_POSITIONS = 46
+POSITION_COLOUR = "#00796b"
 LYRIC_HEIGHT = 26
 ROW_GAP = 18
 
@@ -327,12 +540,16 @@ def tab_html(blocks, instrument, total_beats, chart_text="",
     names = string_names(instrument)
     count = len(names)
     spare = any(not block["in_range"] for block in blocks)
+    positioned = any(block["segment"] is not None for block in blocks)
+    heading = (
+        HEADING_HEIGHT_WITH_POSITIONS if positioned else HEADING_HEIGHT
+    )
     spans = _row_spans(total_beats, starts)
     widest = max(last - first for first, last in spans)
     row_width = int(LEFT_MARGIN + widest * BEAT_PX + RIGHT_MARGIN)
     lines = count + (1 if spare else 0)
     row_height = (
-        HEADING_HEIGHT + lines * LINE_GAP + LYRIC_HEIGHT + ROW_GAP
+        heading + lines * LINE_GAP + LYRIC_HEIGHT + ROW_GAP
     )
     height = len(spans) * row_height
 
@@ -342,13 +559,13 @@ def tab_html(blocks, instrument, total_beats, chart_text="",
     def line_y(row, string):
         """Centre of a string's line in a row; 0 is the bottom."""
 
-        top = row * row_height + HEADING_HEIGHT
+        top = row * row_height + heading
         up = count - 1 - string
 
         return top + (up + (1 if spare else 0)) * LINE_GAP + LINE_GAP / 2
 
     def off_y(row):
-        return row * row_height + HEADING_HEIGHT + LINE_GAP / 2
+        return row * row_height + heading + LINE_GAP / 2
 
     parts = [
         f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -378,7 +595,7 @@ def tab_html(blocks, instrument, total_beats, chart_text="",
             )
 
         # the row's two ends, then bar lines and beat numbers
-        top = row * row_height + HEADING_HEIGHT
+        top = row * row_height + heading
         bottom = top + lines * LINE_GAP
 
         for x in (LEFT_MARGIN, right):
@@ -396,8 +613,51 @@ def tab_html(blocks, instrument, total_beats, chart_text="",
             parts.append(
                 f'<line x1="{x}" x2="{x}" y1="{top}" y2="{bottom}" '
                 f'stroke="#90a4ae" stroke-width="1.5"/>'
-                f'<text x="{x + 3}" y="{top - 6}" font-size="10" '
+                f'<text x="{x + 3}" y="{top - (30 if positioned else 6)}" '
+                f'font-size="10" '
                 f'fill="#78909c">{beat + 1}</text>'
+            )
+
+    # A bracket and a label over each stretch of notes in one hand
+    # position, row by row.
+    if positioned:
+        pieces = {}
+
+        for block in blocks:
+            if block["segment"] is None:
+                continue
+
+            row = max(
+                index for index, first in enumerate(row_firsts)
+                if first <= block["start"] + 0.001
+            )
+            key = (block["segment"], row)
+            first, last = spans[row]
+            begin = LEFT_MARGIN + (block["start"] - first) * BEAT_PX
+            end = min(
+                begin + block["length"] * BEAT_PX - 4,
+                LEFT_MARGIN + (last - first) * BEAT_PX,
+            )
+            low, high = pieces.get(key, (begin, end))
+            pieces[key] = (min(low, begin), max(high, end))
+
+        labels = {
+            block["segment"]: block["position"]
+            for block in blocks if block["segment"] is not None
+        }
+
+        for (segment, row), (begin, end) in sorted(pieces.items()):
+            top = row * row_height + heading
+            y = top - 12
+            fret = labels[segment]
+            text = "open strings" if fret is None else f"fret {fret} position"
+
+            parts.append(
+                f'<path d="M{begin} {y + 5} V{y} H{end} V{y + 5}" '
+                f'fill="none" stroke="{POSITION_COLOUR}" '
+                f'stroke-width="1.5"/>'
+                f'<text x="{begin + 2}" y="{y - 4}" font-size="10" '
+                f'font-weight="600" fill="{POSITION_COLOUR}">{text}</text>'
             )
 
     for block in blocks:
@@ -430,7 +690,7 @@ def tab_html(blocks, instrument, total_beats, chart_text="",
 
         if block["lyric"]:
             lyric_y = (
-                row * row_height + HEADING_HEIGHT + lines * LINE_GAP + 16
+                row * row_height + heading + lines * LINE_GAP + 16
             )
             parts.append(
                 f'<text x="{x}" y="{lyric_y}" font-size="12" '
@@ -454,9 +714,16 @@ def tab_html(blocks, instrument, total_beats, chart_text="",
 LEGEND = (
     "Tab: each line is a string, the number is the fret (0 is open), "
     "and the words are under each note. Time runs left to right, a "
-    "row for each phrase (a long one is cut at a bar line). Nearest the nut: every note takes its "
-    "lowest fret. A suggested fingering, not the only one - hover a "
-    "note for why."
+    "row for each phrase (a long one is cut at a bar line). A "
+    "suggested fingering, not the only one - hover a note for why."
+)
+
+LEGEND_NUT = " Nearest the nut: every note takes its lowest fret."
+
+LEGEND_POSITION = (
+    " Stay in a position: the green brackets are hand positions, "
+    "each at most {width} frets wide, as few as the tune allows and "
+    "changing at a pause where it can. {open}"
 )
 
 NOT_YET = (
@@ -464,14 +731,15 @@ NOT_YET = (
 )
 
 
-def fretted_view(piece, instrument, fingering=NEAREST_NUT):
+def fretted_view(piece, instrument, fingering=NEAREST_NUT,
+                 width=DEFAULT_WIDTH, open_free=True):
     """
     Everything a guitar or ukulele tab shows for a piece: the
     line about notes off the neck if there is one, the tab, and a
     legend.
     """
 
-    blocks = fretted_blocks(piece, instrument, fingering)
+    blocks = fretted_blocks(piece, instrument, fingering, width, open_free)
 
     if not blocks:
         return "<p>No notes to show yet.</p>"
@@ -482,6 +750,19 @@ def fretted_view(piece, instrument, fingering=NEAREST_NUT):
         f"{html.escape(message)}</div>" if message else ""
     )
 
+    if fingering == STAY_IN_POSITION:
+        shown = max(1, min(int(width), _frets_shown_for(instrument)))
+        legend = LEGEND + LEGEND_POSITION.format(
+            width=shown,
+            open=(
+                "Open strings are free: they do not count toward the "
+                "width." if open_free else
+                "Open strings count toward the width."
+            ),
+        )
+    else:
+        legend = LEGEND + LEGEND_NUT
+
     return (
         warning
         + tab_html(
@@ -489,6 +770,6 @@ def fretted_view(piece, instrument, fingering=NEAREST_NUT):
             row_starts(piece)
         )
         + '<div style="font-size:0.85em;opacity:0.75;margin-top:4px">'
-        + html.escape(LEGEND + " " + NOT_YET)
+        + html.escape(legend + " " + NOT_YET)
         + "</div>"
     )

@@ -10,6 +10,7 @@ from lyric_merge import merge_lyrics
 from mixer_data import mixer_data
 from help_text import HELP_TEXT
 import chord_sheet
+import fretted_tab
 import melody_lanes
 from music import (
     MusicInputError,
@@ -660,6 +661,29 @@ with gr.Blocks(
                     scale=2
                 )
 
+            # Guitar and ukulele tab only (PLAN-fretted-tab.md).
+            with gr.Row():
+
+                melody_fingering = gr.Radio(
+                    fretted_tab.FINGERINGS,
+                    value=fretted_tab.NEAREST_NUT,
+                    label="Guitar and ukulele fingering",
+                    scale=3
+                )
+
+                melody_width = gr.Radio(
+                    fretted_tab.WIDTHS,
+                    value=fretted_tab.DEFAULT_WIDTH,
+                    label="Position width (frets)",
+                    scale=2
+                )
+
+                melody_open_free = gr.Checkbox(
+                    value=True,
+                    label="Open strings are free",
+                    scale=1
+                )
+
             melody_status = gr.Markdown()
 
             melody_variants = []
@@ -1282,7 +1306,8 @@ with gr.Blocks(
 
     def refresh_melody(phrase_label, pitch_text, duration_text,
                        lyric_text, key_text, chart_text, show,
-                       header, placement, *variants):
+                       header, placement, fingering, width,
+                       open_free, *variants):
         """
         Redraw the Melody section for the boxes as they stand.
         Reads the five boxes and never writes them: the only
@@ -1293,7 +1318,7 @@ with gr.Blocks(
         page = melody_lanes.melody_page(
             pitch_text, duration_text, lyric_text, key_text,
             chart_text, phrase_label, list(variants), show, header,
-            placement
+            placement, fingering, width, open_free
         )
 
         return (
@@ -1304,7 +1329,8 @@ with gr.Blocks(
     melody_inputs = [
         melody_phrase, pitch_input, duration_input, lyric_input,
         key_input, chart_input, melody_show, melody_header,
-        melody_placement
+        melody_placement, melody_fingering, melody_width,
+        melody_open_free
     ] + melody_variants
 
     melody_outputs = [melody_phrase, melody_status] + melody_views
@@ -1313,7 +1339,9 @@ with gr.Blocks(
         melody_phrase.change, pitch_input.change,
         duration_input.change, lyric_input.change,
         key_input.change, chart_input.change, melody_show.change,
-        melody_header.change, melody_placement.change
+        melody_header.change, melody_placement.change,
+        melody_fingering.change, melody_width.change,
+        melody_open_free.change
     ] + [variant.change for variant in melody_variants]:
         trigger(
             fn=refresh_melody,

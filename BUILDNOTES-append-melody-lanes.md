@@ -197,3 +197,47 @@ Checked
 - Tests: 34 in tests/test_fretted_tab.py; six row mutations, all
   caught (the limit-fallback one needed a test for a bar line
   longer than 16 beats, added).
+
+## Stage 4c - layer 2, Stay in a position (2026-10-26)
+
+Matthew's design, built as agreed: group in advance (not greedily),
+a width he can change, open strings optionally free.
+
+Built
+- `Stay in a position` fingering in `fretted_tab.py`. A position is
+  a window of N frets (4 to 8, default 5, held to the frets shown).
+  Per note a bit mask says which windows hold one of its places; a
+  note with an open-string place fits every window when open strings
+  are free (the default).
+- `_group_notes`: a dynamic programme over the whole tune picks the
+  split by, in order: fewest positions; fewest cuts at a place that
+  is not a pause; most even runs (smallest sum of squared sizes).
+  A pause is after a rest, on a bar line, or at a phrase start.
+  Deterministic; same tune, same answer.
+- Within a group: the lowest window that holds every note, and each
+  note takes its lowest fret in it (open strings kept when free).
+  Label = the group's lowest fretted fret, or "open strings".
+- Blocks gain `segment` and `position`; `why` names the box
+  ("... inside the frets 8 to 12 position").
+- Drawing: a green bracket and label over each group, drawn row by
+  row (a group crossing a row break is bracketed in both rows).
+- Controls (Melody section): Fingering, Position width, Open strings
+  are free. They only change the guitar and ukulele tabs.
+- Default fingering stays Nearest the nut (Matthew: simple first).
+
+Found
+- The fewest-positions rule makes the Wellerman one position: frets
+  6 to 10 at width 5, 10 to 13 at width 4 (all notes within the box
+  or open), against nearest-the-nut's jumping between frets 1 and 10.
+  Correct by the rules, but the low-neck answer a teacher might
+  prefer is not offered: nothing prefers a LOWER position across
+  groupings (within a group the lowest window is taken). Worth
+  watching in use.
+- Wider width never needs more positions (tested on the Wellerman).
+
+Checked
+- 68 tests in tests/test_fretted_tab.py, frets and groups worked out
+  by hand; every note is the pitch asked for and every box is no
+  wider than the width, over 3 instruments x 5 widths on the
+  Wellerman. Ten rule mutations, all caught (two survivors, bar
+  lines as pauses and the width cap, got new tests).

@@ -20,6 +20,7 @@ from examples import load_twinkle, load_wellerman
 from fretted_tab import (
     FINGERINGS,
     NEAREST_NUT,
+    STAY_IN_POSITION,
     candidates,
     fretted_blocks,
     fretted_view,
@@ -158,7 +159,7 @@ def test_an_unknown_fingering_is_refused():
     with pytest.raises(ValueError):
         fretted_blocks(_piece("C4"), GUITAR_13, "Anything else")
 
-    assert FINGERINGS == [NEAREST_NUT]
+    assert FINGERINGS == [NEAREST_NUT, STAY_IN_POSITION]
 
 
 # --- why --------------------------------------------------------
@@ -409,3 +410,266 @@ def test_with_no_bar_line_to_cut_at_a_long_phrase_is_cut_at_sixteen():
     )
 
     assert row_starts(piece) == [0, 16]
+
+
+# --- layer 2: stay in a position -------------------------------
+#
+# Worked out by hand (guitar, 13 frets; pitches C4 = 48):
+#   A4 57: high E fret 5 or B string fret 10
+#   B4 59: high E 7 or B 12      C5 60: high E 8 or B 13
+#   D5 62: high E 10 only        E5 64: high E 12 only
+#   G2 31: low E fret 3 only     G4 55: high E 3, B 8 or G 12
+#   E2 28: low E open only
+
+def _in_position(pitches, width=5, open_free=True, instrument=GUITAR_13):
+    return fretted_blocks(
+        _piece(pitches), instrument, STAY_IN_POSITION, width, open_free
+    )
+
+
+def _segments(blocks):
+    return [b["segment"] for b in blocks]
+
+
+def test_a_high_run_stays_in_one_box_where_nearest_the_nut_spreads_out():
+    """
+    A4 B4 C5 D5 E5. Nearest the nut: frets 5 7 8 10 12 on the high E
+    (eight frets apart). In a five-fret position the only box that
+    holds D (10) and E (12) and the rest is frets 8 to 12: A on the B
+    string fret 10, B on the B string fret 12, C fret 8, D 10, E 12.
+    """
+
+    nearest = fretted_blocks(_piece("A4 B4 C5 D5 E5"), GUITAR_13)
+    box = _in_position("A4 B4 C5 D5 E5")
+
+    assert [b["fret"] for b in nearest] == [5, 7, 8, 10, 12]
+    assert _places(box) == [(4, 10), (4, 12), (5, 8), (5, 10), (5, 12)]
+    assert _segments(box) == [0, 0, 0, 0, 0]
+    assert {b["position"] for b in box} == {8}
+
+
+def test_a_narrower_width_moves_notes_to_other_strings():
+    """
+    C4 G4 A4. Width 5 fits frets 1 to 5 (C on the B string fret 1).
+    Width 4 cannot hold 1 and 5, so the lowest box that works is
+    frets 2 to 5: C goes to the G string fret 5.
+    """
+
+    five = _in_position("C4 G4 A4", 5)
+    four = _in_position("C4 G4 A4", 4)
+
+    assert _places(five) == [(4, 1), (5, 3), (5, 5)]
+    assert {b["position"] for b in five} == {1}
+    assert _places(four) == [(3, 5), (5, 3), (5, 5)]
+    assert {b["position"] for b in four} == {3}
+
+
+def test_a_tune_too_wide_for_one_box_is_split_in_two():
+    """G2 (low E fret 3 only) and E5 (high E fret 12 only): 9 apart."""
+
+    blocks = _in_position("G2 E5")
+
+    assert _segments(blocks) == [0, 1]
+    assert [b["position"] for b in blocks] == [3, 12]
+
+
+def test_a_wider_width_can_hold_what_a_narrower_one_cannot():
+    assert _segments(_in_position("G2 E5", 8)) == [0, 1]
+    # Frets 3 to 12 need ten.
+    assert len(set(_segments(_in_position("G2 E5", 8)))) == 2
+
+
+def test_open_strings_are_free_by_default_and_can_be_made_to_count():
+    """
+    E2 (the low E, open only) and E5 (high E fret 12): the open
+    string fits any box when free, so one position; if open strings
+    count, the open position (frets 0 to 4) cannot also hold fret 12.
+    """
+
+    free = _in_position("E2 E5", 5, True)
+    counted = _in_position("E2 E5", 5, False)
+
+    assert _segments(free) == [0, 0]
+    assert _places(free) == [(0, 0), (5, 12)]
+    assert "open strings are free" in free[0]["why"]
+    assert _segments(counted) == [0, 1]
+    assert "inside the" in counted[0]["why"]
+
+
+def test_an_open_strings_only_group_is_labelled_open():
+    blocks = _in_position("E2 E2")
+
+    assert [b["position"] for b in blocks] == [None, None]
+
+
+def test_the_cut_goes_at_a_rest_even_when_an_even_split_is_elsewhere():
+    """
+    G2 G4 R G4 G4 G4 E5, half-beat notes (so no bar line falls in
+    the middle): two positions are needed (G2 and E5 are
+    nine frets apart); the G4s fit either. A cut after the rest gives
+    groups of 2 and 4; the most even cut would be 3 and 3, but a cut
+    at a pause beats an even one.
+    """
+
+    blocks = fretted_blocks(
+        Piece.read(
+            "G2 G4 R G4 G4 G4 E5", "0.5 0.5 0.5 0.5 0.5 0.5 0.5", "",
+            "C", ""
+        ),
+        GUITAR_13, STAY_IN_POSITION, 5, True,
+    )
+
+    assert _segments(blocks) == [0, 0, 1, 1, 1, 1]
+
+
+def test_without_a_pause_the_cut_goes_for_the_most_even_split():
+    blocks = fretted_blocks(
+        Piece.read(
+            "G2 G4 G4 G4 G4 E5", "0.5 0.5 0.5 0.5 0.5 0.5", "", "C", ""
+        ),
+        GUITAR_13, STAY_IN_POSITION, 5, True,
+    )
+
+    assert _segments(blocks) == [0, 0, 0, 1, 1, 1]
+
+
+def test_a_cut_on_a_bar_line_counts_as_a_pause():
+    """
+    Eight one-beat notes, bars every four beats: G2 then G4s then E5.
+    The cut falls on the bar at beat 4 (note 5), not the even one.
+    """
+
+    blocks = _in_position("G2 G4 G4 G4 G4 G4 G4 E5")
+
+    assert _segments(blocks) == [0, 0, 0, 0, 1, 1, 1, 1]
+
+
+def test_fewest_positions_comes_before_a_natural_cut():
+    """A pause that would need a third position is not taken."""
+
+    blocks = fretted_blocks(
+        Piece.read("G2 G4 R E5 E5", "1 1 1 1 1", "", "C", ""),
+        GUITAR_13, STAY_IN_POSITION, 5, True,
+    )
+
+    assert len(set(_segments(blocks))) == 2
+
+
+def test_the_same_tune_always_gives_the_same_answer():
+    piece = Piece.read(*load_wellerman()[:5])
+    runs = [
+        fretted_blocks(piece, GUITAR_13, STAY_IN_POSITION, 5, True)
+        for _ in range(3)
+    ]
+
+    assert [_places(run) for run in runs][0] == _places(runs[1])
+    assert _places(runs[1]) == _places(runs[2])
+
+
+@pytest.mark.parametrize("width", [4, 5, 6, 7, 8])
+@pytest.mark.parametrize("instrument", [GUITAR_13, GUITAR_8, UKE_10])
+def test_every_note_is_the_pitch_asked_for_and_every_box_is_narrow_enough(
+    instrument, width
+):
+    from instrument_diagrams import STRING_TUNINGS, _absolute_pitch
+
+    piece = Piece.read(*load_wellerman()[:5])
+    base = instrument.split(",")[0]
+    opens = [_absolute_pitch(n) for n in STRING_TUNINGS[base]]
+    blocks = fretted_blocks(piece, instrument, STAY_IN_POSITION, width, True)
+    boxes = {}
+
+    for block in blocks:
+        if not block["in_range"]:
+            continue
+
+        assert opens[block["string"]] + block["fret"] == block["pitch"]
+
+        if block["fret"] > 0:
+            boxes.setdefault(block["segment"], []).append(block["fret"])
+
+    for frets in boxes.values():
+        assert max(frets) - min(frets) <= width - 1
+
+
+def test_a_wider_width_never_needs_more_positions():
+    piece = Piece.read(*load_wellerman()[:5])
+
+    def count(width):
+        blocks = fretted_blocks(
+            piece, GUITAR_13, STAY_IN_POSITION, width, True
+        )
+
+        return len({b["segment"] for b in blocks if b["segment"] is not None})
+
+    assert [count(w) for w in (4, 5, 6, 7, 8)] == sorted(
+        [count(w) for w in (4, 5, 6, 7, 8)], reverse=True
+    )
+
+
+def test_a_width_wider_than_the_neck_is_held_to_the_neck():
+    view = fretted_view(
+        _piece("C4 G4"), GUITAR_8, STAY_IN_POSITION, 20, True
+    )
+
+    assert "at most 8 frets wide" in view
+
+
+def test_off_the_neck_notes_have_no_position():
+    blocks = _in_position("D2 E3")
+
+    assert blocks[0]["segment"] is None and blocks[0]["position"] is None
+    assert blocks[1]["segment"] == 0
+
+
+def test_nearest_the_nut_has_no_positions_at_all():
+    blocks = fretted_blocks(_piece("C4 G4"), GUITAR_13)
+
+    assert _segments(blocks) == [None, None]
+
+
+def test_positions_are_drawn_as_brackets_with_a_label_only_when_chosen():
+    chosen = fretted_view(
+        _piece("A4 B4 C5 D5 E5"), GUITAR_13, STAY_IN_POSITION, 5, True
+    )
+    nearest = fretted_view(_piece("A4 B4 C5 D5 E5"), GUITAR_13)
+
+    assert "fret 8 position" in chosen
+    assert "fret 8 position" not in nearest
+    assert "green brackets" in chosen and "at most 5 frets wide" in chosen
+    assert "Nearest the nut: every note" in nearest
+
+
+def test_the_why_names_the_box():
+    blocks = _in_position("A4 B4 C5 D5 E5")
+
+    assert blocks[0]["why"] == (
+        "fret 10 on the B string - the lowest fret that plays A "
+        "inside the frets 8 to 12 position"
+    )
+
+
+def test_a_bar_line_is_a_pause_even_when_it_is_not_the_most_even_cut():
+    """
+    G2 (3 beats), then G4s, then E5 at beat 8. The bar lines fall at
+    beats 4 and 8. Two positions are needed; cuts at a bar are
+    natural, and between them the even one is 2 and 5 (before the note
+    on beat 4), not the evener 3 and 4 that ignores the bar.
+    """
+
+    blocks = fretted_blocks(
+        Piece.read(
+            "G2 G4 G4 G4 G4 G4 E5", "3 1 1 1 1 1 1", "", "C", ""
+        ),
+        GUITAR_13, STAY_IN_POSITION, 5, True,
+    )
+
+    assert _segments(blocks) == [0, 0, 1, 1, 1, 1, 1]
+
+
+def test_the_width_in_the_reason_is_held_to_the_neck():
+    blocks = fretted_blocks(
+        _piece("C4 G4"), GUITAR_8, STAY_IN_POSITION, 20, True
+    )
+
+    assert "inside the frets 0 to 7 position" in blocks[0]["why"]
