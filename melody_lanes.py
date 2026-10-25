@@ -440,10 +440,12 @@ SHOW_CHOICES = [SHOW_MELODY, SHOW_CHORDS]
 DEFAULT_SHOW = [SHOW_MELODY, SHOW_CHORDS]
 
 HEADER_LABELS = "Plain labels"
-HEADER_PICTURE = "Instrument picture"
-# Plain labels first: they are the compact choice, and the
-# instrument's own picture is tall (kalimba 340px, harp 400px).
-HEADERS = [HEADER_LABELS, HEADER_PICTURE]
+HEADER_SHORT = "Short picture"
+HEADER_PICTURE = "Full picture"
+# The short picture first (Matthew, 2026-10-26): the instrument
+# over its lanes, cropped to its upper part. The full picture is
+# tall (kalimba 340px, harp 400px); plain labels are the smallest.
+HEADERS = [HEADER_SHORT, HEADER_PICTURE, HEADER_LABELS]
 
 
 def chord_spans(piece):
@@ -769,7 +771,13 @@ def _bar_lines(chart_text, total_beats):
     return [float(beat) for beat in range(0, int(total_beats) + 1, 4)]
 
 
-def _picture_header(lanes, positions, instrument, total_width):
+# How much of the picture's height the short version keeps.
+SHORT_PICTURE_FRACTION = 0.55
+SHORT_PICTURE_MINIMUM = 100
+
+
+def _picture_header(lanes, positions, instrument, total_width,
+                    short=False):
     """
     The instrument's own picture, cropped to the lanes shown and
     set so that each of its columns is over its lane. Returns
@@ -782,6 +790,13 @@ def _picture_header(lanes, positions, instrument, total_width):
     root = re.match(r"<svg[^>]*>", picture).group(0)
     height = int(re.search(r'viewBox="0 0 [\d.]+ ([\d.]+)"', root).group(1))
     inner = picture[len(root):-len("</svg>")]
+    full_height = height
+
+    if short:
+        height = min(
+            full_height,
+            max(SHORT_PICTURE_MINIMUM, int(full_height * SHORT_PICTURE_FRACTION)),
+        )
 
     first = min(lanes, key=lambda lane: positions[lane["index"]])
     start_x = _picture_x(first, instrument)
@@ -872,9 +887,10 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
     labels.append("</svg>")
     header_parts = ["".join(labels)]
 
-    if header == HEADER_PICTURE:
+    if header in (HEADER_PICTURE, HEADER_SHORT):
         picture, _height = _picture_header(
-            lanes, positions, instrument, total_width
+            lanes, positions, instrument, total_width,
+            short=header == HEADER_SHORT,
         )
         header_parts.append(picture)
 
@@ -967,9 +983,13 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
             f'fill="{CHORD_TONE_COLOUR}"/>'
         )
 
-        if height >= 14:
+        # Half-beat chords get a smaller name; shorter ones keep
+        # only their bar.
+        if height >= 9:
+            size = 12 if height >= 14 else 9
             body.append(
-                f'<text x="14" y="{y + 12}" font-size="12" '
+                f'<text x="14" y="{y + min(12, height - 1)}" '
+                f'font-size="{size}" '
                 f'font-weight="600" fill="{CHORD_TONE_COLOUR}">'
                 f'{html.escape(span["name"])}</text>'
             )
@@ -1078,7 +1098,7 @@ CHORD_LEGEND = (
 
 # --- one view of the song ---------------------------------------
 
-def melody_view(piece, instrument, show=None, header=HEADER_LABELS,
+def melody_view(piece, instrument, show=None, header=HEADER_SHORT,
                 placement=NEAR_MELODY):
     """
     Everything one instrument tab shows for a piece (a phrase
@@ -1196,7 +1216,7 @@ def keep_phrase(label, choices):
 
 def melody_page(pitch_text, duration_text, lyric_text, key_text,
                 chart_text, phrase_label, instruments, show=None,
-                header=HEADER_LABELS, placement=NEAR_MELODY):
+                header=HEADER_SHORT, placement=NEAR_MELODY):
     """
     What the Melody section shows for the text of the boxes:
     {"choices", "label", "views", "status"}. Reads the boxes'

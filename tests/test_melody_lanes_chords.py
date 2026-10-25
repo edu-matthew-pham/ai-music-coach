@@ -19,6 +19,7 @@ from melody_lanes import (
     DEFAULT_SHOW,
     HEADER_LABELS,
     HEADER_PICTURE,
+    HEADER_SHORT,
     NEAR_MELODY,
     SHOW_CHORDS,
     SHOW_MELODY,
@@ -238,15 +239,43 @@ CHORDS_LEGEND_MISSING = "Pale pink blocks"
 
 # --- the header toggle -------------------------------------------
 
-def test_plain_labels_are_the_default_and_the_picture_is_taller():
+def test_the_short_picture_is_the_default_between_labels_and_the_full_picture():
     piece = _first_phrase()
 
-    labels = melody_view(piece, KALIMBA)
-    picture = melody_view(piece, KALIMBA, None, HEADER_PICTURE)
+    labels = melody_view(piece, KALIMBA, None, HEADER_LABELS)
+    short = melody_view(piece, KALIMBA)
+    full = melody_view(piece, KALIMBA, None, HEADER_PICTURE)
 
     assert "The instrument, over its lanes" not in labels
-    assert "The instrument, over its lanes" in picture
-    assert len(picture) > len(labels)
+    assert "The instrument, over its lanes" in short
+    assert "The instrument, over its lanes" in full
+
+    # Short crops the picture's height, so it is the smaller page.
+    assert short == melody_view(piece, KALIMBA, None, HEADER_SHORT)
+    assert 'viewBox="-1 0 612 100"' in short
+    assert 'viewBox="-1 0 612 148"' in full
+
+
+def test_the_short_picture_keeps_at_least_100_and_a_bit_over_half():
+    piece = _first_phrase()
+
+    # 41 keys: 206 tall, 55% is 113. Harp: 260, 55% is 143.
+    assert 'viewBox="-1 0 612 113"' in melody_view(piece, "Kalimba, 41 keys")
+    assert 'viewBox="10 0 570 143"' in melody_view(piece, HARP)
+
+
+def test_a_half_beat_chord_gets_a_small_name_and_a_quarter_beat_only_a_bar():
+    piece = Piece.read("C4 D4", "0.25 0.25", "", "C", "")
+
+    def page(length):
+        return lanes_html(
+            melody_blocks(piece, KALIMBA), KALIMBA, 4.0, "", [],
+            [{"start": 0, "length": length, "name": "Dm"}],
+        )
+
+    assert 'font-size="9" font-weight="600" fill="#ad1457">Dm' in page(0.5)
+    assert ">Dm</text>" not in page(0.25)
+    assert 'x="4" y=' in page(0.25)
 
 
 def test_the_picture_is_set_so_each_column_is_over_its_lane():

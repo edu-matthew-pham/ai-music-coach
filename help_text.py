@@ -332,11 +332,12 @@ the chord sheet** puts them where the Chords section's beginner
 shape does. A chord the chord sheet has no shape for goes near the
 melody either way.
 
-**Top of the lanes** starts on **Plain labels**, a row of lane
-names. **Instrument picture** puts the real instrument above the
-lanes, each of its columns over its own lane, like the falling-note
-piano videos. The pictures are tall, which is why labels come
-first. On the piano the picture is cropped to the lanes shown.
+**Top of the lanes** starts on **Short picture**: the real
+instrument above the lanes, cropped to its upper part, each of its
+columns over its own lane, like the falling-note piano videos.
+**Full picture** keeps the whole instrument, which is tall.
+**Plain labels** is just a row of lane names, the smallest. On the
+piano the picture is cropped to the lanes shown.
 
 If the tune has notes the instrument does not have, they are
 drawn in red in a strip marked "off" at the left, and a line

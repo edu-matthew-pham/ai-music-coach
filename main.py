@@ -648,7 +648,7 @@ with gr.Blocks(
 
                 melody_header = gr.Radio(
                     melody_lanes.HEADERS,
-                    value=melody_lanes.HEADER_LABELS,
+                    value=melody_lanes.HEADER_SHORT,
                     label="Top of the lanes",
                     scale=2
                 )

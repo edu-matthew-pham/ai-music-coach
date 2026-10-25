@@ -126,3 +126,15 @@ Checked
 - Live (Playwright): Wellerman, chord blocks present by default
   (150) and gone when Chords is unticked; picture header, As in the
   chord sheet, harp tab; no page errors.
+
+## Follow-up (2026-10-26, Matthew's review)
+
+- **Short picture** added as the header default (Matthew: "can we
+  have a short version of the instrument picture"). The picture is
+  cropped to 55% of its height (at least 100px): kalimba 34 keys 100,
+  41 keys 113, harp 143, piano 108. Full picture and plain labels
+  stay as choices. Changes the stage 3 default (was plain labels).
+- Chords near the melody confirmed as the default.
+- Half-beat chords now get a small (9px) name in the margin;
+  quarter-beat and shorter keep only their bar.
+- Tests: 79 in the three melody files; three more mutations caught.
