@@ -586,7 +586,9 @@ with gr.Blocks(
                                 (chord_sheet.variant_label(name), name)
                                 for name in variants
                             ],
-                            value=variants[0],
+                            value=chord_sheet.default_variant(
+                                family, variants
+                            ),
                             label="Size",
                             visible=len(variants) > 1
                         ))

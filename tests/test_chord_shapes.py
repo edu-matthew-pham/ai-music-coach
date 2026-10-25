@@ -859,3 +859,157 @@ def test_a_shared_fret_would_draw_a_split_mark_not_two_dots():
     assert "<path" in svg
     assert "#2e7d32" in svg
     assert "#00838f" in svg
+
+# --- piano: where the fingers really go ------------------------
+
+PIANO_ROOTS = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"]
+PIANO_QUALITIES = ["", "m", "7", "m7"]
+
+
+def _every_piano_chord():
+    for root in PIANO_ROOTS:
+        for quality in PIANO_QUALITIES:
+            yield root, quality
+
+
+def test_three_octaves_is_the_real_root_position_shape_for_every_chord():
+    """
+    Left hand: root (5) then the fifth above it (1). Right
+    hand an octave up: root (1), third (3), fifth (5), rising.
+    Written out from the chord's own intervals, never from the
+    function under test.
+    """
+
+    from chords import CHORD_QUALITIES
+    from instrument_diagrams import piano_shape_voicing
+    from notes import NOTE_SEMITONES
+
+    for root, quality in _every_piano_chord():
+        interval = CHORD_QUALITIES[quality]
+        base = NOTE_SEMITONES[root] % 12
+
+        left, right = piano_shape_voicing(root, quality, 3)
+
+        assert left == [(base, 5), (base + interval[2], 1)], root + quality
+        assert right == [
+            (base + 12, 1),
+            (base + 12 + interval[1], 3),
+            (base + 12 + interval[2], 5),
+        ], root + quality
+
+
+def test_three_octaves_every_shape_fits_and_the_hands_never_meet():
+    from instrument_diagrams import piano_shape_voicing
+
+    for root, quality in _every_piano_chord():
+        left, right = piano_shape_voicing(root, quality, 3)
+
+        assert max(key for key, _ in left + right) < 36, root + quality
+        assert max(key for key, _ in left) < min(key for key, _ in right)
+
+
+def test_fingers_follow_the_notes_left_to_right_on_both_sizes():
+    """
+    The bug that started this: a hand's fifth was drawn below
+    its root, so the right hand read 5 1 3 and the left hand
+    had its thumb to the left of its little finger. Left hand:
+    little finger (5) on the lowest key. Right hand: thumb (1)
+    on the lowest, little finger (5) on the highest.
+    """
+
+    from instrument_diagrams import piano_shape_voicing
+
+    for octaves in (2, 3):
+        for root, quality in _every_piano_chord():
+            left, right = piano_shape_voicing(root, quality, octaves)
+
+            by_key = sorted(left)
+            assert [finger for _, finger in by_key] == [5, 1]
+
+            by_key = sorted(right)
+            fingers = [finger for _, finger in by_key]
+            assert fingers[0] == 1 and fingers[-1] == 5
+            assert fingers in ([1, 3, 5], [1, 2, 5])
+
+
+def test_two_octaves_fits_and_has_the_same_notes_as_three():
+    from instrument_diagrams import piano_shape_voicing
+
+    for root, quality in _every_piano_chord():
+        small = piano_shape_voicing(root, quality, 2)
+        big = piano_shape_voicing(root, quality, 3)
+
+        for squeezed, proper in zip(small, big):
+            assert max(key for key, _ in squeezed) < 24
+            assert min(key for key, _ in squeezed) >= 0
+            assert sorted(key % 12 for key, _ in squeezed) == sorted(
+                key % 12 for key, _ in proper
+            )
+
+        # Left hand stays in the lower octave, right in the upper.
+        assert all(key < 12 for key, _ in small[0])
+        assert all(12 <= key < 24 for key, _ in small[1])
+
+
+def test_two_octaves_is_the_root_position_shape_where_it_already_fits():
+    """C to E need no rearranging on two octaves; the rest do."""
+
+    from instrument_diagrams import piano_shape_rearranged
+
+    for root in ("C", "C#", "D", "Eb", "E"):
+        assert not piano_shape_rearranged(root, "", 2), root
+
+    for root in ("F", "G", "A", "B"):
+        assert piano_shape_rearranged(root, "", 2), root
+
+
+def test_three_octaves_is_never_rearranged():
+    from instrument_diagrams import piano_shape_rearranged
+
+    for root, quality in _every_piano_chord():
+        assert not piano_shape_rearranged(root, quality, 3)
+
+
+def test_every_piano_shape_mark_renders_on_both_sizes():
+    from instrument_diagrams import (
+        LEFT_HAND_COLOUR, SHAPE_COLOUR, shape_overlay_for
+    )
+
+    for instrument in ("Piano, 2 octaves", "Piano, 3 octaves"):
+        for root, quality in _every_piano_chord():
+            shape = shape_overlay_for("C", instrument, root + quality)
+
+            assert shape.count("<circle") == 5, (instrument, root, quality)
+            assert shape.count(LEFT_HAND_COLOUR) == 2
+            assert shape.count(SHAPE_COLOUR) == 3
+
+
+def test_g_major_reads_left_to_right_as_a_player_would_see_it():
+    """
+    The picture Matthew questioned. G on three octaves: left
+    hand G (5) and D (1); right hand G (1), B (3), D (5).
+    """
+
+    from instrument_diagrams import piano_shape_voicing
+
+    left, right = piano_shape_voicing("G", "", 3)
+
+    assert left == [(7, 5), (14, 1)]
+    assert right == [(19, 1), (23, 3), (26, 5)]
+
+
+def test_a_rearranged_right_hand_uses_the_inversion_fingering():
+    """Root position is 1-3-5; an inversion's usual fingering is 1-2-5."""
+
+    from instrument_diagrams import (
+        piano_shape_rearranged, piano_shape_voicing
+    )
+
+    for root, quality in _every_piano_chord():
+        _, right = piano_shape_voicing(root, quality, 2)
+        fingers = [finger for _, finger in sorted(right)]
+
+        if piano_shape_rearranged(root, quality, 2):
+            assert fingers == [1, 2, 5], root + quality
+        else:
+            assert fingers == [1, 3, 5], root + quality

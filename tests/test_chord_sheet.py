@@ -511,3 +511,34 @@ def test_the_chords_section_sits_after_playback_and_before_practice():
 
     assert playback < chords < practice
     assert 'anchor_link("Chords", "chords")' in text
+
+
+# --- piano size on the sheet -----------------------------------
+
+def test_piano_starts_on_three_octaves_and_the_rest_are_unchanged():
+    from chord_sheet import default_variant
+
+    families = instrument_families()
+
+    assert default_variant("Piano", families["Piano"]) == "Piano, 3 octaves"
+
+    for family, variants in families.items():
+        if family != "Piano":
+            assert default_variant(family, variants) == variants[0]
+
+
+def test_two_octave_piano_says_when_a_shape_is_rearranged():
+    rearranged = "Rearranged to fit two octaves"
+
+    _, note = chord_picture("F", "Piano, 2 octaves", "G")
+    assert rearranged in note
+
+    _, note = chord_picture("C", "Piano, 2 octaves", "C")
+    assert note == ""
+
+    _, note = chord_picture("F", "Piano, 3 octaves", "G")
+    assert note == ""
+
+    # Notes alone draw no shape, so there is nothing rearranged.
+    _, note = chord_picture("F", "Piano, 2 octaves", "G", [SHOW_NOTES])
+    assert note == ""

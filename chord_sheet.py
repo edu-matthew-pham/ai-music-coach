@@ -22,12 +22,14 @@ import html
 import re
 
 from chord_detector import DIATONIC
-from chords import read_chart
+from chords import read_chart, split_chord
 from harmony import MAJOR_SCALES, RELATIVE_MINORS, read_key
 from instrument_diagrams import (
     INSTRUMENTS,
     _base_instrument_name,
+    _octaves_for,
     chord_overlay_for,
+    piano_shape_rearranged,
     scale_overlay_for,
     shape_overlay_for,
     structure_for,
@@ -258,6 +260,23 @@ def variant_label(instrument):
     return instrument.partition(", ")[2]
 
 
+def default_variant(family, variants):
+    """
+    Which size a family's tab starts on. Piano starts on three
+    octaves: the real root-position shape fits there for every
+    chord, and it is how a player would sit at a keyboard.
+    The two-octave view is the compact choice. Everything else
+    starts on its first, smaller size, as before.
+    """
+
+    if family == "Piano":
+        for name in variants:
+            if _octaves_for(name) >= 3:
+                return name
+
+    return variants[0]
+
+
 def stack(structure, *overlays):
     """
     Overlays laid over a structure picture. Every layer of
@@ -323,7 +342,18 @@ def chord_picture(signature, instrument, chord_name, show=None):
         [shape] if want_shape else []
     )
 
-    return stack(structure, *layers), ""
+    note = ""
+
+    if want_shape and _base_instrument_name(instrument) == "Piano":
+        root, quality = split_chord(chord_name)
+
+        if piano_shape_rearranged(root, quality, _octaves_for(instrument)):
+            note = (
+                "Rearranged to fit two octaves - the 3 octaves "
+                "view shows the root-position shape."
+            )
+
+    return stack(structure, *layers), note
 
 
 def scale_picture(signature, home, instrument):

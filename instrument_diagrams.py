@@ -2125,6 +2125,100 @@ def piano_shape_for(root, quality):
     return left_hand, right_hand
 
 
+def piano_shape_voicing(root, quality, octaves):
+    """
+    Where a beginner's two hands go on a keyboard of this
+    size: ([(key, finger)], [(key, finger)]) for the left and
+    right hand, where key counts semitones up from the
+    keyboard's own first C. None where piano_shape_for has no
+    shape.
+
+    Three octaves is room for the real thing, for every root:
+    the left hand plays the root with its little finger (5)
+    and the fifth above it with its thumb (1), and the right
+    hand plays the triad in root position an octave higher,
+    thumb on the root, middle finger on the third, little
+    finger on the fifth (1, 3, 5). The widest shape (a B
+    chord) reaches the 31st key of 36, and the hands are
+    always five keys apart.
+
+    Two octaves is not enough for that - a root-position
+    right hand from B would run off the edge - so each hand
+    is squeezed into one octave by putting its notes in
+    rising order, whichever way round they fall. The same
+    chord, rearranged: the left hand's fifth may sit below
+    its root, and the right hand may start on the third or
+    the fifth. Fingers follow the notes, left to right:
+    left hand little finger on the lowest, thumb on the
+    higher; right hand thumb on the lowest and little finger
+    on the highest, with the middle one on the root-position
+    third (3) or, in a rearranged chord, the index finger
+    (2) - the usual fingering for an inversion.
+    """
+
+    if piano_shape_for(root, quality) is None:
+        return None
+
+    from chords import CHORD_QUALITIES
+
+    triad = CHORD_QUALITIES[quality]
+    root_semitone = NOTE_SEMITONES[root] % 12
+    third = triad[1]
+    fifth = triad[2]
+
+    if octaves >= 3:
+        return (
+            [(root_semitone, 5), (root_semitone + fifth, 1)],
+            [
+                (root_semitone + 12, 1),
+                (root_semitone + 12 + third, 3),
+                (root_semitone + 12 + fifth, 5),
+            ],
+        )
+
+    left_notes = sorted([root_semitone, (root_semitone + fifth) % 12])
+    left_hand = [(left_notes[0], 5), (left_notes[1], 1)]
+
+    right_notes = sorted(
+        (root_semitone + interval) % 12
+        for interval in (0, third, fifth)
+    )
+
+    if right_notes[0] == root_semitone:
+        fingers = (1, 3, 5)
+    else:
+        fingers = (1, 2, 5)
+
+    right_hand = [
+        (note + 12, finger)
+        for note, finger in zip(right_notes, fingers)
+    ]
+
+    return left_hand, right_hand
+
+
+def piano_shape_rearranged(root, quality, octaves):
+    """
+    True when the shape drawn for a keyboard this size is a
+    rearrangement of the real root-position one - only on a
+    two-octave keyboard, and only where a hand's notes had
+    to be reordered to fit. False where there is no shape.
+    """
+
+    squeezed = piano_shape_voicing(root, quality, octaves)
+    proper = piano_shape_voicing(root, quality, 3)
+
+    if squeezed is None or proper is None:
+        return False
+
+    def order(voicing):
+        return [
+            [key % 12 for key, _finger in hand] for hand in voicing
+        ]
+
+    return order(squeezed) != order(proper)
+
+
 def chord_overlay_for(key, instrument, chord_name):
     """
     The chord-tones-only picture of one chord on one
@@ -2187,12 +2281,12 @@ def piano_chord_shape_overlay(key, chord_name, octaves=None):
     A beginner's two-hand voicing for one chord, transparent
     background, positioned to stack on piano_structure the
     same way piano_scale_overlay and piano_chord_overlay do.
-    Left hand one octave, right hand the next - the same
-    fixed layout every chord uses, so the shape someone
-    learns for one chord is the shape they find again for
-    the next. Fits within the compact two-octave keyboard
-    exactly as well as the full one, since two octaves is
-    exactly what both hands need.
+    The same two hands for every chord, left hand low and
+    right hand an octave up, so the shape someone learns for
+    one chord is the shape they find again for the next.
+    piano_shape_voicing says exactly where each finger goes:
+    the real root-position shape on three octaves, the same
+    chord rearranged to fit on two.
 
     Returns None if piano_shape_for has no voicing for this
     chord's quality - the caller falls back to the
@@ -2204,14 +2298,14 @@ def piano_chord_shape_overlay(key, chord_name, octaves=None):
 
     root, quality = split_chord(chord_name)
 
-    shape = piano_shape_for(root, quality)
+    octaves = octaves or PIANO_LAYOUT["octaves"]
+
+    shape = piano_shape_voicing(root, quality, octaves)
 
     if shape is None:
         return None
 
     left_hand, right_hand = shape
-
-    octaves = octaves or PIANO_LAYOUT["octaves"]
 
     _, width, height = _piano_structure_parts(octaves)
     white_height = PIANO_LAYOUT["white_height"]
@@ -2288,7 +2382,7 @@ def piano_chord_shape_overlay(key, chord_name, octaves=None):
         spot(semitone, finger, LEFT_HAND_COLOUR)
 
     for semitone, finger in right_hand:
-        spot(semitone + 12, finger, RIGHT_HAND_COLOUR)
+        spot(semitone, finger, RIGHT_HAND_COLOUR)
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '

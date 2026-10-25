@@ -219,7 +219,10 @@ Chord shape marks one beginner voicing instead - a standard
 open or barre shape on guitar or ukulele (the two have
 genuinely different shapes for the same chord, since the
 tuning itself differs, not just the range), a root-and-fifth
-left hand against a triad right hand on piano, a double stop
+left hand against a triad right hand on piano (little finger on the
+lowest key of each hand, thumb on the root for the right; on 3
+octaves it is always the true root-position shape, and on 2 it is
+the same chord rearranged to fit, with the sheet saying so), a double stop
 on two adjacent open or low strings on violin - each in its
 own colour so the two chord layers stay readable together.
 Showing both is useful in its own right: the shape gives a
@@ -258,7 +261,7 @@ The **Chords** section, below Playback, is for looking over
 before you play: every chord on one instrument at once, with
 a picture of the key's notes at the top. Pick the instrument
 from its tabs; each has its own **Size** choice, separate
-from the mixer's.
+from the mixer's. Piano starts on 3 octaves.
 
 With a song loaded it starts on the song's key and shows the
 chords the song plays, and says so ("from the song"). Pick
