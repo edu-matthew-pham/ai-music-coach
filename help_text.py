@@ -283,6 +283,13 @@ instrument has no standard shape for a chord it shows every
 place the chord's notes fall, and says so. If you untick both,
 the notes are shown, so a chord is never left blank.
 
+On the kalimba tab, a second picture, **Playing the scale in
+order**, numbers the key's eight notes 1 to 8 going up from home.
+The middle row is a zigzag from the centre tine, so the numbers
+alternate between thumbs; blue is the left thumb, purple the
+right, grey the centre tine (either), and home has an orange
+ring. A key with sharps or flats uses the top row for them.
+
 ## Keys and harmony
 
 **Detect key** reads the notes and tells you what key they

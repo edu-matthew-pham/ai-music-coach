@@ -112,6 +112,39 @@ panel is Svelte and would need a rebuild; not touched).
 - Checked live in Chromium: normal, full screen, enlarged, both
   Escapes, redraw during full screen; no page errors.
 
+### Full screen: pictures now grow (fix)
+
+First version of Full screen widened the cards but not the pictures:
+every svg carries `max-width` equal to its own size inline, so
+guitar stopped at 482px inside a 749px card (kalimba 624, harp
+590). Full screen now overrides it (`!important`) and the pictures
+fill the card (measured: 749 of 767px on every instrument).
+
+### Kalimba: the scale in playing order
+
+A "Playing the scale in order" card on the Kalimba tab (the sheet
+only; the mixer's layer list is Svelte, so a mixer layer would
+need a component rebuild - not built).
+
+- **`kalimba_scale_order(key, home, bass)`** gives eight tines: home
+  to home an octave up, starting at the lowest home note at or
+  above the centre C. A doubled note (F4 C5 F5 C6) uses the
+  middle-row tine. Same order on the 34 and 41 key.
+- **Drawn** as numbers 1-8 at the tine tips: blue left thumb, purple
+  right, grey the centre tine, home ringed orange. A minor key
+  uses its relative major's notes from its own home (natural
+  minor).
+- C major is the clean zigzag (centre, left, right, left...);
+  other keys follow it and dip into the top row for sharps and
+  flats. Two notes can share a column (top and middle row), which
+  is the same thumb.
+- Tests: the climb is the major (or natural minor) pattern for all
+  12 keys, written from the pattern, not the key table; start,
+  zigzag, doubles, picture, colours, stacking; mutation checked
+  (start off by one, doubled note not middle, octave missing).
+- Not played yet: Matthew to try a few keys on the real kalimba.
+- All 20,526 existing pictures unchanged.
+
 ### Open, deliberately not done
 
 - Remembering the last instrument tab (per-viewer convenience).

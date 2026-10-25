@@ -30,6 +30,7 @@ from instrument_diagrams import (
     _octaves_for,
     chord_overlay_for,
     piano_shape_rearranged,
+    scale_order_overlay_for,
     scale_overlay_for,
     shape_overlay_for,
     structure_for,
@@ -356,6 +357,21 @@ def chord_picture(signature, instrument, chord_name, show=None):
     return stack(structure, *layers), note
 
 
+def scale_order_picture(signature, home, instrument):
+    """
+    The key's scale numbered in the order to play it, or None
+    for an instrument where that is just the Scale picture
+    again (only the kalimba has one so far).
+    """
+
+    overlay = scale_order_overlay_for(signature, instrument, home=home)
+
+    if overlay is None:
+        return None
+
+    return stack(structure_for(instrument), overlay)
+
+
 def scale_picture(signature, home, instrument):
     return stack(
         structure_for(instrument),
@@ -415,6 +431,10 @@ SHEET_CSS = """
 #chords.sheet-full .sheet-grid {
     grid-template-columns: repeat(auto-fill, minmax(520px, 1fr));
 }
+/* Each picture carries max-width inline (its own size), so it
+   stops growing once its card is wider than that. In full
+   screen the pictures fill the card instead. */
+#chords.sheet-full .sheet-card svg { max-width: none !important; width: 100%; }
 #chords.sheet-full .sheet-intro { display: none; }
 #chords .sheet-size { padding: 2px 6px !important; min-width: 0 !important; }
 """
@@ -467,6 +487,16 @@ def sheet_html(selection, key_text, chart_text, instrument, show=None):
         f'green notes are in the key.</div>'
         f'{scale_picture(signature, state["home"], instrument)}</div>',
     ]
+
+    order = scale_order_picture(signature, state["home"], instrument)
+
+    if order is not None:
+        parts.append(
+            f'<div {_CARD_ATTRS}><b>Playing the scale in order</b>'
+            f'<div class="sheet-hint">Numbers are the order, going up. '
+            f'Blue is the left thumb, purple the right, grey either; '
+            f'home has an orange ring.</div>{order}</div>'
+        )
 
     for name in state["chords"]:
         picture, note = chord_picture(

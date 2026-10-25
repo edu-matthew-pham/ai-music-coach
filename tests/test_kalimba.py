@@ -402,3 +402,146 @@ def test_every_instrument_name_carries_a_variant():
     for instrument in INSTRUMENTS:
         family, _, variant = instrument.partition(", ")
         assert family and variant
+
+
+# --- playing the scale in order --------------------------------
+
+from instrument_diagrams import (  # noqa: E402
+    KALIMBA_CENTRE_COLOUR,
+    kalimba_scale_order,
+    kalimba_scale_order_overlay,
+    scale_order_overlay_for,
+)
+
+MAJOR_STEPS = [2, 2, 1, 2, 2, 2, 1]
+MINOR_STEPS = [2, 1, 2, 2, 1, 2, 2]
+
+
+def _climb(tines):
+    pitches = [tine["pitch"] for tine in tines]
+    return [b - a for a, b in zip(pitches, pitches[1:])]
+
+
+def test_the_scale_goes_up_by_the_major_pattern_for_every_key():
+    """
+    Whole, whole, half, whole, whole, whole, half from home -
+    written from the pattern itself, not from the key table
+    the code reads.
+    """
+
+    from harmony import MAJOR_SCALES
+
+    for key in MAJOR_SCALES:
+        order = kalimba_scale_order(key)
+
+        assert len(order) == 8, key
+        assert _climb(order) == MAJOR_STEPS, key
+        assert order[-1]["pitch"] - order[0]["pitch"] == 12, key
+
+
+def test_a_minor_key_goes_up_by_the_natural_minor_pattern_from_its_own_home():
+    from harmony import MAJOR_SCALES, RELATIVE_MINORS
+    from notes import NOTE_SEMITONES
+
+    for major in MAJOR_SCALES:
+        minor = RELATIVE_MINORS[major]
+        order = kalimba_scale_order(major, home=minor)
+
+        assert _climb(order) == MINOR_STEPS, minor
+        assert order[0]["pitch"] % 12 == NOTE_SEMITONES[minor] % 12, minor
+
+
+def test_it_starts_on_the_lowest_home_note_at_or_above_the_centre_c():
+    from harmony import MAJOR_SCALES
+    from notes import NOTE_SEMITONES
+
+    for key in MAJOR_SCALES:
+        start = kalimba_scale_order(key)[0]["pitch"]
+        home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
+
+        assert start % 12 == home, key
+        assert 48 <= start < 60, key
+
+
+def test_c_major_zigzags_out_from_the_centre_tine():
+    """The layout's whole point: C D E F G A B C is centre, left, right, left..."""
+
+    order = kalimba_scale_order("C")
+
+    assert [tine["note"] for tine in order] == [
+        "C4", "D4", "E4", "F4", "G4", "A4", "B4", "C5",
+    ]
+
+    columns = [
+        round((tine["x"] - KALIMBA_LAYOUT["left"])
+              / KALIMBA_LAYOUT["column_width"]) - 8
+        for tine in order
+    ]
+
+    assert columns == [0, -1, 1, -2, 2, -3, 3, -4]
+
+
+def test_a_doubled_note_uses_the_middle_row_in_the_scale_order():
+    # F major has F4 and C5, both doubled; F4 is the start.
+    order = kalimba_scale_order("F")
+
+    assert order[0]["note"] == "F4" and order[0]["row"] == "middle"
+    assert order[4]["note"] == "C5" and order[4]["row"] == "middle"
+
+
+def test_sharps_and_flats_come_from_the_top_row():
+    notes = {tine["note"]: tine["row"] for tine in kalimba_scale_order("D")}
+
+    assert notes["F#4"] == "top"
+    assert notes["C#5"] == "top"
+
+
+def test_the_scale_order_is_the_same_on_both_sizes():
+    from harmony import MAJOR_SCALES
+
+    for key in MAJOR_SCALES:
+        small = [t["note"] for t in kalimba_scale_order(key, bass=False)]
+        full = [t["note"] for t in kalimba_scale_order(key, bass=True)]
+
+        assert small == full, key
+
+
+def test_the_order_picture_numbers_eight_tines_and_rings_home_twice():
+    svg = kalimba_scale_order_overlay("G")
+
+    numbers = re.findall(r">(\d)</text>", svg)
+
+    assert numbers == [str(n) for n in range(1, 9)]
+    assert svg.count("<circle") == 8
+    assert svg.count(f'stroke="{HOME_COLOUR}"') == 2
+
+
+def test_thumb_colours_follow_which_side_of_the_centre_a_tine_is_on():
+    from instrument_diagrams import LEFT_HAND_COLOUR, RIGHT_HAND_COLOUR
+
+    svg = kalimba_scale_order_overlay("C")
+
+    # C4 centre, then D4 left, E4 right ... 4 left, 3 right, 1 centre.
+    fills = re.findall(r'<circle[^>]*fill="(#[0-9a-f]+)"', svg)
+
+    assert fills == [
+        KALIMBA_CENTRE_COLOUR,
+        LEFT_HAND_COLOUR, RIGHT_HAND_COLOUR,
+        LEFT_HAND_COLOUR, RIGHT_HAND_COLOUR,
+        LEFT_HAND_COLOUR, RIGHT_HAND_COLOUR,
+        LEFT_HAND_COLOUR,
+    ]
+
+
+def test_the_order_overlay_stacks_on_the_structure_and_only_kalimba_has_one():
+    for instrument in ("Kalimba, 34 keys", "Kalimba, 41 keys"):
+        structure = structure_for(instrument)
+        order = scale_order_overlay_for("C", instrument)
+
+        box = lambda svg: re.search(r'viewBox="([^"]+)"', svg).group(1)
+
+        assert box(order) == box(structure)
+
+    for instrument in INSTRUMENTS:
+        if not instrument.startswith("Kalimba"):
+            assert scale_order_overlay_for("C", instrument) is None

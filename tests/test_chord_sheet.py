@@ -269,11 +269,15 @@ def test_the_sheet_has_a_card_for_every_chord_and_stacked_pictures(instrument):
     for name in chords:
         assert f"<b>{name}</b>" in page
 
-    # One picture for the notes and one per chord, each a
+    # One picture for the notes and one per chord (the kalimba
+    # adds one more, its scale in playing order), each a
     # single stacked drawing (structure with the marks inside
     # it, not a second drawing laid beside it).
-    assert page.count("<svg") == 1 + len(chords)
-    assert page.count("</svg>") == 1 + len(chords)
+    extra = 1 if instrument.startswith("Kalimba") else 0
+    expected = 1 + extra + len(chords)
+
+    assert page.count("<svg") == expected
+    assert page.count("</svg>") == expected
 
 
 def test_a_chord_with_no_shape_shows_its_notes_and_says_so():
@@ -619,3 +623,41 @@ def test_escape_closes_an_enlarged_card_before_leaving_full_screen():
     assert FULL_SCREEN_JS.index("enlarged") < FULL_SCREEN_JS.index(
         "classList.contains('sheet-full')"
     )
+
+
+# --- the kalimba's scale in order ------------------------------
+
+def test_only_the_kalimba_sheet_has_a_scale_in_order_card():
+    for instrument in INSTRUMENTS:
+        page = sheet_html("browse:C major", "", "", instrument)
+        has_card = "Playing the scale in order" in page
+
+        assert has_card == instrument.startswith("Kalimba"), instrument
+
+
+def test_the_scale_in_order_card_follows_the_chosen_key_and_minor_home():
+    c_major = sheet_html("browse:C major", "", "", "Kalimba, 41 keys")
+    a_minor = sheet_html("browse:A minor", "", "", "Kalimba, 41 keys")
+
+    assert c_major != a_minor
+
+    card = lambda page: page.split("Playing the scale in order")[1].split(
+        'class="sheet-card"'
+    )[0]
+
+    # Same seven notes, different start: the 1 sits on a different tine.
+    assert card(c_major) != card(a_minor)
+    assert re.findall(r">(\d)</text>", card(a_minor)) == [
+        str(n) for n in range(1, 9)
+    ]
+
+
+def test_full_screen_lets_every_picture_grow_to_its_card():
+    from chord_sheet import SHEET_CSS
+
+    # The pictures carry max-width inline, so full screen must
+    # override it with !important or they never grow.
+    assert (
+        "#chords.sheet-full .sheet-card svg "
+        "{ max-width: none !important; width: 100%; }"
+    ) in SHEET_CSS
