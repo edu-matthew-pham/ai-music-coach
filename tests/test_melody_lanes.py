@@ -387,11 +387,13 @@ def test_a_phrase_keeps_its_number_when_the_words_change():
     assert keep_phrase(choices[1], choices) == choices[1]
 
 
-def test_only_the_kalimba_has_lanes_so_far_and_starts_on_41_keys():
+def test_kalimba_harp_and_piano_have_lanes_and_the_kalimba_starts_on_41_keys():
     families = supported_families()
 
-    assert list(families) == ["Kalimba"]
+    # In the one list of instruments' order.
+    assert list(families) == ["Piano", "Kalimba", "Lever harp"]
     assert default_variant("Kalimba", families["Kalimba"]) == KALIMBA_41
+    assert default_variant("Piano", families["Piano"]) == "Piano, 3 octaves"
 
 
 def test_the_legend_explains_the_colours_and_triangles():

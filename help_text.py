@@ -308,6 +308,15 @@ with a small up triangle, and one on the bass row with a down
 triangle. A note that appears twice on the kalimba is drawn on
 the middle row. Kalimba starts on 41 keys.
 
+On the lever harp each lane is a string (C red, F blue, as on
+the harp). A sharp or flat sits on the string below it, with a
+small tab and an up arrow to say that string's lever must be up
+for the note. On the piano the lanes are the keys, starting at
+C3: wide lanes for the white keys, narrow ones for the black
+keys. The piano shows only the keys the tune needs with a little
+spare, so a short tune is not a keyboard of empty lanes. Piano
+starts on 3 octaves.
+
 If the tune has notes the instrument does not have, they are
 drawn in red in a strip marked "off" at the left, and a line
 above says how many and whether Octave up or Octave down in

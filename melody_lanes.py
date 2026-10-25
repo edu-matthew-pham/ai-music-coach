@@ -33,6 +33,11 @@ from instrument_diagrams import (
     _kalimba_has_bass,
     _kalimba_tines,
     KALIMBA_TINES,
+    LEVER_HARP_PLAIN_STRING_COLOUR,
+    LEVER_HARP_STRING_COLOURS,
+    LEVER_HARP_STRINGS,
+    PIANO_LAYOUT,
+    _octaves_for,
 )
 from notes import is_rest
 
@@ -91,7 +96,61 @@ def lanes_for(instrument):
             for column in range(len(KALIMBA_TINES["middle"]))
         ]
 
+    if base == "Lever harp":
+        return [
+            {
+                "index": column,
+                "label": note,
+                "sub": "",
+                "colour": LEVER_HARP_STRING_COLOURS.get(
+                    note[0], LEVER_HARP_PLAIN_STRING_COLOUR
+                ),
+                "kind": "string",
+            }
+            for column, note in enumerate(LEVER_HARP_STRINGS)
+        ]
+
+    if base == "Piano":
+        return [
+            {
+                "index": pitch,
+                "label": _name(pitch) if _is_white(pitch) else "",
+                "sub": "" if _is_white(pitch) else _name(pitch),
+                "colour": "#ffffff" if _is_white(pitch) else "#212121",
+                "kind": "white" if _is_white(pitch) else "black",
+            }
+            for pitch in _piano_pitches(instrument)
+        ]
+
     raise ValueError(f"No lanes for {instrument}.")
+
+
+# --- the piano's keys and the note names -------------------------
+
+_SHARP_NAMES = [
+    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"
+]
+
+# The keyboard's first key. Matthew, 2026-10-25: C3, so that
+# middle C (C4) is the first C of the second octave and the
+# right hand's shape sits level with the melody.
+PIANO_START = 3 * 12
+
+
+def _is_white(pitch):
+    return len(_SHARP_NAMES[pitch % 12]) == 1
+
+
+def _name(pitch):
+    """A pitch as a name with its octave: 48 -> C3."""
+
+    return f"{_SHARP_NAMES[pitch % 12]}{pitch // 12}"
+
+
+def _piano_pitches(instrument):
+    octaves = _octaves_for(instrument)
+
+    return list(range(PIANO_START, PIANO_START + 12 * octaves))
 
 
 def _kalimba_column(tine):
@@ -123,8 +182,61 @@ def _place_kalimba(pitch, instrument):
     return None, None
 
 
+def _place_harp(pitch):
+    """
+    Where a pitch is played on the lever harp: (string, lever).
+    A natural note is its own string with the lever down; a
+    sharp or flat is the string below with its lever up. None
+    when the harp has no string for it.
+    """
+
+    for column, note in enumerate(LEVER_HARP_STRINGS):
+        if _absolute_pitch(note) == pitch:
+            return column, False
+
+    for column, note in enumerate(LEVER_HARP_STRINGS):
+        if _absolute_pitch(note) + 1 == pitch:
+            return column, True
+
+    return None
+
+
+def _place(pitch, instrument):
+    """
+    Where a pitch is played: (lane, row, lever), with lane None
+    when the instrument has no way to sound it. row is the
+    kalimba's row, lever is the harp's raised lever, both None
+    elsewhere.
+    """
+
+    base = _base_instrument_name(instrument)
+
+    if base == "Kalimba":
+        lane, row = _place_kalimba(pitch, instrument)
+        return lane, row, None
+
+    if base == "Lever harp":
+        found = _place_harp(pitch)
+
+        if found is None:
+            return None, None, None
+
+        return found[0], None, found[1]
+
+    if base == "Piano":
+        if pitch in _piano_pitches(instrument):
+            return pitch, None, None
+
+        return None, None, None
+
+    raise ValueError(f"No lanes for {instrument}.")
+
+
 def instrument_range(instrument):
-    """(lowest, highest) pitch the instrument can sound, with names."""
+    """
+    (lowest, highest) pitch the instrument can sound, each as
+    {"pitch", "note"} with the note's name and octave.
+    """
 
     base = _base_instrument_name(instrument)
 
@@ -135,7 +247,30 @@ def instrument_range(instrument):
 
         return low, high
 
+    if base == "Lever harp":
+        # The top string's lever sounds one higher still.
+        low = _absolute_pitch(LEVER_HARP_STRINGS[0])
+        high = _absolute_pitch(LEVER_HARP_STRINGS[-1]) + 1
+
+        return (
+            {"pitch": low, "note": LEVER_HARP_STRINGS[0]},
+            {"pitch": high, "note": _name(high)},
+        )
+
+    if base == "Piano":
+        pitches = _piano_pitches(instrument)
+
+        return (
+            {"pitch": pitches[0], "note": _name(pitches[0])},
+            {"pitch": pitches[-1], "note": _name(pitches[-1])},
+        )
+
     raise ValueError(f"No range for {instrument}.")
+
+
+# What one lane is called, for the line about notes off the
+# instrument.
+_PART_WORD = {"Kalimba": "tine", "Lever harp": "string", "Piano": "key"}
 
 
 # --- the data ---------------------------------------------------
@@ -167,13 +302,15 @@ def melody_blocks(piece, instrument):
     Every sounding note of the piece as one block:
 
         {"lane", "start", "length", "note", "pitch", "lyric",
-         "thumb", "row", "in_range", "where"}
+         "thumb", "row", "lever", "black", "in_range", "where"}
 
     start and length are in beats from the start of the piece
     handed in (a phrase's own start, when it was sliced). lane
     is the lane's index (None when the instrument has no tine
     for the note), thumb is "left", "right" or "centre", row is
-    "middle", "top" or "bass", and where is "below" or "above"
+    "middle", "top" or "bass" (kalimba only), lever is True
+    where a harp string needs its lever up for the note (None
+    off the harp), black marks a piano's black key, and where is "below" or "above"
     for a note off the instrument. note is the name as written
     in the boxes, without its octave. Rests leave a gap and
     are not blocks.
@@ -181,7 +318,7 @@ def melody_blocks(piece, instrument):
 
     base = _base_instrument_name(instrument)
 
-    if base != "Kalimba":
+    if base not in _PART_WORD:
         raise ValueError(f"No lanes for {instrument}.")
 
     low, high = instrument_range(instrument)
@@ -195,7 +332,7 @@ def melody_blocks(piece, instrument):
             continue
 
         pitch = _absolute_pitch(written)
-        lane, row = _place_kalimba(pitch, instrument)
+        lane, row, lever = _place(pitch, instrument)
 
         # A pitch inside the range with no tine (cannot happen on
         # a chromatic kalimba, but the check costs nothing) is
@@ -214,8 +351,15 @@ def melody_blocks(piece, instrument):
             "note": written[:-1],
             "pitch": pitch,
             "lyric": lyrics[index],
-            "thumb": _kalimba_thumb(lane) if in_range else None,
+            "thumb": (
+                _kalimba_thumb(lane)
+                if in_range and base == "Kalimba" else None
+            ),
             "row": row,
+            "lever": lever,
+            "black": (
+                base == "Piano" and in_range and not _is_white(pitch)
+            ),
             "in_range": in_range,
             "where": where,
         })
@@ -237,12 +381,13 @@ def range_message(blocks, instrument):
         return ""
 
     low, high = instrument_range(instrument)
+    word = _PART_WORD[_base_instrument_name(instrument)]
     parts = []
 
     if below:
         parts.append(
             f"{below} {'note is' if below == 1 else 'notes are'} "
-            f"below the lowest tine ({low['note']})"
+            f"below the lowest {word} ({low['note']})"
         )
 
     if above:
@@ -253,8 +398,7 @@ def range_message(blocks, instrument):
 
     def fits_after(shift):
         return all(
-            _place_kalimba(block["pitch"] + shift, instrument)[0]
-            is not None
+            _place(block["pitch"] + shift, instrument)[0] is not None
             for block in blocks
         )
 
@@ -307,16 +451,69 @@ def _bar_lines(chart_text, total_beats):
     return [float(beat) for beat in range(0, int(total_beats) + 1, 4)]
 
 
+# A piano's black key is a narrower lane, sitting over the join
+# between the two white lanes either side of it.
+BLACK_LANE_WIDTH = 22
+
+MELODY_COLOUR = "#7b1fa2"
+
+
+def _lane_width(lane):
+    return BLACK_LANE_WIDTH if lane.get("kind") == "black" else LANE_WIDTH
+
+
 def _lane_positions(lanes, spare):
-    """x of each lane (and of the out-of-range strip, if any)."""
+    """
+    x of each lane (and of the out-of-range strip, if any), and
+    the width the lanes end at. Every lane is one lane wide, but
+    a piano's white lanes go side by side and each black lane is
+    centred on the line after the white key before it.
+    """
 
     first = LANE_WIDTH if spare else 0
-    positions = {
-        lane["index"]: LEFT_MARGIN + first + position * LANE_WIDTH
-        for position, lane in enumerate(lanes)
-    }
+    positions = {}
+    x = LEFT_MARGIN + first
 
-    return positions, LEFT_MARGIN + first + len(lanes) * LANE_WIDTH
+    for lane in lanes:
+        if lane.get("kind") == "black":
+            # Centred on the line between its two white neighbours.
+            positions[lane["index"]] = x - BLACK_LANE_WIDTH // 2
+        else:
+            positions[lane["index"]] = x
+            x += LANE_WIDTH
+
+    return positions, x
+
+
+def visible_lanes(blocks, instrument):
+    """
+    The lanes to draw. All of them, except on the piano, which
+    is cropped to the notes the song uses with two keys spare
+    either side (and out to the next white key, so no lane
+    starts on a black one), so a song in a few octaves is not a
+    keyboard of empty lanes.
+    """
+
+    lanes = lanes_for(instrument)
+
+    if _base_instrument_name(instrument) != "Piano":
+        return lanes
+
+    used = [block["pitch"] for block in blocks if block["in_range"]]
+
+    if not used:
+        return lanes
+
+    low = min(used) - 2
+    high = max(used) + 2
+
+    while not _is_white(low):
+        low -= 1
+
+    while not _is_white(high):
+        high += 1
+
+    return [lane for lane in lanes if low <= lane["index"] <= high]
 
 
 def lanes_html(blocks, instrument, total_beats, chart_text=""):
@@ -326,7 +523,8 @@ def lanes_html(blocks, instrument, total_beats, chart_text=""):
     time running down. total_beats is how long the stretch is.
     """
 
-    lanes = lanes_for(instrument)
+    lanes = visible_lanes(blocks, instrument)
+    base = _base_instrument_name(instrument)
     spare = any(not block["in_range"] for block in blocks)
     positions, width = _lane_positions(lanes, spare)
     total_width = width + RIGHT_MARGIN
@@ -352,13 +550,18 @@ def lanes_html(blocks, instrument, total_beats, chart_text=""):
 
     for lane in lanes:
         x = positions[lane["index"]]
+        lane_width = _lane_width(lane)
+        edge = (
+            ' stroke="#90a4ae" stroke-width="1"'
+            if lane["colour"] == "#ffffff" else ""
+        )
         header.append(
-            f'<rect x="{x + 2}" y="22" width="{LANE_WIDTH - 4}" '
-            f'height="12" rx="2" fill="{lane["colour"]}"/>'
-            f'<text x="{x + LANE_WIDTH / 2}" y="16" font-size="10" '
+            f'<rect x="{x + 2}" y="22" width="{lane_width - 4}" '
+            f'height="12" rx="2" fill="{lane["colour"]}"{edge}/>'
+            f'<text x="{x + lane_width / 2}" y="16" font-size="10" '
             f'text-anchor="middle" fill="#455a64">'
             f'{html.escape(lane["label"])}</text>'
-            f'<text x="{x + LANE_WIDTH / 2}" y="44" font-size="8" '
+            f'<text x="{x + lane_width / 2}" y="44" font-size="8" '
             f'text-anchor="middle" fill="#90a4ae">'
             f'{html.escape(lane["sub"])}</text>'
         )
@@ -376,16 +579,33 @@ def lanes_html(blocks, instrument, total_beats, chart_text=""):
 
     body.append(f'<g transform="translate(0,{TOP_PAD})">')
 
-    lane_positions = list(positions.values())
+    stripes = []
 
     if spare:
-        lane_positions = [LEFT_MARGIN] + lane_positions
+        stripes.append((LEFT_MARGIN, LANE_WIDTH, "off"))
 
-    for order, x in enumerate(lane_positions):
+    stripes += [
+        (positions[lane["index"]], _lane_width(lane), lane.get("kind"))
+        for lane in lanes
+    ]
+
+    # White (and ordinary) lanes first, alternating; a piano's
+    # black lanes after, so the half of one that overlaps a
+    # neighbour is not painted over.
+    ordinary = [stripe for stripe in stripes if stripe[2] != "black"]
+    black = [stripe for stripe in stripes if stripe[2] == "black"]
+
+    for order, (x, stripe_width, _kind) in enumerate(ordinary):
         shade = "#f3f6f8" if order % 2 == 0 else "none"
         body.append(
-            f'<rect x="{x}" y="0" width="{LANE_WIDTH}" '
+            f'<rect x="{x}" y="0" width="{stripe_width}" '
             f'height="{body_height}" fill="{shade}"/>'
+        )
+
+    for x, stripe_width, _kind in black:
+        body.append(
+            f'<rect x="{x}" y="0" width="{stripe_width}" '
+            f'height="{body_height}" fill="#e3e8ec"/>'
         )
 
     strong = {
@@ -411,10 +631,22 @@ def lanes_html(blocks, instrument, total_beats, chart_text=""):
         y = block["start"] * BEAT_PX + 2
         height = max(block["length"] * BEAT_PX - 4, 8)
 
+        block_width = LANE_WIDTH - 8
+
         if block["in_range"]:
             x = positions[block["lane"]] + 4
-            colour = THUMB_COLOURS[block["thumb"]]
+            colour = (
+                THUMB_COLOURS[block["thumb"]] if block["thumb"]
+                else MELODY_COLOUR
+            )
             mark = _ROW_MARK.get(block["row"], "")
+
+            if block["lever"]:
+                mark = "↑"
+
+            if block["black"]:
+                block_width = BLACK_LANE_WIDTH - 4
+                x = positions[block["lane"]] + 2
         else:
             x = LEFT_MARGIN + 4
             colour = OUT_OF_RANGE_COLOUR
@@ -423,15 +655,24 @@ def lanes_html(blocks, instrument, total_beats, chart_text=""):
         label = html.escape(block["note"]) + mark
 
         body.append(
-            f'<rect x="{x}" y="{y}" width="{LANE_WIDTH - 8}" '
+            f'<rect x="{x}" y="{y}" width="{block_width}" '
             f'height="{height}" rx="6" fill="{colour}"/>'
         )
+
+        # A string whose lever must be up wears the lever's tab.
+        if block["in_range"] and block["lever"]:
+            body.append(
+                f'<rect x="{x + block_width / 2 - 5}" y="{y - 3}" '
+                f'width="10" height="5" rx="1" fill="#eceff1" '
+                f'stroke="#607d8b" stroke-width="1"/>'
+            )
 
         # A very short block has no room to read a name in.
         if height >= 16:
             body.append(
-                f'<text x="{x + (LANE_WIDTH - 8) / 2}" y="{y + 13}" '
-                f'font-size="10" text-anchor="middle" fill="#ffffff">'
+                f'<text x="{x + block_width / 2}" y="{y + 13}" '
+                f'font-size="{9 if block["black"] else 10}" '
+                f'text-anchor="middle" fill="#ffffff">'
                 f'{label}</text>'
             )
 
@@ -443,8 +684,14 @@ def lanes_html(blocks, instrument, total_beats, chart_text=""):
 
     body.append("</g></svg>")
 
+    # A cropped keyboard has few lanes; do not let each balloon.
+    narrow = (
+        f"max-width:{int(total_width * 1.8)}px;" if len(lanes) < 14
+        else ""
+    )
+
     return (
-        '<div class="melody-lanes" style="max-height:70vh;'
+        f'<div class="melody-lanes" style="{narrow}max-height:70vh;'
         'overflow-y:auto;border:1px solid var(--border-color-primary,#ccc);'
         'border-radius:8px">'
         '<div style="position:sticky;top:0;z-index:2">'
@@ -461,6 +708,22 @@ LEGEND = (
     "the centre tine. ▲ is a top-row tine (a sharp or flat), "
     "▼ a bass-row tine."
 )
+
+
+LEGENDS = {
+    "Kalimba": LEGEND,
+    "Lever harp": (
+        "Time runs down the page, the words beside each note. C "
+        "strings are red and F strings blue, as on the harp. ↑ with "
+        "a small tab means that string's lever must be up for the "
+        "note."
+    ),
+    "Piano": (
+        "Time runs down the page, the words beside each note. Wide "
+        "lanes are the white keys, narrow ones the black keys. Only "
+        "the keys the tune needs, with a little spare, are shown."
+    ),
+}
 
 
 # --- one view of the song ---------------------------------------
@@ -487,7 +750,7 @@ def melody_view(piece, instrument):
         warning
         + lanes_html(blocks, instrument, piece.beats(), piece.chart)
         + f'<div style="font-size:0.85em;opacity:0.75;margin-top:4px">'
-        f"{html.escape(LEGEND)}</div>"
+        f"{html.escape(LEGENDS[_base_instrument_name(instrument)])}</div>"
     )
 
 
@@ -495,7 +758,7 @@ def melody_view(piece, instrument):
 
 # Families the view can draw, as {family: [variants]}, taken
 # from the one list of instruments (INSTRUMENTS).
-SUPPORTED = ("Kalimba",)
+SUPPORTED = ("Kalimba", "Lever harp", "Piano")
 
 
 def supported_families():

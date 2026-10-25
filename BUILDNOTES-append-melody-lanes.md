@@ -43,3 +43,35 @@ Checked
 - All 20,526 existing instrument renders byte-identical.
 - Live in the real app (Playwright): phrase dropdown, Twinkle,
   Wellerman, both sizes, no page errors.
+
+## Stage 2 - harp and piano (2026-10-26, unattended)
+
+Built
+- Placement is now one function, `_place(pitch, instrument)` ->
+  (lane, row, lever); kalimba, harp and piano each have a range
+  and a message word (tine, string, key).
+- Harp: 19 strings F3..C6, C red and F blue. A natural note is
+  its own string; a sharp or flat is the string below with its
+  lever up (block gets `lever=True`, a small lever tab and an
+  up arrow). C#6 is on (C6's lever); D6 is above the harp.
+- Piano: lanes start at C3 (decision 13); 2 octaves = C3..B4,
+  3 octaves = C3..B5. White lanes 36 wide, black lanes 22 wide
+  centred on the join. Cropped to the song's lowest and highest
+  note plus two keys, widened to white keys, clamped to the
+  keyboard. Out-of-range notes still go in the red "off" strip.
+- A cropped (<14 lanes) picture has a wrapper max-width so lanes
+  do not balloon on a wide page.
+- Melody tab order follows INSTRUMENTS (Piano, Kalimba, Harp).
+
+Found
+- The shading had to paint white lanes first and black lanes
+  after, or a white lane's stripe covered half of the black one.
+- Not confirmed against a real keyboard: C3 as the first key
+  (decision 13 said to confirm in stage 2). C4 is 48 here, the
+  same convention as the rest of the code.
+
+Checked
+- tests/test_melody_lanes_harp_piano.py (17 tests, expected
+  lanes worked out by hand), plus the stage 1 tests: 54 pass.
+- All 20,526 existing renders byte-identical.
+- Live: Twinkle on all three Melody tabs, no page errors.
