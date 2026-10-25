@@ -1112,6 +1112,13 @@ def melody_view(piece, instrument, show=None, header=HEADER_SHORT,
     layer goes.
     """
 
+    # Guitar and ukulele are tab, read across the page, in their
+    # own module (PLAN-fretted-tab.md).
+    if _base_instrument_name(instrument) in FRETTED:
+        from fretted_tab import fretted_view
+
+        return fretted_view(piece, instrument)
+
     show = DEFAULT_SHOW if show is None else list(show)
     want_melody = SHOW_MELODY in show or SHOW_CHORDS not in show
     want_chords = SHOW_CHORDS in show
@@ -1154,7 +1161,10 @@ def melody_view(piece, instrument, show=None, header=HEADER_SHORT,
 
 # Families the view can draw, as {family: [variants]}, taken
 # from the one list of instruments (INSTRUMENTS).
-SUPPORTED = ("Kalimba", "Lever harp", "Piano")
+# Guitar and ukulele are drawn as tab (fretted_tab.py).
+FRETTED = ("Guitar", "Ukulele")
+
+SUPPORTED = ("Kalimba", "Lever harp", "Piano") + FRETTED
 
 
 def supported_families():
@@ -1177,6 +1187,11 @@ def default_variant(family, variants):
         for name in variants:
             if "41" in name:
                 return name
+
+    # A guitar or ukulele starts on its longer neck: fewer notes
+    # fall off the end of it.
+    if family in FRETTED:
+        return variants[-1]
 
     from chord_sheet import default_variant as sheet_default
 

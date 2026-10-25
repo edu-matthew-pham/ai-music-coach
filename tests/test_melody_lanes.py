@@ -391,7 +391,9 @@ def test_kalimba_harp_and_piano_have_lanes_and_the_kalimba_starts_on_41_keys():
     families = supported_families()
 
     # In the one list of instruments' order.
-    assert list(families) == ["Piano", "Kalimba", "Lever harp"]
+    assert list(families) == [
+        "Piano", "Guitar", "Ukulele", "Kalimba", "Lever harp",
+    ]
     assert default_variant("Kalimba", families["Kalimba"]) == KALIMBA_41
     assert default_variant("Piano", families["Piano"]) == "Piano, 3 octaves"
 

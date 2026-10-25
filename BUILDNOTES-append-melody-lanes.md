@@ -138,3 +138,44 @@ Checked
 - Half-beat chords now get a small (9px) name in the margin;
   quarter-beat and shorter keep only their bar.
 - Tests: 79 in the three melody files; three more mutations caught.
+
+## Stage 4a/4b - guitar and ukulele tab, layer 1 (2026-10-26)
+
+Plan: PLAN-fretted-tab.md. Built the first layer only (Nearest the
+nut); Stay in a position and Smart shifting are not built.
+
+Built
+- `fretted_tab.py`, plain Python like `melody_lanes.py`: data first
+  (`fretted_blocks`), drawing second (`tab_html`), wired in through
+  `melody_view` (Guitar and Ukulele go to `fretted_view`).
+- Rule: every note takes the lowest fret that plays it within the
+  neck shown (guitar 8 or 13 frets, ukulele 6 or 10). A note's place
+  depends on nothing else, so it is fully stable.
+- Strings are counted by physical line, bottom line first as the
+  tuning list is stored; the ukulele is re-entrant (its G is higher
+  than its C), so its lowest note is its C string (C4), not its G.
+- Out of range: red block on a line of its own above the strings,
+  and a line counting them with the octave-shift check (only claimed
+  if a shift of 12 really fits every note).
+- Each note has a "why" tooltip ("fret 3 on the high E string - the
+  lowest fret that plays G"). Tab wraps every 16 beats.
+- Both start on the longer neck (13 and 10 frets) so fewer notes
+  fall off the end. Chords, the picture header and the Show,
+  header and placement controls do not apply to the tab yet; the
+  view says so.
+
+Found
+- The Wellerman on the guitar shows exactly the weakness the plan
+  predicted for layer 1: the hand jumps between frets 10, 5 and 3
+  within a line. That is the evidence for layer 2.
+- The Wellerman is wider than the 10-fret ukulele (lowest note D3,
+  neck starts at C4), and says so.
+- The "lower string wins a tie" rule can never fire: no two strings
+  of either instrument share an open pitch, so two places never
+  have the same fret. The mutation that flips it survives; it is an
+  equivalent mutant, left in the rule only so the order is defined.
+
+Checked
+- tests/test_fretted_tab.py (26 tests, frets worked out by hand
+  from the tunings); seven of eight mutations caught (the eighth
+  is the equivalent mutant above).

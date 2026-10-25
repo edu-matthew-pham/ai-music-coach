@@ -339,6 +339,18 @@ columns over its own lane, like the falling-note piano videos.
 **Plain labels** is just a row of lane names, the smallest. On the
 piano the picture is cropped to the lanes shown.
 
+On the guitar and ukulele tabs the melody is drawn as tab: a
+line for each string (the high string on top), the fret number
+where each note falls (0 is an open string), the words underneath,
+and the tab wraps onto new rows every sixteen beats like printed
+tab. Every note takes the lowest fret that plays it, the nearest the
+nut, so a note's place never depends on the others; hover a note to
+see why it is there. It is a suggested fingering, not the only one:
+a high passage can jump about, and a later choice will keep your
+hand in one position. Both start on the longer neck. Chords and the
+instrument picture are not on the tab yet, and the Show, top of the
+lanes and chords-go choices do not change it.
+
 If the tune has notes the instrument does not have, they are
 drawn in red in a strip marked "off" at the left, and a line
 above says how many and whether Octave up or Octave down in
