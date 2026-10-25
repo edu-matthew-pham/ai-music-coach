@@ -235,9 +235,13 @@ natural-note roots, major and minor, since it has no single
 settled convention the way guitar's shapes do and a shape
 here is only shown where that's genuinely confident, not
 just correct. A handful of guitar chords have no standard
-open or barre shape either, and the kalimba and the lever
-harp have no shapes yet - only Chord notes. Any of these says so rather than
-showing nothing.
+open or barre shape either, and the lever
+harp has no shapes yet - only Chord notes. The kalimba's
+shape is the chord's tones on neighbouring tines, one thumb
+sweep (two for a few sevenths), middle row first, with the
+root added from the bass row on the 41-key; Eb, Gm and Eb7
+have no such sweep on this layout. Any of these says so
+rather than showing nothing.
 
 **Preview next chord** dims in a second picture underneath
 the current one, showing whichever layers are already
