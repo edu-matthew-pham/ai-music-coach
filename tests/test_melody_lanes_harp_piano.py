@@ -196,8 +196,9 @@ def test_the_piano_picture_has_narrow_black_blocks_and_a_narrow_wrapper():
     blocks = melody_blocks(_piece("C4 C#4"), PIANO_3)
     page = lanes_html(blocks, PIANO_3, 2.0)
 
-    # White block 28 wide, black block 18 wide.
-    assert 'width="28"' in page and 'width="18"' in page
+    # A white lane is 44 wide (the picture's white key), so its
+    # block is 36; a black lane is 26 wide, its block 22.
+    assert 'width="36"' in page and 'width="22"' in page
     assert "max-width:" in page
 
 

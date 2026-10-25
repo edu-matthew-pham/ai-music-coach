@@ -317,6 +317,27 @@ keys. The piano shows only the keys the tune needs with a little
 spare, so a short tune is not a keyboard of empty lanes. Piano
 starts on 3 octaves.
 
+**Show** has two ticks, Melody and Chords, both on to start. The
+chords come from the chart in the Song section: each is a pale
+pink block in the lanes of its notes, behind the melody and as
+long as the chord lasts, with its name and a bar the same length
+in the left margin. With no chart there is nothing to show for
+Chords. If you untick both, the melody is shown, so the view is
+never blank.
+
+**Chords go** picks where those blocks sit: **Near the melody**
+(the default) puts each chord's notes at whatever is closest to
+what the melody is playing, so your hands need not jump; **As in
+the chord sheet** puts them where the Chords section's beginner
+shape does. A chord the chord sheet has no shape for goes near the
+melody either way.
+
+**Top of the lanes** starts on **Plain labels**, a row of lane
+names. **Instrument picture** puts the real instrument above the
+lanes, each of its columns over its own lane, like the falling-note
+piano videos. The pictures are tall, which is why labels come
+first. On the piano the picture is cropped to the lanes shown.
+
 If the tune has notes the instrument does not have, they are
 drawn in red in a strip marked "off" at the left, and a line
 above says how many and whether Octave up or Octave down in

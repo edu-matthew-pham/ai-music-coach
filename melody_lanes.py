@@ -33,11 +33,17 @@ from instrument_diagrams import (
     _kalimba_has_bass,
     _kalimba_tines,
     KALIMBA_TINES,
+    LEVER_HARP_LAYOUT,
     LEVER_HARP_PLAIN_STRING_COLOUR,
     LEVER_HARP_STRING_COLOURS,
     LEVER_HARP_STRINGS,
+    CHORD_TONE_COLOUR,
     PIANO_LAYOUT,
     _octaves_for,
+    kalimba_shape_tines,
+    lever_harp_shape_strings,
+    piano_shape_voicing,
+    structure_for,
 )
 from notes import is_rest
 
@@ -419,15 +425,327 @@ def range_message(blocks, instrument):
     )
 
 
+# --- the chords --------------------------------------------------
+
+# Where the chord layer goes: near the notes being played (so the
+# hands do not have to jump), or where the chord sheet's shape
+# puts it. Matthew, 2026-10-25: a toggle; near the melody first.
+NEAR_MELODY = "Near the melody"
+AS_IN_SHEET = "As in the chord sheet"
+PLACEMENTS = [NEAR_MELODY, AS_IN_SHEET]
+
+SHOW_MELODY = "Melody"
+SHOW_CHORDS = "Chords"
+SHOW_CHOICES = [SHOW_MELODY, SHOW_CHORDS]
+DEFAULT_SHOW = [SHOW_MELODY, SHOW_CHORDS]
+
+HEADER_LABELS = "Plain labels"
+HEADER_PICTURE = "Instrument picture"
+# Plain labels first: they are the compact choice, and the
+# instrument's own picture is tall (kalimba 340px, harp 400px).
+HEADERS = [HEADER_LABELS, HEADER_PICTURE]
+
+
+def chord_spans(piece):
+    """
+    The chords of the piece's chart as [{"start", "length",
+    "name"}], in beats from the start of the piece handed in, cut
+    off at its end. [] when there is no chart or it cannot be
+    read (a half-typed chart is not an error here).
+    """
+
+    from chords import read_chart
+
+    try:
+        chords, _bars = read_chart(piece.chart or "")
+    except ValueError:
+        return []
+
+    total = piece.beats()
+
+    return [
+        {
+            "start": start,
+            "length": min(length, total - start),
+            "name": name,
+        }
+        for start, length, name in chords
+        if start < total
+    ]
+
+
+def _melody_centre(blocks, start, length, instrument):
+    """
+    The middle of the notes being played from start for length
+    beats (their average pitch); failing that, the middle of
+    every note of the tune; failing that, the instrument's own
+    middle. Notes off the instrument do not count.
+    """
+
+    def middle(chosen):
+        return sum(b["pitch"] for b in chosen) / len(chosen)
+
+    sounding = [b for b in blocks if b["in_range"]]
+    during = [
+        b for b in sounding
+        if b["start"] < start + length and b["start"] + b["length"] > start
+    ]
+
+    if during:
+        return middle(during)
+
+    if sounding:
+        return middle(sounding)
+
+    low, high = instrument_range(instrument)
+
+    return (low["pitch"] + high["pitch"]) / 2
+
+
+def _near_pitches(tones, centre, instrument):
+    """
+    One pitch for each chord tone (a pitch class), the one
+    closest to the melody's middle, moved by an octave at a time
+    onto the instrument if that is where it is not. [] if a tone
+    has no place on the instrument at all.
+    """
+
+    pitches = []
+
+    for tone in tones:
+        # The pitch of this class within six semitones of centre.
+        base = round(centre) - 6
+        pitch = base + (tone - base) % 12
+
+        for _ in range(8):
+            if _place(pitch, instrument)[0] is not None:
+                break
+
+            low, _high = instrument_range(instrument)
+            pitch += 12 if pitch < low["pitch"] else -12
+        else:
+            continue
+
+        pitches.append(pitch)
+
+    return pitches
+
+
+def _sheet_pitches(name, instrument):
+    """
+    The pitches of the chord sheet's own shape for a chord on
+    this instrument, or None where the sheet has no shape for it.
+    """
+
+    from chords import split_chord
+
+    root, quality = split_chord(name)
+    base = _base_instrument_name(instrument)
+
+    if base == "Kalimba":
+        tines = kalimba_shape_tines(
+            root, quality, _kalimba_has_bass(instrument)
+        )
+
+        return None if tines is None else [t["pitch"] for t in tines]
+
+    if base == "Lever harp":
+        strings = lever_harp_shape_strings(root, quality)
+
+        return None if strings is None else [s["sounding"] for s in strings]
+
+    if base == "Piano":
+        voicing = piano_shape_voicing(root, quality, _octaves_for(instrument))
+
+        if voicing is None:
+            return None
+
+        return [
+            PIANO_START + key for hand in voicing for key, _finger in hand
+        ]
+
+    return None
+
+
+def chord_blocks(piece, instrument, melody, placement=NEAR_MELODY):
+    """
+    The chord layer as one block per chord tone:
+
+        {"lane", "start", "length", "name", "pitch", "black"}
+
+    start and length are the chord's own, in beats. `melody` is
+    the melody's blocks (for "near the melody"). With
+    AS_IN_SHEET each chord goes where the chord sheet's beginner
+    shape puts it; a chord with no shape there goes near the
+    melody instead. A chord this app does not know gives no
+    blocks.
+    """
+
+    from chords import chord_semitones
+
+    base = _base_instrument_name(instrument)
+    out = []
+
+    for span in chord_spans(piece):
+        try:
+            tones = chord_semitones(span["name"])
+        except ValueError:
+            continue
+
+        pitches = None
+
+        if placement == AS_IN_SHEET:
+            try:
+                pitches = _sheet_pitches(span["name"], instrument)
+            except ValueError:
+                pitches = None
+
+        if pitches is None:
+            centre = _melody_centre(
+                melody, span["start"], span["length"], instrument
+            )
+            pitches = _near_pitches(tones, centre, instrument)
+
+        for pitch in pitches:
+            lane = _place(pitch, instrument)[0]
+
+            if lane is None:
+                continue
+
+            out.append({
+                "lane": lane,
+                "start": span["start"],
+                "length": span["length"],
+                "name": span["name"],
+                "pitch": pitch,
+                "black": base == "Piano" and not _is_white(pitch),
+            })
+
+    return out
+
+
 # --- the drawing -------------------------------------------------
 
 BEAT_PX = 28
 HEADER_HEIGHT = 46
 TOP_PAD = 10
 LEFT_MARGIN = 62
+CHORD_MARGIN = 54
 RIGHT_MARGIN = 150
 
 _ROW_MARK = {"top": "▲", "bass": "▼"}
+
+# A piano's black key is a narrower lane, sitting over the join
+# between the two white lanes either side of it.
+MELODY_COLOUR = "#7b1fa2"
+
+
+def _lane_widths(instrument):
+    """
+    (lane width, black lane width) of an instrument. Each lane is
+    as wide as its column of the instrument's own picture, so the
+    picture can sit over the lanes and line up.
+    """
+
+    base = _base_instrument_name(instrument)
+
+    if base == "Lever harp":
+        return LEVER_HARP_LAYOUT["column_width"], 0
+
+    if base == "Piano":
+        return PIANO_LAYOUT["white_width"], PIANO_LAYOUT["black_width"]
+
+    return KALIMBA_LAYOUT["column_width"], 0
+
+
+def _lane_positions(lanes, spare, instrument, left=LEFT_MARGIN):
+    """
+    x of each lane (and of the out-of-range strip, if any), and
+    the x the lanes end at. A piano's white lanes go side by
+    side and each black lane is centred on the line after the
+    white key before it.
+    """
+
+    wide, narrow = _lane_widths(instrument)
+    x = left + (wide if spare else 0)
+    positions = {}
+
+    for lane in lanes:
+        if lane.get("kind") == "black":
+            positions[lane["index"]] = x - narrow // 2
+        else:
+            positions[lane["index"]] = x
+            x += wide
+
+    return positions, x
+
+
+def _lane_width(lane, instrument):
+    wide, narrow = _lane_widths(instrument)
+
+    return narrow if lane.get("kind") == "black" else wide
+
+
+def _picture_x(lane, instrument):
+    """Where a lane's left edge falls in the instrument's picture."""
+
+    base = _base_instrument_name(instrument)
+
+    if base == "Lever harp":
+        return (
+            LEVER_HARP_LAYOUT["left"]
+            + lane["index"] * LEVER_HARP_LAYOUT["column_width"]
+        )
+
+    if base == "Piano":
+        white = PIANO_LAYOUT["white_width"]
+        whites_before = sum(
+            1 for pitch in range(PIANO_START, lane["index"])
+            if _is_white(pitch)
+        )
+
+        if lane["kind"] == "black":
+            return whites_before * white - PIANO_LAYOUT["black_width"] // 2
+
+        return whites_before * white
+
+    # A kalimba tine is 22 wide in a 36 column, 6 from the left.
+    column_width = KALIMBA_LAYOUT["column_width"]
+
+    return lane["index"] * column_width - 1
+
+
+def visible_lanes(blocks, instrument, extra_pitches=()):
+    """
+    The lanes to draw. All of them, except on the piano, which
+    is cropped to the notes the song uses with two keys spare
+    either side (and out to the next white key, so no lane
+    starts on a black one), so a song in a few octaves is not a
+    keyboard of empty lanes. extra_pitches are notes the crop
+    must also hold (the chord layer's).
+    """
+
+    lanes = lanes_for(instrument)
+
+    if _base_instrument_name(instrument) != "Piano":
+        return lanes
+
+    used = [block["pitch"] for block in blocks if block["in_range"]]
+    used += list(extra_pitches)
+
+    if not used:
+        return lanes
+
+    low = min(used) - 2
+    high = max(used) + 2
+
+    while not _is_white(low):
+        low -= 1
+
+    while not _is_white(high):
+        high += 1
+
+    return [lane for lane in lanes if low <= lane["index"] <= high]
 
 
 def _bar_lines(chart_text, total_beats):
@@ -451,87 +769,72 @@ def _bar_lines(chart_text, total_beats):
     return [float(beat) for beat in range(0, int(total_beats) + 1, 4)]
 
 
-# A piano's black key is a narrower lane, sitting over the join
-# between the two white lanes either side of it.
-BLACK_LANE_WIDTH = 22
-
-MELODY_COLOUR = "#7b1fa2"
-
-
-def _lane_width(lane):
-    return BLACK_LANE_WIDTH if lane.get("kind") == "black" else LANE_WIDTH
-
-
-def _lane_positions(lanes, spare):
+def _picture_header(lanes, positions, instrument, total_width):
     """
-    x of each lane (and of the out-of-range strip, if any), and
-    the width the lanes end at. Every lane is one lane wide, but
-    a piano's white lanes go side by side and each black lane is
-    centred on the line after the white key before it.
+    The instrument's own picture, cropped to the lanes shown and
+    set so that each of its columns is over its lane. Returns
+    (svg, height).
     """
 
-    first = LANE_WIDTH if spare else 0
-    positions = {}
-    x = LEFT_MARGIN + first
+    import re
 
-    for lane in lanes:
-        if lane.get("kind") == "black":
-            # Centred on the line between its two white neighbours.
-            positions[lane["index"]] = x - BLACK_LANE_WIDTH // 2
-        else:
-            positions[lane["index"]] = x
-            x += LANE_WIDTH
+    picture = structure_for(instrument)
+    root = re.match(r"<svg[^>]*>", picture).group(0)
+    height = int(re.search(r'viewBox="0 0 [\d.]+ ([\d.]+)"', root).group(1))
+    inner = picture[len(root):-len("</svg>")]
 
-    return positions, x
+    first = min(lanes, key=lambda lane: positions[lane["index"]])
+    start_x = _picture_x(first, instrument)
+    shown_width = max(
+        positions[lane["index"]] + _lane_width(lane, instrument)
+        for lane in lanes
+    ) - positions[first["index"]]
+
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {total_width} {height}" width="100%" '
+        f'style="display:block;'
+        f'background:var(--background-fill-primary,#fff)" '
+        f'role="img" aria-label="The instrument, over its lanes">'
+        f'<svg x="{positions[first["index"]]}" y="0" '
+        f'width="{shown_width}" height="{height}" '
+        f'viewBox="{start_x} 0 {shown_width} {height}">'
+        f"{inner}</svg></svg>"
+    )
+
+    return svg, height
 
 
-def visible_lanes(blocks, instrument):
+def lanes_html(blocks, instrument, total_beats, chart_text="",
+               chords=None, chord_names=None, header=HEADER_LABELS):
     """
-    The lanes to draw. All of them, except on the piano, which
-    is cropped to the notes the song uses with two keys spare
-    either side (and out to the next white key, so no lane
-    starts on a black one), so a song in a few octaves is not a
-    keyboard of empty lanes.
-    """
+    The lanes picture for one instrument as HTML: a header that
+    stays put (lane names, or the instrument's own picture) and
+    the notes scrolling under it, time running down.
+    total_beats is how long the stretch is.
 
-    lanes = lanes_for(instrument)
-
-    if _base_instrument_name(instrument) != "Piano":
-        return lanes
-
-    used = [block["pitch"] for block in blocks if block["in_range"]]
-
-    if not used:
-        return lanes
-
-    low = min(used) - 2
-    high = max(used) + 2
-
-    while not _is_white(low):
-        low -= 1
-
-    while not _is_white(high):
-        high += 1
-
-    return [lane for lane in lanes if low <= lane["index"] <= high]
-
-
-def lanes_html(blocks, instrument, total_beats, chart_text=""):
-    """
-    The lanes picture for one instrument as HTML: a header of
-    lane names that stays put and the notes scrolling under it,
-    time running down. total_beats is how long the stretch is.
+    chords is the chord layer's blocks (drawn first, pale, under
+    the melody) and chord_names the chord spans for the left
+    margin; both None draws the melody alone.
     """
 
-    lanes = visible_lanes(blocks, instrument)
-    base = _base_instrument_name(instrument)
+    chords = chords or []
+    chord_names = chord_names or []
+    show_chords = bool(chords or chord_names)
+
+    lanes = visible_lanes(
+        blocks, instrument, [c["pitch"] for c in chords]
+    )
     spare = any(not block["in_range"] for block in blocks)
-    positions, width = _lane_positions(lanes, spare)
+
+    wide, narrow = _lane_widths(instrument)
+    left = LEFT_MARGIN + (CHORD_MARGIN if show_chords else 0)
+    positions, width = _lane_positions(lanes, spare, instrument, left)
     total_width = width + RIGHT_MARGIN
     body_height = int(total_beats * BEAT_PX) + 24 + TOP_PAD
 
-    # --- header ---
-    header = [
+    # --- header: lane names ---
+    labels = [
         f'<svg xmlns="http://www.w3.org/2000/svg" '
         f'viewBox="0 0 {total_width} {HEADER_HEIGHT}" width="100%" '
         f'style="display:block;'
@@ -540,22 +843,22 @@ def lanes_html(blocks, instrument, total_beats, chart_text=""):
     ]
 
     if spare:
-        x = LEFT_MARGIN
-        header.append(
-            f'<rect x="{x + 2}" y="22" width="{LANE_WIDTH - 4}" '
+        x = left
+        labels.append(
+            f'<rect x="{x + 2}" y="22" width="{wide - 4}" '
             f'height="12" rx="2" fill="{OUT_OF_RANGE_COLOUR}"/>'
-            f'<text x="{x + LANE_WIDTH / 2}" y="16" font-size="9" '
+            f'<text x="{x + wide / 2}" y="16" font-size="9" '
             f'text-anchor="middle" fill="{OUT_OF_RANGE_COLOUR}">off</text>'
         )
 
     for lane in lanes:
         x = positions[lane["index"]]
-        lane_width = _lane_width(lane)
+        lane_width = _lane_width(lane, instrument)
         edge = (
             ' stroke="#90a4ae" stroke-width="1"'
             if lane["colour"] == "#ffffff" else ""
         )
-        header.append(
+        labels.append(
             f'<rect x="{x + 2}" y="22" width="{lane_width - 4}" '
             f'height="12" rx="2" fill="{lane["colour"]}"{edge}/>'
             f'<text x="{x + lane_width / 2}" y="16" font-size="10" '
@@ -566,7 +869,14 @@ def lanes_html(blocks, instrument, total_beats, chart_text=""):
             f'{html.escape(lane["sub"])}</text>'
         )
 
-    header.append("</svg>")
+    labels.append("</svg>")
+    header_parts = ["".join(labels)]
+
+    if header == HEADER_PICTURE:
+        picture, _height = _picture_header(
+            lanes, positions, instrument, total_width
+        )
+        header_parts.append(picture)
 
     # --- body ---
     body = [
@@ -579,30 +889,29 @@ def lanes_html(blocks, instrument, total_beats, chart_text=""):
 
     body.append(f'<g transform="translate(0,{TOP_PAD})">')
 
-    stripes = []
-
-    if spare:
-        stripes.append((LEFT_MARGIN, LANE_WIDTH, "off"))
-
-    stripes += [
-        (positions[lane["index"]], _lane_width(lane), lane.get("kind"))
-        for lane in lanes
-    ]
-
     # White (and ordinary) lanes first, alternating; a piano's
     # black lanes after, so the half of one that overlaps a
     # neighbour is not painted over.
-    ordinary = [stripe for stripe in stripes if stripe[2] != "black"]
-    black = [stripe for stripe in stripes if stripe[2] == "black"]
+    ordinary = [
+        (positions[lane["index"]], _lane_width(lane, instrument))
+        for lane in lanes if lane.get("kind") != "black"
+    ]
+    black = [
+        (positions[lane["index"]], _lane_width(lane, instrument))
+        for lane in lanes if lane.get("kind") == "black"
+    ]
 
-    for order, (x, stripe_width, _kind) in enumerate(ordinary):
+    if spare:
+        ordinary.insert(0, (left, wide))
+
+    for order, (x, stripe_width) in enumerate(ordinary):
         shade = "#f3f6f8" if order % 2 == 0 else "none"
         body.append(
             f'<rect x="{x}" y="0" width="{stripe_width}" '
             f'height="{body_height}" fill="{shade}"/>'
         )
 
-    for x, stripe_width, _kind in black:
+    for x, stripe_width in black:
         body.append(
             f'<rect x="{x}" y="0" width="{stripe_width}" '
             f'height="{body_height}" fill="#e3e8ec"/>'
@@ -616,22 +925,59 @@ def lanes_html(blocks, instrument, total_beats, chart_text=""):
         y = beat * BEAT_PX
         is_bar = float(beat) in strong
         body.append(
-            f'<line x1="{LEFT_MARGIN}" x2="{width}" y1="{y}" y2="{y}" '
+            f'<line x1="{left}" x2="{width}" y1="{y}" y2="{y}" '
             f'stroke="{"#90a4ae" if is_bar else "#e0e6ea"}" '
             f'stroke-width="{1.5 if is_bar else 1}"/>'
         )
 
         if is_bar:
             body.append(
-                f'<text x="{LEFT_MARGIN - 8}" y="{y + 4}" font-size="10" '
+                f'<text x="{left - 8}" y="{y + 4}" font-size="10" '
                 f'text-anchor="end" fill="#78909c">beat {beat + 1}</text>'
+            )
+
+    # The chord layer sits under the melody, paler.
+    lane_by_index = {lane["index"]: lane for lane in lanes}
+    alone = not blocks
+
+    for chord in chords:
+        lane = lane_by_index.get(chord["lane"])
+
+        if lane is None:
+            continue
+
+        x = positions[chord["lane"]] + 1
+        chord_width = _lane_width(lane, instrument) - 2
+        y = chord["start"] * BEAT_PX + 2
+        height = max(chord["length"] * BEAT_PX - 4, 4)
+
+        body.append(
+            f'<rect x="{x}" y="{y}" width="{chord_width}" '
+            f'height="{height}" rx="4" fill="{CHORD_TONE_COLOUR}" '
+            f'fill-opacity="{0.55 if alone else 0.25}"/>'
+        )
+
+    # Each chord's name and a bar the length of it, in the margin.
+    for span in chord_names:
+        y = span["start"] * BEAT_PX + 2
+        height = max(span["length"] * BEAT_PX - 4, 4)
+
+        body.append(
+            f'<rect x="4" y="{y}" width="4" height="{height}" rx="2" '
+            f'fill="{CHORD_TONE_COLOUR}"/>'
+        )
+
+        if height >= 14:
+            body.append(
+                f'<text x="14" y="{y + 12}" font-size="12" '
+                f'font-weight="600" fill="{CHORD_TONE_COLOUR}">'
+                f'{html.escape(span["name"])}</text>'
             )
 
     for block in blocks:
         y = block["start"] * BEAT_PX + 2
         height = max(block["length"] * BEAT_PX - 4, 8)
-
-        block_width = LANE_WIDTH - 8
+        block_width = wide - 8
 
         if block["in_range"]:
             x = positions[block["lane"]] + 4
@@ -645,10 +991,10 @@ def lanes_html(blocks, instrument, total_beats, chart_text=""):
                 mark = "↑"
 
             if block["black"]:
-                block_width = BLACK_LANE_WIDTH - 4
+                block_width = narrow - 4
                 x = positions[block["lane"]] + 2
         else:
-            x = LEFT_MARGIN + 4
+            x = left + 4
             colour = OUT_OF_RANGE_COLOUR
             mark = "▼" if block["where"] == "below" else "▲"
 
@@ -685,17 +1031,17 @@ def lanes_html(blocks, instrument, total_beats, chart_text=""):
     body.append("</g></svg>")
 
     # A cropped keyboard has few lanes; do not let each balloon.
-    narrow = (
+    narrow_page = (
         f"max-width:{int(total_width * 1.8)}px;" if len(lanes) < 14
         else ""
     )
 
     return (
-        f'<div class="melody-lanes" style="{narrow}max-height:70vh;'
+        f'<div class="melody-lanes" style="{narrow_page}max-height:{"85vh" if header == HEADER_PICTURE else "70vh"};'
         'overflow-y:auto;border:1px solid var(--border-color-primary,#ccc);'
         'border-radius:8px">'
         '<div style="position:sticky;top:0;z-index:2">'
-        + "".join(header)
+        + "".join(header_parts)
         + "</div>"
         + "".join(body)
         + "</div>"
@@ -708,7 +1054,6 @@ LEGEND = (
     "the centre tine. ▲ is a top-row tine (a sharp or flat), "
     "▼ a bass-row tine."
 )
-
 
 LEGENDS = {
     "Kalimba": LEGEND,
@@ -725,32 +1070,63 @@ LEGENDS = {
     ),
 }
 
+CHORD_LEGEND = (
+    "Pale pink blocks are the chords, behind the melody; each "
+    "chord's name and length are in the left margin."
+)
+
 
 # --- one view of the song ---------------------------------------
 
-def melody_view(piece, instrument):
+def melody_view(piece, instrument, show=None, header=HEADER_LABELS,
+                placement=NEAR_MELODY):
     """
     Everything one instrument tab shows for a piece (a phrase
     or the whole tune), as HTML: the out-of-range line if there
     is one, the lanes, and a one-line legend.
+
+    show says which layers to draw (Melody, Chords; both by
+    default); a view with neither ticked shows the melody, so it
+    is never blank. header is the instrument's own picture over
+    the lanes, or plain lane names. placement is where the chord
+    layer goes.
     """
 
+    show = DEFAULT_SHOW if show is None else list(show)
+    want_melody = SHOW_MELODY in show or SHOW_CHORDS not in show
+    want_chords = SHOW_CHORDS in show
+
     blocks = melody_blocks(piece, instrument)
-    message = range_message(blocks, instrument)
+    message = range_message(blocks, instrument) if want_melody else ""
 
     if not blocks:
         return "<p>No notes to show yet.</p>"
+
+    chords = []
+    names = []
+
+    if want_chords:
+        chords = chord_blocks(piece, instrument, blocks, placement)
+        names = chord_spans(piece)
 
     warning = (
         f'<div style="color:{OUT_OF_RANGE_COLOUR};margin:4px 0">'
         f"{html.escape(message)}</div>" if message else ""
     )
 
+    legend = LEGENDS[_base_instrument_name(instrument)]
+
+    if chords:
+        legend += " " + CHORD_LEGEND
+
     return (
         warning
-        + lanes_html(blocks, instrument, piece.beats(), piece.chart)
+        + lanes_html(
+            blocks if want_melody else [], instrument, piece.beats(),
+            piece.chart, chords, names, header
+        )
         + f'<div style="font-size:0.85em;opacity:0.75;margin-top:4px">'
-        f"{html.escape(LEGENDS[_base_instrument_name(instrument)])}</div>"
+        f"{html.escape(legend)}</div>"
     )
 
 
@@ -819,7 +1195,8 @@ def keep_phrase(label, choices):
 
 
 def melody_page(pitch_text, duration_text, lyric_text, key_text,
-                chart_text, phrase_label, instruments):
+                chart_text, phrase_label, instruments, show=None,
+                header=HEADER_LABELS, placement=NEAR_MELODY):
     """
     What the Melody section shows for the text of the boxes:
     {"choices", "label", "views", "status"}. Reads the boxes'
@@ -857,6 +1234,9 @@ def melody_page(pitch_text, duration_text, lyric_text, key_text,
     return {
         "choices": choices,
         "label": label,
-        "views": [melody_view(piece, name) for name in instruments],
+        "views": [
+            melody_view(piece, name, show, header, placement)
+            for name in instruments
+        ],
         "status": status,
     }

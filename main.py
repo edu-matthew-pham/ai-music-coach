@@ -637,6 +637,29 @@ with gr.Blocks(
                 allow_custom_value=True
             )
 
+            with gr.Row():
+
+                melody_show = gr.CheckboxGroup(
+                    melody_lanes.SHOW_CHOICES,
+                    value=melody_lanes.DEFAULT_SHOW,
+                    label="Show",
+                    scale=1
+                )
+
+                melody_header = gr.Radio(
+                    melody_lanes.HEADERS,
+                    value=melody_lanes.HEADER_LABELS,
+                    label="Top of the lanes",
+                    scale=2
+                )
+
+                melody_placement = gr.Radio(
+                    melody_lanes.PLACEMENTS,
+                    value=melody_lanes.NEAR_MELODY,
+                    label="Chords go",
+                    scale=2
+                )
+
             melody_status = gr.Markdown()
 
             melody_variants = []
@@ -1258,7 +1281,8 @@ with gr.Blocks(
     )
 
     def refresh_melody(phrase_label, pitch_text, duration_text,
-                       lyric_text, key_text, chart_text, *variants):
+                       lyric_text, key_text, chart_text, show,
+                       header, placement, *variants):
         """
         Redraw the Melody section for the boxes as they stand.
         Reads the five boxes and never writes them: the only
@@ -1268,7 +1292,8 @@ with gr.Blocks(
 
         page = melody_lanes.melody_page(
             pitch_text, duration_text, lyric_text, key_text,
-            chart_text, phrase_label, list(variants)
+            chart_text, phrase_label, list(variants), show, header,
+            placement
         )
 
         return (
@@ -1278,7 +1303,8 @@ with gr.Blocks(
 
     melody_inputs = [
         melody_phrase, pitch_input, duration_input, lyric_input,
-        key_input, chart_input
+        key_input, chart_input, melody_show, melody_header,
+        melody_placement
     ] + melody_variants
 
     melody_outputs = [melody_phrase, melody_status] + melody_views
@@ -1286,7 +1312,8 @@ with gr.Blocks(
     for trigger in [
         melody_phrase.change, pitch_input.change,
         duration_input.change, lyric_input.change,
-        key_input.change, chart_input.change
+        key_input.change, chart_input.change, melody_show.change,
+        melody_header.change, melody_placement.change
     ] + [variant.change for variant in melody_variants]:
         trigger(
             fn=refresh_melody,

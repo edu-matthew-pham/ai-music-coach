@@ -75,3 +75,54 @@ Checked
   lanes worked out by hand), plus the stage 1 tests: 54 pass.
 - All 20,526 existing renders byte-identical.
 - Live: Twinkle on all three Melody tabs, no page errors.
+
+## Stage 3 - picture header, chords layer (2026-10-26, unattended)
+
+Built
+- Controls above the tabs: **Show** (Melody, Chords; both on),
+  **Top of the lanes** (Plain labels | Instrument picture) and
+  **Chords go** (Near the melody | As in the chord sheet). All
+  three are view settings; none writes the boxes.
+- Defaults (my calls, to check in use): plain labels, because the
+  pictures are tall (kalimba ~340px, harp ~400px on a wide page
+  with a sticky header); chords near the melody, per decision 14.
+- Chord layer: `chord_spans(piece)` (from `read_chart`, cut to the
+  piece's length) and `chord_blocks(piece, instrument, melody,
+  placement)` -> one block per chord tone. Drawn first, pale
+  magenta (the chord-notes colour at 25% opacity, 55% if the
+  melody is unticked), the melody on top. Left margin: a bar the
+  chord's length and its name (the name is dropped under 14px, the
+  bar stays, so a chart of half-beat chords stays readable).
+- Near the melody: the melody's average pitch over the chord's
+  beats (else over the whole tune, else the instrument's middle);
+  each chord tone goes to the pitch within six semitones of it,
+  moved an octave at a time onto the instrument if it is off.
+  Chord tones are therefore not a voicing (a C chord under a C4
+  melody is G3 C4 E4). Known limit, see below.
+- As in the sheet: kalimba tines from `kalimba_shape_tines`, harp
+  strings from `lever_harp_shape_strings`, piano keys from
+  `piano_shape_voicing` (both hands); no shape -> near the melody.
+- Picture header: the instrument's own `structure_for` picture
+  nested under the lane names, cropped to the lanes shown and
+  shifted so each column is over its lane. To make that exact the
+  lanes now take their picture's column width (kalimba 36, harp 30,
+  piano white 44 and black 26), where stage 1 used 36 throughout.
+  Piano crop also holds the chord layer's keys.
+
+Found / limits
+- "Near the melody" chooses by closeness, not by voicing: it can
+  put a chord's fifth below its root. Right for "hands need not
+  jump", not for "this is how to finger it". The chord sheet's
+  shape stays the fingering reference.
+- A chord changing faster than a beat draws blocks too short to
+  read; the plan's thin-band idea is not built (still open).
+- An imported file was not available overnight; try one.
+
+Checked
+- tests/test_melody_lanes_chords.py (23 tests); six mutations
+  (nothing-ticked fallback, window, placement switch, kalimba and
+  harp picture offsets, piano crop ignoring chords) all caught.
+- All 20,526 existing renders byte-identical.
+- Live (Playwright): Wellerman, chord blocks present by default
+  (150) and gone when Chords is unticked; picture header, As in the
+  chord sheet, harp tab; no page errors.
