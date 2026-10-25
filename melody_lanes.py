@@ -47,6 +47,7 @@ from instrument_diagrams import (
 )
 from fretted_tab import DEFAULT_WIDTH, FINGERINGS, NEAREST_NUT
 from notes import is_rest
+from wind_fingerings import WINDS
 
 
 # --- the lanes of each instrument ------------------------------
@@ -1394,7 +1395,8 @@ FULL_SCREEN_JS = """
 
 def melody_view(piece, instrument, show=None, header=HEADER_COMPACT,
                 placement=NEAR_MELODY, fingering=NEAREST_NUT,
-                width=DEFAULT_WIDTH, open_free=True, prefer_low=False):
+                width=DEFAULT_WIDTH, open_free=True, prefer_low=False,
+                fold=True):
     """
     Everything one instrument tab shows for a piece (a phrase
     or the whole tune), as HTML: the out-of-range line if there
@@ -1417,6 +1419,15 @@ def melody_view(piece, instrument, show=None, header=HEADER_COMPACT,
             piece, instrument, fingering, width, open_free, show,
             prefer_low
         )
+
+    # Flute and alto sax are a chart per note in phrase rows, in
+    # their own module (PLAN-wind-melody.md): a note there is a hand
+    # shape, not a place, so there are no lanes. Show applies; the
+    # header and placement do not.
+    if _base_instrument_name(instrument) in WINDS:
+        from wind_melody import wind_view
+
+        return wind_view(piece, instrument, show, fold)
 
     show = DEFAULT_SHOW if show is None else list(show)
     want_melody = SHOW_MELODY in show or SHOW_CHORDS not in show
@@ -1472,11 +1483,19 @@ SUPPORTED = ("Kalimba", "Lever harp", "Piano") + FRETTED
 def supported_families():
     from chord_sheet import instrument_families
 
-    return {
+    families = {
         family: variants
         for family, variants in instrument_families().items()
         if family in SUPPORTED
     }
+
+    # The winds are not in INSTRUMENTS (the mixer and the chord sheet
+    # have no picture for them), so they join here, one size each,
+    # after the others.
+    for wind in WINDS:
+        families[wind] = [wind]
+
+    return families
 
 
 def default_variant(family, variants):
@@ -1484,6 +1503,9 @@ def default_variant(family, variants):
     Which size a tab starts on. The kalimba starts on the
     41 keys - the bass row is where a song's lowest notes go.
     """
+
+    if family in WINDS:
+        return family
 
     if family == "Kalimba":
         for name in variants:
@@ -1535,7 +1557,7 @@ def melody_page(pitch_text, duration_text, lyric_text, key_text,
                 chart_text, phrase_label, instruments, show=None,
                 header=HEADER_COMPACT, placement=NEAR_MELODY,
                 fingering=NEAREST_NUT, width=DEFAULT_WIDTH,
-                open_free=True, prefer_low=False):
+                open_free=True, prefer_low=False, fold=True):
     """
     What the Melody section shows for the text of the boxes:
     {"choices", "label", "views", "status"}. Reads the boxes'
@@ -1576,7 +1598,7 @@ def melody_page(pitch_text, duration_text, lyric_text, key_text,
         "views": [
             melody_view(
                 piece, name, show, header, placement, fingering,
-                width, open_free, prefer_low
+                width, open_free, prefer_low, fold
             )
             for name in instruments
         ],

@@ -485,9 +485,11 @@ def test_a_phrase_keeps_its_number_when_the_words_change():
 def test_kalimba_harp_and_piano_have_lanes_and_the_kalimba_starts_on_41_keys():
     families = supported_families()
 
-    # In the one list of instruments' order.
+    # In the one list of instruments' order, then the winds, which
+    # are not in that list (the mixer has no picture for them).
     assert list(families) == [
         "Piano", "Guitar", "Ukulele", "Kalimba", "Lever harp",
+        "Flute", "Alto sax",
     ]
     assert default_variant("Kalimba", families["Kalimba"]) == KALIMBA_41
     assert default_variant("Piano", families["Piano"]) == "Piano, 3 octaves"
@@ -569,7 +571,7 @@ def test_the_refresh_handler_takes_what_it_is_wired_to():
                 "phrase_label", "pitch_text", "duration_text",
                 "lyric_text", "key_text", "chart_text",
                 "show", "header", "placement", "fingering", "width",
-                "open_free", "prefer_low",
+                "open_free", "prefer_low", "fold",
             ]
             assert node.args.vararg.arg == "variants"
             return
