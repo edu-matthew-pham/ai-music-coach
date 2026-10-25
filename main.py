@@ -9,6 +9,7 @@ from gradio_musicmixer import MusicMixer
 from lyric_merge import merge_lyrics
 from mixer_data import mixer_data
 from help_text import HELP_TEXT
+import chord_sheet
 from music import (
     MusicInputError,
     import_music_file,
@@ -188,6 +189,7 @@ with gr.Blocks(
         + anchor_link("Song", "song")
         + anchor_link("Arrange", "arrange")
         + anchor_link("Playback", "playback")
+        + anchor_link("Chords", "chords")
         # "Practice" (the record-then-Compare flow below) is
         # hidden for now - the mixer's own live mic covers
         # this need today. Not deleted: the section, its
@@ -513,6 +515,77 @@ with gr.Blocks(
             mixer_output = MusicMixer(
                 show_label=False, elem_id="mixer-widget"
             )
+
+        # -------------------------------------------------
+        # CHORDS: every chord you need, on one instrument,
+        # at once - for preparing before playback, or for
+        # looking a key up with no song loaded
+        #
+        # The key chosen here is its own setting. It never
+        # reads back into the key box (DESIGN.md: the key
+        # the song is in and the key being browsed are two
+        # things), and nothing below is wired to write to
+        # key_input or chart_input - pinned by a test.
+        # -------------------------------------------------
+
+        with gr.Column(elem_id="chords"):
+
+            gr.Markdown("## Chords")
+
+            gr.Markdown(
+                "Every chord on one instrument at once, to look "
+                "over before you play. Follows the song's key "
+                "and chords when there is one; pick any other "
+                "key to browse it, which never changes the "
+                "song."
+            )
+
+            with gr.Row():
+
+                sheet_key = gr.Dropdown(
+                    chord_sheet.choices("C", ""),
+                    value=chord_sheet.default_selection("C", ""),
+                    label="Key",
+                    scale=3
+                )
+
+                sheet_back_button = gr.Button(
+                    "Back to the song",
+                    size="sm",
+                    visible=False,
+                    scale=1
+                )
+
+            sheet_source = gr.Markdown()
+
+            # Remembers which key text the sheet last saw, so a
+            # newly loaded song can switch the sheet to its key
+            # while an edit that leaves the key alone does not
+            # snap a browsing choice back.
+            sheet_last_key = gr.State(None)
+
+            sheet_variants = []
+            sheet_views = []
+
+            with gr.Tabs():
+
+                for family, variants in (
+                    chord_sheet.instrument_families().items()
+                ):
+
+                    with gr.Tab(family):
+
+                        sheet_variants.append(gr.Radio(
+                            [
+                                (chord_sheet.variant_label(name), name)
+                                for name in variants
+                            ],
+                            value=variants[0],
+                            label="Size",
+                            visible=len(variants) > 1
+                        ))
+
+                        sheet_views.append(gr.HTML())
 
         # -------------------------------------------------
         # PRACTICE: sing it and see how it went
@@ -1025,6 +1098,77 @@ with gr.Blocks(
         fn=guard(build_mixer),
         inputs=mixer_inputs,
         outputs=mixer_output
+    )
+
+    def refresh_sheet(selection, key_text, chart_text, last_key_text,
+                      *variants):
+        """
+        Redraw the chord sheet for whatever the key dropdown,
+        the key box and the chart box now say. Reads the two
+        boxes and never writes them: the only things it
+        returns are the sheet's own controls and pictures.
+
+        A new key text (a song loaded, or the key retyped)
+        switches the sheet to the song's key; anything else
+        keeps the choice, so editing the chart does not pull a
+        browsed key back to the song.
+        """
+
+        offered = chord_sheet.choices(key_text, chart_text)
+        valid = {value for _label, value in offered}
+
+        if key_text != last_key_text or selection not in valid:
+            selection = chord_sheet.default_selection(
+                key_text, chart_text
+            )
+
+        state = chord_sheet.resolve(selection, key_text, chart_text)
+
+        pictures = [
+            chord_sheet.sheet_html(
+                selection, key_text, chart_text, variant
+            )
+            for variant in variants
+        ]
+
+        return (
+            gr.update(choices=offered, value=selection),
+            gr.update(
+                visible=bool(
+                    chord_sheet.song_sections(key_text, chart_text)
+                ) and not state["from_song"]
+            ),
+            state["line"],
+            key_text
+        ) + tuple(pictures)
+
+    sheet_inputs = [
+        sheet_key, key_input, chart_input, sheet_last_key
+    ] + sheet_variants
+
+    sheet_outputs = [
+        sheet_key, sheet_back_button, sheet_source, sheet_last_key
+    ] + sheet_views
+
+    for trigger in [sheet_key.change, key_input.change,
+                    chart_input.change] + [
+        variant.change for variant in sheet_variants
+    ]:
+        trigger(
+            fn=refresh_sheet,
+            inputs=sheet_inputs,
+            outputs=sheet_outputs
+        )
+
+    demo.load(
+        fn=refresh_sheet,
+        inputs=sheet_inputs,
+        outputs=sheet_outputs
+    )
+
+    sheet_back_button.click(
+        fn=lambda: "song:0",
+        outputs=sheet_key
     )
 
     def cycle_phrase(step):

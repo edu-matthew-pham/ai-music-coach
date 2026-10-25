@@ -208,6 +208,23 @@ def _spelled(semitone, key, spelling=None):
     return name_for(semitone, key)
 
 
+def _home_semitone(key, home=None):
+    """
+    The pitch class a Scale picture marks as home: the key's
+    own tonic unless the caller names another. Lets a minor
+    key be shown on its relative major's notes with its own
+    home marked (A minor = C's notes, A home) without a
+    second scale table - the chord sheet's minor keys. Every
+    existing caller passes nothing, so its pictures are
+    unchanged.
+    """
+
+    if home is None:
+        return NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
+
+    return NOTE_SEMITONES[home] % 12 if isinstance(home, str) else home % 12
+
+
 def describe_key(key):
     """
     The key written the way the app names it elsewhere.
@@ -284,7 +301,7 @@ def piano_structure(octaves=None):
     )
 
 
-def piano_scale_overlay(key, octaves=None):
+def piano_scale_overlay(key, octaves=None, home=None):
     """
     Just the key's in-key marks, transparent background,
     positioned exactly as piano_diagram places them - for
@@ -292,7 +309,7 @@ def piano_scale_overlay(key, octaves=None):
     """
 
     _, width, height = _piano_structure_parts(octaves)
-    parts = _piano_scale_parts(key, octaves)
+    parts = _piano_scale_parts(key, octaves, home)
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -409,7 +426,7 @@ def _piano_structure_parts(octaves=None):
     return parts, width, white_height
 
 
-def _piano_scale_parts(key, octaves=None):
+def _piano_scale_parts(key, octaves=None, home=None):
     """
     Just the in-key marks a piano_diagram draws on top of
     its keys - no keyboard underneath. What the mixer's
@@ -417,7 +434,7 @@ def _piano_scale_parts(key, octaves=None):
     structure from _piano_structure_parts.
     """
 
-    home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
+    home = _home_semitone(key, home)
     in_key = semitones_in(key)
 
     octaves = octaves or PIANO_LAYOUT["octaves"]
@@ -519,7 +536,8 @@ def fretboard_structure(instrument="Guitar", frets_shown=FRETS_SHOWN):
     )
 
 
-def fretboard_scale_overlay(key, instrument="Guitar", frets_shown=FRETS_SHOWN):
+def fretboard_scale_overlay(key, instrument="Guitar", frets_shown=FRETS_SHOWN,
+                            home=None):
     """
     Just the key's marks - every fretted position, coloured
     home/in-key/off-key - transparent background, positioned
@@ -528,7 +546,7 @@ def fretboard_scale_overlay(key, instrument="Guitar", frets_shown=FRETS_SHOWN):
     """
 
     _, width, height = _fretboard_structure_parts(instrument, frets_shown)
-    parts = _fretboard_scale_parts(key, instrument, frets_shown)
+    parts = _fretboard_scale_parts(key, instrument, frets_shown, home)
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -668,7 +686,8 @@ def _fretboard_structure_parts(instrument="Guitar", frets_shown=FRETS_SHOWN):
     return parts, width, height
 
 
-def _fretboard_scale_parts(key, instrument="Guitar", frets_shown=FRETS_SHOWN):
+def _fretboard_scale_parts(key, instrument="Guitar", frets_shown=FRETS_SHOWN,
+                           home=None):
     """
     Just the marks fretboard_diagram draws on top of the
     neck - every fretted position, coloured home/in-key/
@@ -684,7 +703,7 @@ def _fretboard_scale_parts(key, instrument="Guitar", frets_shown=FRETS_SHOWN):
             f"app can draw."
         )
 
-    home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
+    home = _home_semitone(key, home)
 
     left = FRETBOARD_LAYOUT["left"]
     top = FRETBOARD_LAYOUT["top"]
@@ -751,7 +770,7 @@ def violin_structure(position="First position"):
     )
 
 
-def violin_scale_overlay(key, position="First position"):
+def violin_scale_overlay(key, position="First position", home=None):
     """
     Just the key's finger marks, transparent background,
     positioned exactly as violin_chart places them - for
@@ -760,7 +779,7 @@ def violin_scale_overlay(key, position="First position"):
     """
 
     _, width, height = _violin_structure_parts(position)
-    parts = _violin_scale_parts(key, position)
+    parts = _violin_scale_parts(key, position, home)
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -896,7 +915,7 @@ def _violin_structure_parts(position="First position"):
     return parts, width, height
 
 
-def _violin_scale_parts(key, position="First position"):
+def _violin_scale_parts(key, position="First position", home=None):
     """
     Just the finger marks violin_chart draws on top of the
     neck - no ruler or strings underneath. What the mixer's
@@ -912,7 +931,7 @@ def _violin_scale_parts(key, position="First position"):
             f"can draw."
         )
 
-    home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
+    home = _home_semitone(key, home)
     in_key = semitones_in(key)
 
     left = VIOLIN_LAYOUT["left"]
@@ -977,7 +996,7 @@ def _violin_scale_parts(key, position="First position"):
     return parts
 
 
-def _violin_scale_parts_both(key):
+def _violin_scale_parts_both(key, home=None):
     """
     The Scale layer's marks for both hand positions at once:
     a note reachable from only one position gets a plain
@@ -989,7 +1008,7 @@ def _violin_scale_parts_both(key):
     overlap, so the split mark is never a dead code path.
     """
 
-    home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
+    home = _home_semitone(key, home)
     in_key = semitones_in(key)
 
     left = VIOLIN_LAYOUT["left"]
@@ -1054,7 +1073,7 @@ def _violin_scale_parts_both(key):
     return parts
 
 
-def violin_scale_overlay_both(key):
+def violin_scale_overlay_both(key, home=None):
     """
     The Scale layer for "Violin, both positions" - both hand
     positions' finger marks on one transparent chart, stacked
@@ -1067,7 +1086,7 @@ def violin_scale_overlay_both(key):
     """
 
     _, width, height = _violin_structure_parts("Third position")
-    parts = _violin_scale_parts_both(key)
+    parts = _violin_scale_parts_both(key, home)
 
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -1609,30 +1628,41 @@ def structure_for(instrument):
     return fretboard_structure(base, _frets_shown_for(instrument))
 
 
-def scale_overlay_for(key, instrument):
+def scale_overlay_for(key, instrument, home=None):
     """
     The key's-notes-only picture of one instrument,
     transparent background, positioned to stack exactly on
     structure_for(instrument). The mixer's Scale layer.
+
+    home names a different home note to mark (a note name or
+    pitch class) - the chord sheet's minor keys, drawn on
+    their relative major's notes. None, as every existing
+    caller passes, marks the key's own tonic.
     """
 
     base = _base_instrument_name(instrument)
 
     if base == "Piano":
-        return piano_scale_overlay(key, _octaves_for(instrument))
+        return piano_scale_overlay(key, _octaves_for(instrument), home)
 
     if base == "Kalimba":
-        return kalimba_scale_overlay(key, _kalimba_has_bass(instrument))
+        return kalimba_scale_overlay(
+            key, _kalimba_has_bass(instrument), home
+        )
 
     if base == "Lever harp":
-        return lever_harp_scale_overlay(key)
+        return lever_harp_scale_overlay(key, home)
 
     if base.startswith("Violin"):
         if _violin_shows_both(instrument):
-            return violin_scale_overlay_both(key)
-        return violin_scale_overlay(key, _violin_position_for(instrument))
+            return violin_scale_overlay_both(key, home)
+        return violin_scale_overlay(
+            key, _violin_position_for(instrument), home
+        )
 
-    return fretboard_scale_overlay(key, base, _frets_shown_for(instrument))
+    return fretboard_scale_overlay(
+        key, base, _frets_shown_for(instrument), home
+    )
 
 
 # A beginner's shape, not the theory - one concrete place
@@ -3099,8 +3129,8 @@ def _kalimba_marks(key, colour_of, bass=True, spelling=None):
     return parts
 
 
-def _kalimba_scale_parts(key, bass=True):
-    home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
+def _kalimba_scale_parts(key, bass=True, home=None):
+    home = _home_semitone(key, home)
     in_key = semitones_in(key)
 
     def colour_of(semitone):
@@ -3119,9 +3149,9 @@ def kalimba_structure(bass=True):
     )
 
 
-def kalimba_scale_overlay(key, bass=True):
+def kalimba_scale_overlay(key, bass=True, home=None):
     return _kalimba_svg(
-        _kalimba_scale_parts(key, bass), bass,
+        _kalimba_scale_parts(key, bass, home), bass,
         f"The notes of {describe_key(key)} highlighted on a kalimba"
     )
 
@@ -3610,7 +3640,7 @@ def _lever_harp_structure_parts():
     return parts
 
 
-def _lever_harp_scale_parts(key):
+def _lever_harp_scale_parts(key, home=None):
     """
     The strings that sound a note of the key, each marked with
     its name (home apart from the rest), with a raised lever
@@ -3620,7 +3650,7 @@ def _lever_harp_scale_parts(key):
     """
 
     layout = LEVER_HARP_LAYOUT
-    home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
+    home = _home_semitone(key, home)
     in_key = semitones_in(key)
 
     parts = []
@@ -3669,9 +3699,9 @@ def lever_harp_structure():
     )
 
 
-def lever_harp_scale_overlay(key):
+def lever_harp_scale_overlay(key, home=None):
     return _lever_harp_svg(
-        _lever_harp_scale_parts(key),
+        _lever_harp_scale_parts(key, home),
         f"The notes of {describe_key(key)} on a lever harp, with the "
         f"levers to raise"
     )

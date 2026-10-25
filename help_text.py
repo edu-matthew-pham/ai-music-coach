@@ -252,6 +252,27 @@ switched on for whatever chord comes next - a look ahead at
 the next change before it arrives, the same idea as the
 Notes panel's own next-phrase preview.
 
+## The chord sheet
+
+The **Chords** section, below Playback, is for looking over
+before you play: every chord on one instrument at once, with
+a picture of the key's notes at the top. Pick the instrument
+from its tabs; each has its own **Size** choice, separate
+from the mixer's.
+
+With a song loaded it starts on the song's key and shows the
+chords the song plays, and says so ("from the song"). Pick
+any other key in the **Key** box there to browse it - every
+major and minor key is listed - and it says "your choice"
+instead, with a **Back to the song** button. Browsing never
+changes the song's own key. With no song it shows C major
+until you pick another. A minor key uses its major key's
+notes with its own home note marked, so A minor is C
+major's seven notes with A as home.
+
+Where an instrument has no standard shape for a chord it
+shows every place the chord's notes fall, and says so.
+
 ## Keys and harmony
 
 **Detect key** reads the notes and tells you what key they
