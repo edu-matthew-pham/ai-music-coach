@@ -182,12 +182,17 @@ shows the words, either as pills that light up one at a
 time or a line of text coloured as it is sung.
 
 **Instruments** draws the key on a piano, a guitar, a
-ukulele, or a violin chart. Each has its own size toggle
+ukulele, a violin chart, or a chromatic kalimba. Each has
+its own size toggle
 once it's ticked on - piano between two and three octaves,
 guitar between a compact eight frets and the full thirteen,
 ukulele between six and ten (its own shapes stay lower on
 the neck than guitar's, and its short scale makes a player
-less likely to go far up it at all). Violin's toggle is
+less likely to go far up it at all), kalimba between 34
+keys and 41 (the 41 adds a row of seven bass tines, F3 to
+B3, under the centre). Four kalimba notes - F4, C5, F5, C6
+- have a tine on both rows, and both are marked. Violin's
+toggle is
 between first position alone and both positions together:
 the full view adds first position's marks in one colour and
 third position's in another, with a two-colour mark
@@ -223,7 +228,8 @@ natural-note roots, major and minor, since it has no single
 settled convention the way guitar's shapes do and a shape
 here is only shown where that's genuinely confident, not
 just correct. A handful of guitar chords have no standard
-open or barre shape either. Any of these says so rather than
+open or barre shape either, and the kalimba has no shapes
+yet - only Chord notes. Any of these says so rather than
 showing nothing.
 
 **Preview next chord** dims in a second picture underneath

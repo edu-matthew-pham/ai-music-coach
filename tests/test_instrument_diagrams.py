@@ -139,7 +139,10 @@ def test_every_instrument_is_rendered_a_consistent_height_on_screen():
     genuinely does not share it (four strings instead of six,
     at the same string spacing, is a shorter neck), and that
     is fine precisely because the frontend no longer depends
-    on it.
+    on it. Kalimba is outside it for the same reason: a
+    board of tines is its own shape, and its two variants
+    differ in height from each other (the 41 carries a bass
+    row the 34 does not).
     """
 
     import re
@@ -155,7 +158,7 @@ def test_every_instrument_is_rendered_a_consistent_height_on_screen():
 
     fretted_and_keyed = {
         name: height for name, height in heights.items()
-        if _base_instrument_name(name) != "Ukulele"
+        if _base_instrument_name(name) not in ("Ukulele", "Kalimba")
     }
 
     assert len(set(fretted_and_keyed.values())) == 1

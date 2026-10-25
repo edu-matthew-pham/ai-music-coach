@@ -1573,6 +1573,9 @@ def structure_for(instrument):
     if base == "Piano":
         return piano_structure(_octaves_for(instrument))
 
+    if base == "Kalimba":
+        return kalimba_structure(_kalimba_has_bass(instrument))
+
     if base.startswith("Violin"):
         if _violin_shows_both(instrument):
             # Structurally identical to third position alone -
@@ -1594,6 +1597,9 @@ def scale_overlay_for(key, instrument):
 
     if base == "Piano":
         return piano_scale_overlay(key, _octaves_for(instrument))
+
+    if base == "Kalimba":
+        return kalimba_scale_overlay(key, _kalimba_has_bass(instrument))
 
     if base.startswith("Violin"):
         if _violin_shows_both(instrument):
@@ -2087,6 +2093,11 @@ def chord_overlay_for(key, instrument, chord_name):
 
     if base == "Piano":
         return piano_chord_overlay(key, tones, _octaves_for(instrument))
+
+    if base == "Kalimba":
+        return kalimba_chord_overlay(
+            key, tones, _kalimba_has_bass(instrument)
+        )
 
     if base.startswith("Violin"):
         if _violin_shows_both(instrument):
@@ -2802,6 +2813,11 @@ def shape_overlay_for(key, instrument, chord_name):
             key, chord_name, _octaves_for(instrument)
         )
 
+    if base == "Kalimba":
+        # Chord shapes are stage 2 of PLAN-kalimba.md; until
+        # then the caller falls back to Chord notes.
+        return None
+
     if base.startswith("Violin"):
         if _violin_shows_both(instrument):
             return violin_chord_shape_overlay_both(key, chord_name)
@@ -2814,6 +2830,274 @@ def shape_overlay_for(key, instrument, chord_name):
     )
 
 
+# The Seeds 41-key chromatic kalimba, read tine by tine off
+# a real instrument (engraved numbered notation, the three
+# unlabelled bass tines by tuner) - not from a shop listing,
+# whose stated counts did not add up. Each row is in
+# PHYSICAL left-to-right order, which is not pitch order:
+# the middle row alternates outward from C4 at the centre,
+# the way every kalimba is laid out. Every drawing function
+# indexes these lists by column, never by pitch, so the two
+# orderings cannot be confused (the ukulele tuning-order bug
+# was exactly that confusion).
+#
+# The top row sits one semitone above the middle-row tine
+# beneath it. A semitone above E is F and above B is C, so
+# four notes - F4, C5, F5, C6 - have two tines each: 41
+# tines, 37 distinct pitches, F3 to F6 with nothing missing.
+# The 34-key variant is the same instrument without the
+# bass row.
+KALIMBA_TINES = {
+    "top": [
+        "D#6", "C6", "G#5", "F5", "C#5", "A#4", "F#4", "D#4", "C#4",
+        "F4", "G#4", "C5", "D#5", "F#5", "A#5", "C#6", "F6",
+    ],
+    "middle": [
+        "D6", "B5", "G5", "E5", "C5", "A4", "F4", "D4", "C4",
+        "E4", "G4", "B4", "D5", "F5", "A5", "C6", "E6",
+    ],
+    "bass": ["B3", "A3", "G3", "F3", "F#3", "G#3", "A#3"],
+}
+
+# Which middle-row column the bass row's first tine sits
+# under: seven bass tines centred on the middle row's centre
+# column, F3 directly beneath C4, as the reference photo
+# shows them.
+KALIMBA_BASS_FIRST_COLUMN = 5
+
+# Layout numbers, shared by every kalimba layer so the
+# overlays stack in register on the structure. Tine lengths
+# grow toward the centre of each row; each row's tips sit at
+# their own depth (top row shortest, bass longest), so a
+# column can carry up to three marks without them touching.
+KALIMBA_LAYOUT = {
+    "left": 6,
+    "top": 8,
+    "column_width": 36,
+    "top_tip": 34, "top_step": 3, "top_width": 12,
+    "middle_tip": 78, "middle_step": 7, "middle_width": 22,
+    "bass_tip": 168, "bass_step": 8, "bass_width": 26,
+    "mark_radius": 11,
+}
+
+
+def _absolute_pitch(note):
+    """
+    A note name with octave ("C#4") as a semitone count,
+    the same arithmetic _note_at uses - so pitch classes
+    agree with every other instrument here.
+    """
+
+    return NOTE_SEMITONES[note[:-1]] + int(note[-1]) * 12
+
+
+def _kalimba_has_bass(instrument):
+    """
+    Whether a "Kalimba, N keys" string asks for the bass
+    row - a display choice parsed here once, the same way
+    _octaves_for and _frets_shown_for are.
+    """
+
+    return "41" in instrument
+
+
+def _kalimba_tines(bass=True):
+    """
+    Every tine as one record: its row, pitch, and where it
+    is drawn. Back layers first (bass, middle, top) - the
+    order they are painted in, so a nearer layer's tines and
+    marks sit over a farther layer's.
+    """
+
+    layout = KALIMBA_LAYOUT
+    columns = len(KALIMBA_TINES["middle"])
+    centre = columns // 2
+
+    def x_of(column):
+        return layout["left"] + column * layout["column_width"]
+
+    tines = []
+
+    if bass:
+        bass_centre = KALIMBA_TINES["bass"].index("F3")
+
+        for index, note in enumerate(KALIMBA_TINES["bass"]):
+            column = KALIMBA_BASS_FIRST_COLUMN + index
+            reach = abs(index - bass_centre)
+            tines.append({
+                "row": "bass",
+                "note": note,
+                "pitch": _absolute_pitch(note),
+                "x": x_of(column),
+                "tip": layout["top"] + layout["bass_tip"]
+                       + (len(KALIMBA_TINES["bass"]) // 2 - reach)
+                       * layout["bass_step"],
+                "width": layout["bass_width"],
+            })
+
+    for row in ("middle", "top"):
+        for column, note in enumerate(KALIMBA_TINES[row]):
+            reach = centre - abs(column - centre)
+            tines.append({
+                "row": row,
+                "note": note,
+                "pitch": _absolute_pitch(note),
+                "x": x_of(column),
+                "tip": layout["top"] + layout[f"{row}_tip"]
+                       + reach * layout[f"{row}_step"],
+                "width": layout[f"{row}_width"],
+            })
+
+    return tines
+
+
+def _kalimba_size(bass=True):
+    """
+    The picture's width and height - shared by every layer
+    so they stack exactly.
+    """
+
+    layout = KALIMBA_LAYOUT
+    width = (
+        2 * layout["left"]
+        + len(KALIMBA_TINES["middle"]) * layout["column_width"]
+    )
+    deepest = max(tine["tip"] for tine in _kalimba_tines(bass))
+
+    return width, deepest + 6
+
+
+def _kalimba_svg(parts, bass, label):
+    width, height = _kalimba_size(bass)
+
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" '
+        f'viewBox="0 0 {width} {height}" '
+        f'width="100%" style="max-width:{width}px" '
+        f'role="img" aria-label="{_escape(label)}">'
+        + "".join(parts) +
+        "</svg>"
+    )
+
+
+def _kalimba_structure_parts(bass=True):
+    """
+    The board, the bridge, and every tine - nothing marked.
+    Key-independent, the mixer's always-there background.
+    The top row is drawn narrower and darker than the middle
+    row, the way the raised layer reads on the instrument.
+    """
+
+    layout = KALIMBA_LAYOUT
+    width, height = _kalimba_size(bass)
+    column = layout["column_width"]
+
+    fills = {"bass": "#90a4ae", "middle": "#cfd8dc", "top": "#607d8b"}
+
+    parts = [
+        f'<rect x="0" y="0" width="{width}" height="{height}" '
+        f'rx="10" fill="#f3e5d0" stroke="{LINE_COLOUR}" '
+        f'stroke-width="1"/>'
+    ]
+
+    for tine in _kalimba_tines(bass):
+        x = tine["x"] + (column - tine["width"]) / 2
+        parts.append(
+            f'<rect x="{x}" y="{layout["top"]}" '
+            f'width="{tine["width"]}" '
+            f'height="{tine["tip"] - layout["top"]}" rx="4" '
+            f'fill="{fills[tine["row"]]}" stroke="{LINE_COLOUR}" '
+            f'stroke-width="1"/>'
+        )
+
+    parts.append(
+        f'<rect x="{layout["left"]}" y="{layout["top"] - 4}" '
+        f'width="{width - 2 * layout["left"]}" height="8" '
+        f'fill="{LINE_COLOUR}"/>'
+    )
+
+    return parts
+
+
+def _kalimba_marks(key, colour_of, bass=True):
+    """
+    A spot at the tip of every tine colour_of gives a
+    colour for (None leaves it unmarked). Every tine is
+    asked, so a note with two tines is marked on both -
+    every place it can be played, the same rule the
+    fretboard follows.
+    """
+
+    layout = KALIMBA_LAYOUT
+    radius = layout["mark_radius"]
+    parts = []
+
+    for tine in _kalimba_tines(bass):
+        colour = colour_of(tine["pitch"] % 12)
+
+        if colour is None:
+            continue
+
+        x = tine["x"] + layout["column_width"] / 2
+        y = tine["tip"] - radius - 2
+
+        parts.append(
+            f'<circle cx="{x}" cy="{y}" r="{radius}" '
+            f'fill="{colour}"/>'
+            f'<text x="{x}" y="{y + 4}" text-anchor="middle" '
+            f'font-size="11" font-family="sans-serif" '
+            f'fill="#ffffff">'
+            f'{_escape(name_for(tine["pitch"], key))}</text>'
+        )
+
+    return parts
+
+
+def _kalimba_scale_parts(key, bass=True):
+    home = NOTE_SEMITONES[MAJOR_SCALES[key][0]] % 12
+    in_key = semitones_in(key)
+
+    def colour_of(semitone):
+        if semitone == home:
+            return HOME_COLOUR
+        if semitone in in_key:
+            return IN_KEY_COLOUR
+        return None
+
+    return _kalimba_marks(key, colour_of, bass)
+
+
+def kalimba_structure(bass=True):
+    return _kalimba_svg(
+        _kalimba_structure_parts(bass), bass, "A chromatic kalimba"
+    )
+
+
+def kalimba_scale_overlay(key, bass=True):
+    return _kalimba_svg(
+        _kalimba_scale_parts(key, bass), bass,
+        f"The notes of {describe_key(key)} highlighted on a kalimba"
+    )
+
+
+def kalimba_chord_overlay(key, chord_semitone_set, bass=True):
+    def colour_of(semitone):
+        return CHORD_TONE_COLOUR if semitone in chord_semitone_set else None
+
+    return _kalimba_svg(
+        _kalimba_marks(key, colour_of, bass), bass,
+        "The chord tones highlighted on a kalimba"
+    )
+
+
+def kalimba_diagram(key, bass=True):
+    return _kalimba_svg(
+        _kalimba_structure_parts(bass) + _kalimba_scale_parts(key, bass),
+        bass,
+        f"A kalimba with the notes of {describe_key(key)} marked"
+    )
+
+
 INSTRUMENTS = [
     "Piano, 2 octaves",
     "Piano, 3 octaves",
@@ -2822,7 +3106,9 @@ INSTRUMENTS = [
     "Ukulele, 6 frets",
     "Ukulele, 10 frets",
     "Violin, first position",
-    "Violin, both positions"
+    "Violin, both positions",
+    "Kalimba, 34 keys",
+    "Kalimba, 41 keys",
 ]
 
 
@@ -2835,6 +3121,9 @@ def diagram_for(key, instrument):
 
     if base == "Piano":
         return piano_diagram(key, _octaves_for(instrument))
+
+    if base == "Kalimba":
+        return kalimba_diagram(key, _kalimba_has_bass(instrument))
 
     if base.startswith("Violin"):
         if _violin_shows_both(instrument):
