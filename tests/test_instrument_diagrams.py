@@ -518,26 +518,25 @@ def _labels(svg):
     return re.findall(r">([A-G][#b]?)</text>", svg)
 
 
-@pytest.mark.parametrize("instrument", [
-    name for name in INSTRUMENTS if not name.startswith("Lever harp")
-])
+@pytest.mark.parametrize("instrument", INSTRUMENTS)
 def test_chord_marks_are_spelled_by_the_chord_not_the_key(instrument):
     """
     A Db chord's marks read Db F Ab in C, in G and in F
     alike - what a chord's tones are called is the chord's
     business. The marks themselves do not move with the key
-    either way; only the words did. The lever harp is left
-    on its own key spelling for PLAN-lever-harp.md.
+    either way; only the words did.
 
-    Violin is checked for spelling only: its chord layer
-    marks just the notes inside the key's own fingering
-    pattern, so which tones appear depends on the key by
-    design (found when this test first assumed otherwise).
+    Violin and the lever harp are checked for spelling only.
+    Violin's chord layer marks just the notes inside the
+    key's own fingering pattern; the harp's marks follow the
+    key's lever setting (a G-major harp sounds F#, a C-major
+    one only rings it as a lever flip) - so which strings are
+    marked depends on the key by design.
     """
 
     from instrument_diagrams import chord_overlay_for, shape_overlay_for
 
-    violin = instrument.startswith("Violin")
+    violin = instrument.startswith(("Violin", "Lever harp"))
 
     for chord, expected in (("Db", {"Db", "F", "Ab"}),
                             ("E", {"E", "G#", "B"}),
