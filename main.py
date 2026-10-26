@@ -649,6 +649,17 @@ with gr.Blocks(
                     scale=2
                 )
 
+                # Which tune, in a song of several (a partner song,
+                # a choral score imported whole). Shown only then,
+                # like the mixer's "Your part"; the two are separate.
+                melody_part = gr.Dropdown(
+                    [],
+                    label="Part",
+                    visible=False,
+                    allow_custom_value=True,
+                    scale=1
+                )
+
                 melody_show = gr.CheckboxGroup(
                     melody_lanes.SHOW_CHOICES,
                     value=melody_lanes.DEFAULT_SHOW,
@@ -1359,7 +1370,8 @@ with gr.Blocks(
     def refresh_melody(phrase_label, pitch_text, duration_text,
                        lyric_text, key_text, chart_text, show,
                        placement, fingering, width,
-                       open_free, prefer_low, fold, columns, *variants):
+                       open_free, prefer_low, fold, columns, part_label,
+                       *variants):
         """
         Redraw the Melody section for the boxes as they stand.
         Reads the five boxes and never writes them: the only
@@ -1371,11 +1383,15 @@ with gr.Blocks(
             pitch_text, duration_text, lyric_text, key_text,
             chart_text, phrase_label, list(variants), show,
             melody_lanes.HEADER_COMPACT, placement, fingering, width,
-            open_free, prefer_low, fold, columns
+            open_free, prefer_low, fold, columns, part_label
         )
 
         return (
             gr.update(choices=page["choices"], value=page["label"]),
+            gr.update(
+                choices=page["parts"], value=page["part"],
+                visible=len(page["parts"]) > 1
+            ),
             page["status"]
         ) + tuple(page["views"])
 
@@ -1384,10 +1400,12 @@ with gr.Blocks(
         key_input, chart_input, melody_show,
         melody_placement, melody_fingering, melody_width,
         melody_open_free, melody_prefer_low, melody_fold,
-        melody_columns
+        melody_columns, melody_part
     ] + melody_variants
 
-    melody_outputs = [melody_phrase, melody_status] + melody_views
+    melody_outputs = [
+        melody_phrase, melody_part, melody_status
+    ] + melody_views
 
     for trigger in [
         melody_phrase.change, pitch_input.change,
@@ -1396,7 +1414,7 @@ with gr.Blocks(
         melody_placement.change,
         melody_fingering.change, melody_width.change,
         melody_open_free.change, melody_prefer_low.change,
-        melody_fold.change, melody_columns.change
+        melody_fold.change, melody_columns.change, melody_part.change
     ] + [variant.change for variant in melody_variants]:
         trigger(
             fn=refresh_melody,

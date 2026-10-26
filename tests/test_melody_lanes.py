@@ -543,7 +543,7 @@ def test_nothing_the_melody_section_returns_goes_into_a_song_box():
     outputs = _names(_assigned(_main_tree(), "melody_outputs"))
 
     assert outputs == [
-        "melody_phrase", "melody_status", "melody_views",
+        "melody_phrase", "melody_part", "melody_status", "melody_views",
     ]
 
     for box in ("pitch_input", "duration_input", "lyric_input",
@@ -571,7 +571,7 @@ def test_the_refresh_handler_takes_what_it_is_wired_to():
                 "phrase_label", "pitch_text", "duration_text",
                 "lyric_text", "key_text", "chart_text",
                 "show", "placement", "fingering", "width",
-                "open_free", "prefer_low", "fold", "columns",
+                "open_free", "prefer_low", "fold", "columns", "part_label",
             ]
             assert node.args.vararg.arg == "variants"
             return

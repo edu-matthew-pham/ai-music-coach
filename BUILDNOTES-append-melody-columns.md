@@ -148,6 +148,27 @@ arrows, each starting at a phrase.
   toast "Value: song:0 is not in the list of choices" (the chord sheet's
   key radio). Seen once on 7c7b564 (before today) and once now; a race.
 
+## Part choice in the Melody bar (2026-10-26)
+
+Matthew: a song of several tunes (partner songs, a choral score imported
+whole) showed only its first tune in the Melody section; mirror the
+mixer's "Your part", not linked to it.
+
+- `melody_page(..., part_label)`: the tunes come from `music.part_names`,
+  `keep_part` keeps the choice if the song still has it, else the first;
+  the phrase list and the piece are the chosen tune's (`list_phrases`
+  and `selected_piece` already took a part). Returns "parts" and "part".
+- main.py: a "Part" dropdown in the slim bar after the phrase list,
+  hidden unless the song has more than one tune; one more output and
+  one more input (`part_label`, after `columns`) of `refresh_melody`.
+  Separate from the mixer's choice (the mixer keeps its own in the
+  browser).
+- Checked: tests/test_melody_part.py (11, hand-read from the partner
+  songs: Three Blind Mice first, Frere Jacques four lines); three
+  mutations caught. Live: Twinkle shows no Part; the partner songs show
+  it on Three Blind Mice, choosing Frere Jacques redraws its words and
+  its four-phrase list; no page errors.
+
 Still open
 - Not in the wind view or the tab (they already read in rows).
 - Beat height ("Dense") and narrower margins: not done; try the columns

@@ -1917,12 +1917,29 @@ def default_variant(family, variants):
 
 # --- the page: what the section shows for the boxes' text -------
 
-def phrase_choices(pitch_text, duration_text, lyric_text):
-    """The view's own phrase list (its own, never the mixer's)."""
+def phrase_choices(pitch_text, duration_text, lyric_text, part_label=None):
+    """
+    The view's own phrase list (its own, never the mixer's): the
+    phrases of the chosen part, in a song with several.
+    """
 
     from music import list_phrases
 
-    return list_phrases(pitch_text, duration_text, lyric_text)
+    return list_phrases(pitch_text, duration_text, lyric_text, part_label)
+
+
+def keep_part(label, parts):
+    """
+    The part to show after the list changed: the same one if the
+    song still has it, else the first. None for a song of one part
+    (nothing to choose). Like the mixer's "Your part", it starts on
+    the first tune; the two choices are separate.
+    """
+
+    if not parts:
+        return None
+
+    return label if label in parts else parts[0]
 
 
 def keep_phrase(label, choices):
@@ -1951,7 +1968,7 @@ def melody_page(pitch_text, duration_text, lyric_text, key_text,
                 header=HEADER_COMPACT, placement=NEAR_MELODY,
                 fingering=NEAREST_NUT, width=DEFAULT_WIDTH,
                 open_free=True, prefer_low=False, fold=True,
-                columns=COLUMNS_AUTO):
+                columns=COLUMNS_AUTO, part_label=None):
     """
     What the Melody section shows for the text of the boxes:
     {"choices", "label", "views", "status"}. Reads the boxes'
@@ -1960,15 +1977,19 @@ def melody_page(pitch_text, duration_text, lyric_text, key_text,
     in every tab instead of failing.
     """
 
-    from music import MusicInputError, WHOLE_PART, selected_piece
+    from music import (
+        MusicInputError, WHOLE_PART, part_names, selected_piece,
+    )
 
-    choices = phrase_choices(pitch_text, duration_text, lyric_text)
+    parts = part_names(pitch_text, duration_text, lyric_text)
+    part = keep_part(part_label, parts)
+    choices = phrase_choices(pitch_text, duration_text, lyric_text, part)
     label = keep_phrase(phrase_label, choices)
 
     try:
         piece = selected_piece(
             pitch_text, duration_text, lyric_text, key_text,
-            chart_text, phrase_label=label,
+            chart_text, phrase_label=label, part_label=part,
         )
 
     except (MusicInputError, ValueError) as problem:
@@ -1977,6 +1998,8 @@ def melody_page(pitch_text, duration_text, lyric_text, key_text,
         return {
             "choices": choices,
             "label": label,
+            "parts": parts,
+            "part": part,
             "views": [text for _ in instruments],
             "status": "",
         }
@@ -1989,6 +2012,8 @@ def melody_page(pitch_text, duration_text, lyric_text, key_text,
     return {
         "choices": choices,
         "label": label,
+        "parts": parts,
+        "part": part,
         "views": [
             melody_view(
                 piece, name, show, header, placement, fingering,
