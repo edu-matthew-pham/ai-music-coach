@@ -384,3 +384,11 @@ def test_full_screen_hides_the_page_heading_and_sentence():
         MELODY_CSS
     )
     assert _main_text().count('elem_classes="melody-intro"') == 2
+
+
+def test_full_screen_does_not_squeeze_the_sections_blocks():
+    from melody_lanes import MELODY_CSS
+
+    # A fixed-height column shrinks its children unless told not to;
+    # the phrase list and status line were drawn as slivers.
+    assert "#melody.melody-full > * { flex-shrink: 0; }" in MELODY_CSS

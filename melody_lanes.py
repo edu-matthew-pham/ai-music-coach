@@ -1553,6 +1553,10 @@ MELODY_CSS = """
     overflow: visible !important;
 }
 #melody.melody-full .melody-lanes { max-width: none !important; }
+/* The section is a column with a fixed height here; without this
+   its blocks (the phrase list, the status line) are squeezed to fit
+   it instead of the section scrolling. */
+#melody.melody-full > * { flex-shrink: 0; }
 /* The heading and the sentence under it are for the page, not for
    a screen given over to the notes. */
 #melody.melody-full .melody-intro { display: none; }

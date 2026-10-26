@@ -78,6 +78,9 @@ Checked
   rows start hidden; their values still reach the redraw.
 - Full screen hides the "Melody on the instrument" heading and its
   sentence (`.melody-intro`).
+- Fixed after: in full screen the phrase list and status line were
+  squeezed to slivers (the section is a fixed-height column);
+  `#melody.melody-full > * { flex-shrink: 0 }` makes it scroll instead.
 - Checked in the real app (gradio 6.30 installed in the container,
   Playwright): rows appear and vanish with the tab, Columns and the
   guitar fingering still redraw, flute still draws, no page errors;
