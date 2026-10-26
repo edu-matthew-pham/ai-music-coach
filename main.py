@@ -647,17 +647,17 @@ with gr.Blocks(
                     scale=1
                 )
 
-                melody_header = gr.Radio(
-                    melody_lanes.HEADERS,
-                    value=melody_lanes.HEADER_COMPACT,
-                    label="Top of the lanes",
-                    scale=2
-                )
-
                 melody_placement = gr.Radio(
                     melody_lanes.PLACEMENTS,
                     value=melody_lanes.NEAR_MELODY,
                     label="Chords go",
+                    scale=2
+                )
+
+                melody_columns = gr.Radio(
+                    melody_lanes.COLUMN_CHOICES,
+                    value=melody_lanes.COLUMNS_AUTO,
+                    label="Columns",
                     scale=2
                 )
 
@@ -1325,8 +1325,8 @@ with gr.Blocks(
 
     def refresh_melody(phrase_label, pitch_text, duration_text,
                        lyric_text, key_text, chart_text, show,
-                       header, placement, fingering, width,
-                       open_free, prefer_low, *variants):
+                       placement, fingering, width,
+                       open_free, prefer_low, columns, *variants):
         """
         Redraw the Melody section for the boxes as they stand.
         Reads the five boxes and never writes them: the only
@@ -1336,8 +1336,9 @@ with gr.Blocks(
 
         page = melody_lanes.melody_page(
             pitch_text, duration_text, lyric_text, key_text,
-            chart_text, phrase_label, list(variants), show, header,
-            placement, fingering, width, open_free, prefer_low
+            chart_text, phrase_label, list(variants), show,
+            melody_lanes.HEADER_COMPACT, placement, fingering, width,
+            open_free, prefer_low, columns=columns
         )
 
         return (
@@ -1347,9 +1348,9 @@ with gr.Blocks(
 
     melody_inputs = [
         melody_phrase, pitch_input, duration_input, lyric_input,
-        key_input, chart_input, melody_show, melody_header,
+        key_input, chart_input, melody_show,
         melody_placement, melody_fingering, melody_width,
-        melody_open_free, melody_prefer_low
+        melody_open_free, melody_prefer_low, melody_columns
     ] + melody_variants
 
     melody_outputs = [melody_phrase, melody_status] + melody_views
@@ -1358,9 +1359,10 @@ with gr.Blocks(
         melody_phrase.change, pitch_input.change,
         duration_input.change, lyric_input.change,
         key_input.change, chart_input.change, melody_show.change,
-        melody_header.change, melody_placement.change,
+        melody_placement.change,
         melody_fingering.change, melody_width.change,
-        melody_open_free.change, melody_prefer_low.change
+        melody_open_free.change, melody_prefer_low.change,
+        melody_columns.change
     ] + [variant.change for variant in melody_variants]:
         trigger(
             fn=refresh_melody,

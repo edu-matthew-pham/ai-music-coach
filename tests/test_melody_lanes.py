@@ -568,8 +568,8 @@ def test_the_refresh_handler_takes_what_it_is_wired_to():
             assert names == [
                 "phrase_label", "pitch_text", "duration_text",
                 "lyric_text", "key_text", "chart_text",
-                "show", "header", "placement", "fingering", "width",
-                "open_free", "prefer_low",
+                "show", "placement", "fingering", "width",
+                "open_free", "prefer_low", "columns",
             ]
             assert node.args.vararg.arg == "variants"
             return

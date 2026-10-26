@@ -45,7 +45,7 @@ from instrument_diagrams import (
     piano_shape_voicing,
     structure_for,
 )
-from fretted_tab import DEFAULT_WIDTH, FINGERINGS, NEAREST_NUT
+from fretted_tab import DEFAULT_WIDTH, FINGERINGS, NEAREST_NUT, row_starts
 from notes import is_rest
 
 
@@ -1031,8 +1031,110 @@ def _picture_header(lanes, positions, instrument, total_width,
     return svg, height
 
 
+# --- columns -----------------------------------------------------
+
+# How many strips of the song sit side by side. Auto lets the page
+# decide by the width it has; One is the single tall strip; Two is
+# two, whatever the width.
+COLUMNS_AUTO = "Auto"
+COLUMNS_ONE = "One column"
+COLUMNS_TWO = "Two columns"
+COLUMN_CHOICES = [COLUMNS_AUTO, COLUMNS_ONE, COLUMNS_TWO]
+
+# About how many beats one strip holds (a screen's worth at the size
+# the lanes were designed at), cut at a phrase start.
+CHUNK_BEATS = 32
+
+# A strip is never drawn narrower than this share of its natural
+# width: below that the note names get too small to read.
+AUTO_SCALE = 0.72
+COLUMN_GAP = 14
+
+
+def chunk_ranges(cuts, total_beats, columns=COLUMNS_AUTO):
+    """
+    The song cut into strips, as [(from_beat, to_beat), ...]: about
+    CHUNK_BEATS each (at least two for Two columns), every cut at
+    the phrase start nearest an even share of the song, so a phrase
+    is never split. One column, or a song too short to need it, is
+    the whole song as a single strip.
+    """
+
+    if columns == COLUMNS_ONE or total_beats <= 0:
+        return [(0, total_beats)]
+
+    count = max(1, round(total_beats / CHUNK_BEATS))
+
+    if columns == COLUMNS_TWO:
+        count = max(2, count)
+
+    candidates = sorted({
+        cut for cut in (cuts or []) if 0 < cut < total_beats
+    })
+
+    points = [0]
+
+    for index in range(1, count):
+        target = total_beats * index / count
+
+        if candidates:
+            cut = min(candidates, key=lambda c: (abs(c - target), c))
+        else:
+            cut = round(target)
+
+        if points[-1] < cut < total_beats:
+            points.append(cut)
+
+    points.append(total_beats)
+
+    return list(zip(points, points[1:]))
+
+
+def _note_slice(blocks, low, high):
+    """The notes that BEGIN in [low, high), moved up to the strip."""
+
+    if low == 0 and high >= max(
+        (b["start"] + b["length"] for b in blocks), default=0
+    ):
+        return blocks
+
+    kept = []
+
+    for block in blocks:
+        if low <= block["start"] < high:
+            moved = dict(block)
+            moved["start"] = block["start"] - low
+            kept.append(moved)
+
+    return kept
+
+
+def _span_slice(items, low, high):
+    """
+    The chord layer's blocks and names that overlap [low, high),
+    clipped to it, so a chord running over a cut is on both strips.
+    """
+
+    kept = []
+
+    for item in items:
+        begin = item["start"]
+        end = begin + item["length"]
+
+        if end <= low or begin >= high:
+            continue
+
+        moved = dict(item)
+        moved["start"] = max(begin, low) - low
+        moved["length"] = min(end, high) - max(begin, low)
+        kept.append(moved)
+
+    return kept
+
+
 def lanes_html(blocks, instrument, total_beats, chart_text="",
-               chords=None, chord_names=None, header=HEADER_LABELS):
+               chords=None, chord_names=None, header=HEADER_LABELS,
+               columns=COLUMNS_ONE, cuts=None):
     """
     The lanes picture for one instrument as HTML: a header that
     stays put (lane names, or the instrument's own picture) and
@@ -1042,6 +1144,9 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
     chords is the chord layer's blocks (drawn first, pale, under
     the melody) and chord_names the chord spans for the left
     margin; both None draws the melody alone.
+
+    columns says how many strips side by side (the song is cut at
+    the phrase starts in cuts); One column draws the one tall strip.
     """
 
     chords = chords or []
@@ -1057,7 +1162,6 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
     left = LEFT_MARGIN + (CHORD_MARGIN if show_chords else 0)
     positions, width = _lane_positions(lanes, spare, instrument, left)
     total_width = width + RIGHT_MARGIN
-    body_height = int(total_beats * BEAT_PX) + 24 + TOP_PAD
 
     # --- header: lane names ---
     labels = [
@@ -1111,202 +1215,285 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
         )
         header_parts.append(picture)
 
-    # --- body ---
-    body = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" '
-        f'viewBox="0 0 {total_width} {body_height}" width="100%" '
-        f'style="display:block" '
-        f'role="img" aria-label="The melody, notes running down '
-        f'the lanes">'
-    ]
-
-    body.append(f'<g transform="translate(0,{TOP_PAD})">')
-
-    # White (and ordinary) lanes first, alternating; a piano's
-    # black lanes after, so the half of one that overlaps a
-    # neighbour is not painted over.
-    ordinary = [
-        (positions[lane["index"]], _lane_width(lane, instrument))
-        for lane in lanes if lane.get("kind") != "black"
-    ]
-    black = [
-        (positions[lane["index"]], _lane_width(lane, instrument))
-        for lane in lanes if lane.get("kind") == "black"
-    ]
-
-    if spare:
-        ordinary.insert(0, (left, wide))
-
-    for order, (x, stripe_width) in enumerate(ordinary):
-        shade = "#f3f6f8" if order % 2 == 0 else "none"
-        body.append(
-            f'<rect x="{x}" y="0" width="{stripe_width}" '
-            f'height="{body_height}" fill="{shade}"/>'
-        )
-
-    for x, stripe_width in black:
-        body.append(
-            f'<rect x="{x}" y="0" width="{stripe_width}" '
-            f'height="{body_height}" fill="#e3e8ec"/>'
-        )
-
     strong = {
         round(start, 4) for start in _bar_lines(chart_text, total_beats)
     }
-
-    for beat in range(int(total_beats) + 1):
-        y = beat * BEAT_PX
-        is_bar = float(beat) in strong
-        body.append(
-            f'<line x1="{left}" x2="{width}" y1="{y}" y2="{y}" '
-            f'stroke="{"#90a4ae" if is_bar else "#e0e6ea"}" '
-            f'stroke-width="{1.5 if is_bar else 1}"/>'
-        )
-
-        if is_bar:
-            body.append(
-                f'<text x="{left - 8}" y="{y + 4}" font-size="10" '
-                f'text-anchor="end" fill="#78909c">beat {beat + 1}</text>'
-            )
-
-    # The chord layer sits under the melody, paler.
     lane_by_index = {lane["index"]: lane for lane in lanes}
     alone = not blocks
 
-    for chord in chords:
-        lane = lane_by_index.get(chord["lane"])
+    def body_svg(low, high):
+        """The notes of [low, high) as one scrolling picture."""
 
-        if lane is None:
-            continue
+        span = high - low
+        body_height = int(span * BEAT_PX) + 24 + TOP_PAD
 
-        x = positions[chord["lane"]] + 1
-        chord_width = _lane_width(lane, instrument) - 2
-        y = chord["start"] * BEAT_PX + 2
-        height = max(chord["length"] * BEAT_PX - 4, 4)
+        strip_blocks = _note_slice(blocks, low, high)
+        strip_chords = _span_slice(chords, low, high) if low or (
+            high < total_beats
+        ) else chords
+        strip_names = _span_slice(chord_names, low, high) if low or (
+            high < total_beats
+        ) else chord_names
 
-        body.append(
-            f'<rect x="{x}" y="{y}" width="{chord_width}" '
-            f'height="{height}" rx="4" fill="{CHORD_TONE_COLOUR}" '
-            f'fill-opacity="{0.55 if alone else 0.25}"/>'
-        )
+        body = [
+            f'<svg xmlns="http://www.w3.org/2000/svg" '
+            f'viewBox="0 0 {total_width} {body_height}" width="100%" '
+            f'style="display:block" '
+            f'role="img" aria-label="The melody, notes running down '
+            f'the lanes">'
+        ]
 
-    # Each chord's name and a bar the length of it, in the margin.
-    for span in chord_names:
-        y = span["start"] * BEAT_PX + 2
-        height = max(span["length"] * BEAT_PX - 4, 4)
+        body.append(f'<g transform="translate(0,{TOP_PAD})">')
 
-        body.append(
-            f'<rect x="4" y="{y}" width="4" height="{height}" rx="2" '
-            f'fill="{CHORD_TONE_COLOUR}"/>'
-        )
+        # White (and ordinary) lanes first, alternating; a piano's
+        # black lanes after, so the half of one that overlaps a
+        # neighbour is not painted over.
+        ordinary = [
+            (positions[lane["index"]], _lane_width(lane, instrument))
+            for lane in lanes if lane.get("kind") != "black"
+        ]
+        black = [
+            (positions[lane["index"]], _lane_width(lane, instrument))
+            for lane in lanes if lane.get("kind") == "black"
+        ]
 
-        # Half-beat chords get a smaller name; shorter ones keep
-        # only their bar.
-        if height >= 9:
-            size = 12 if height >= 14 else 9
+        if spare:
+            ordinary.insert(0, (left, wide))
+
+        for order, (x, stripe_width) in enumerate(ordinary):
+            shade = "#f3f6f8" if order % 2 == 0 else "none"
             body.append(
-                f'<text x="14" y="{y + min(12, height - 1)}" '
-                f'font-size="{size}" '
-                f'font-weight="600" fill="{CHORD_TONE_COLOUR}">'
-                f'{html.escape(span["name"])}</text>'
+                f'<rect x="{x}" y="0" width="{stripe_width}" '
+                f'height="{body_height}" fill="{shade}"/>'
             )
 
-    for block in blocks:
-        y = block["start"] * BEAT_PX + 2
-        height = max(block["length"] * BEAT_PX - 4, 8)
-        block_width = wide - 8
-
-        if block["in_range"]:
-            x = positions[block["lane"]] + 4
-            colour = (
-                ROW_COLOURS[block["row"]] if block["row"]
-                else MELODY_COLOUR
-            )
-            mark = ""
-
-            if block["lever"]:
-                mark = "↑"
-
-            if block["black"]:
-                block_width = narrow - 4
-                x = positions[block["lane"]] + 2
-        else:
-            x = left + 4
-            colour = OUT_OF_RANGE_COLOUR
-            mark = "▼" if block["where"] == "below" else "▲"
-
-        label = html.escape(block["note"]) + mark
-        shifted = block["in_range"] and block["shift"]
-
-        if shifted:
-            body.append(f'<g class="melody-shifted"><title>'
-                        f'{html.escape(_shift_title(block))}</title>')
-
-        body.append(
-            f'<rect x="{x}" y="{y}" width="{block_width}" '
-            f'height="{height}" rx="6" fill="{colour}"/>'
-        )
-
-        # A string whose lever must be up wears the lever's tab.
-        if block["in_range"] and block["lever"]:
+        for x, stripe_width in black:
             body.append(
-                f'<rect x="{x + block_width / 2 - 5}" y="{y - 3}" '
-                f'width="10" height="5" rx="1" fill="#eceff1" '
-                f'stroke="#607d8b" stroke-width="1"/>'
+                f'<rect x="{x}" y="0" width="{stripe_width}" '
+                f'height="{body_height}" fill="#e3e8ec"/>'
             )
 
-        # A very short block has no room to read a name in.
-        if height >= 16:
+        # The song's own beats: a strip that starts part way in
+        # still numbers them from the song's start.
+        first_beat = -int(-low // 1)
+
+        for beat in range(first_beat, int(high) + 1):
+            y = (beat - low) * BEAT_PX
+            is_bar = float(beat) in strong
             body.append(
-                f'<text x="{x + block_width / 2}" y="{y + 13}" '
-                f'font-size="{9 if block["black"] else 10}" '
-                f'text-anchor="middle" fill="#ffffff">'
-                f'{label}</text>'
+                f'<line x1="{left}" x2="{width}" y1="{y}" y2="{y}" '
+                f'stroke="{"#90a4ae" if is_bar else "#e0e6ea"}" '
+                f'stroke-width="{1.5 if is_bar else 1}"/>'
             )
 
-        # An amber pill over the block: which way, and how far, the
-        # note was moved to fit the instrument ("8va" as in sheet
-        # music; 16va for two octaves).
-        if shifted:
-            arrow = "▲" if block["shift"] > 0 else "▼"
-            text = f'{arrow} {8 * abs(block["shift"])}va'
-            pill_width = 14 + 6.2 * len(text)
-            centre = x + block_width / 2
+            if is_bar:
+                body.append(
+                    f'<text x="{left - 8}" y="{y + 4}" font-size="10" '
+                    f'text-anchor="end" fill="#78909c">'
+                    f'beat {beat + 1}</text>'
+                )
+
+        # The chord layer sits under the melody, paler.
+        for chord in strip_chords:
+            lane = lane_by_index.get(chord["lane"])
+
+            if lane is None:
+                continue
+
+            x = positions[chord["lane"]] + 1
+            chord_width = _lane_width(lane, instrument) - 2
+            y = chord["start"] * BEAT_PX + 2
+            height = max(chord["length"] * BEAT_PX - 4, 4)
 
             body.append(
-                f'<rect class="octave-flag" '
-                f'x="{centre - pill_width / 2}" y="{y - 10}" '
-                f'width="{pill_width}" height="15" rx="7.5" '
-                f'fill="{OCTAVE_COLOUR}"/>'
-                f'<text x="{centre}" y="{y + 0.8}" font-size="10" '
-                f'font-weight="800" text-anchor="middle" '
-                f'fill="{OCTAVE_TEXT_COLOUR}">{text}</text>'
+                f'<rect x="{x}" y="{y}" width="{chord_width}" '
+                f'height="{height}" rx="4" fill="{CHORD_TONE_COLOUR}" '
+                f'fill-opacity="{0.55 if alone else 0.25}"/>'
             )
-            body.append("</g>")
 
-        if block["lyric"]:
+        # Each chord's name and a bar the length of it, in the margin.
+        for span_ in strip_names:
+            y = span_["start"] * BEAT_PX + 2
+            height = max(span_["length"] * BEAT_PX - 4, 4)
+
             body.append(
-                f'<text x="{width + 12}" y="{y + 13}" font-size="12" '
-                f'fill="#37474f">{html.escape(block["lyric"])}</text>'
+                f'<rect x="4" y="{y}" width="4" height="{height}" '
+                f'rx="2" fill="{CHORD_TONE_COLOUR}"/>'
             )
 
-    body.append("</g></svg>")
+            # Half-beat chords get a smaller name; shorter ones keep
+            # only their bar.
+            if height >= 9:
+                size = 12 if height >= 14 else 9
+                body.append(
+                    f'<text x="14" y="{y + min(12, height - 1)}" '
+                    f'font-size="{size}" '
+                    f'font-weight="600" fill="{CHORD_TONE_COLOUR}">'
+                    f'{html.escape(span_["name"])}</text>'
+                )
+
+        for block in strip_blocks:
+            y = block["start"] * BEAT_PX + 2
+            height = max(block["length"] * BEAT_PX - 4, 8)
+            block_width = wide - 8
+
+            if block["in_range"]:
+                x = positions[block["lane"]] + 4
+                colour = (
+                    ROW_COLOURS[block["row"]] if block["row"]
+                    else MELODY_COLOUR
+                )
+                mark = ""
+
+                if block["lever"]:
+                    mark = "↑"
+
+                if block["black"]:
+                    block_width = narrow - 4
+                    x = positions[block["lane"]] + 2
+            else:
+                x = left + 4
+                colour = OUT_OF_RANGE_COLOUR
+                mark = "▼" if block["where"] == "below" else "▲"
+
+            label = html.escape(block["note"]) + mark
+            shifted = block["in_range"] and block["shift"]
+
+            if shifted:
+                body.append(f'<g class="melody-shifted"><title>'
+                            f'{html.escape(_shift_title(block))}'
+                            f'</title>')
+
+            body.append(
+                f'<rect x="{x}" y="{y}" width="{block_width}" '
+                f'height="{height}" rx="6" fill="{colour}"/>'
+            )
+
+            # A string whose lever must be up wears the lever's tab.
+            if block["in_range"] and block["lever"]:
+                body.append(
+                    f'<rect x="{x + block_width / 2 - 5}" y="{y - 3}" '
+                    f'width="10" height="5" rx="1" fill="#eceff1" '
+                    f'stroke="#607d8b" stroke-width="1"/>'
+                )
+
+            # A very short block has no room to read a name in.
+            if height >= 16:
+                body.append(
+                    f'<text x="{x + block_width / 2}" y="{y + 13}" '
+                    f'font-size="{9 if block["black"] else 10}" '
+                    f'text-anchor="middle" fill="#ffffff">'
+                    f'{label}</text>'
+                )
+
+            # An amber pill over the block: which way, and how far,
+            # the note was moved to fit the instrument ("8va" as in
+            # sheet music; 16va for two octaves).
+            if shifted:
+                arrow = "▲" if block["shift"] > 0 else "▼"
+                text = f'{arrow} {8 * abs(block["shift"])}va'
+                pill_width = 14 + 6.2 * len(text)
+                centre = x + block_width / 2
+
+                body.append(
+                    f'<rect class="octave-flag" '
+                    f'x="{centre - pill_width / 2}" y="{y - 10}" '
+                    f'width="{pill_width}" height="15" rx="7.5" '
+                    f'fill="{OCTAVE_COLOUR}"/>'
+                    f'<text x="{centre}" y="{y + 0.8}" font-size="10" '
+                    f'font-weight="800" text-anchor="middle" '
+                    f'fill="{OCTAVE_TEXT_COLOUR}">{text}</text>'
+                )
+                body.append("</g>")
+
+            if block["lyric"]:
+                body.append(
+                    f'<text x="{width + 12}" y="{y + 13}" '
+                    f'font-size="12" fill="#37474f">'
+                    f'{html.escape(block["lyric"])}</text>'
+                )
+
+        body.append("</g></svg>")
+
+        return "".join(body)
 
     # A cropped keyboard has few lanes; do not let each balloon.
-    narrow_page = (
-        f"max-width:{int(total_width * 1.8)}px;" if len(lanes) < 14
-        else ""
+    narrow_cap = (
+        int(total_width * 1.8) if len(lanes) < 14 else None
+    )
+    height_cap = "85vh" if header == HEADER_PICTURE else "70vh"
+    frame = (
+        f'max-height:{height_cap};overflow-y:auto;'
+        'border:1px solid var(--border-color-primary,#ccc);'
+        'border-radius:8px'
     )
 
+    ranges = chunk_ranges(cuts, total_beats, columns)
+
+    if len(ranges) == 1:
+        narrow_page = f"max-width:{narrow_cap}px;" if narrow_cap else ""
+
+        return (
+            f'<div class="melody-lanes" style="{narrow_page}{frame}">'
+            '<div style="position:sticky;top:0;z-index:2">'
+            + "".join(header_parts)
+            + "</div>"
+            + body_svg(0, total_beats)
+            + "</div>"
+        )
+
+    # Several strips side by side, left to right then down, like a
+    # page of rows. Each has the header over it. Auto lets the page
+    # fit as many as keep every strip at AUTO_SCALE of its natural
+    # width or more (the grid's minimum); Two is two whatever the
+    # width.
+    shown_header = "".join(header_parts)
+    strips = "".join(
+        '<div class="melody-chunk">'
+        '<div class="melody-head" style="position:sticky;top:0;'
+        f'z-index:2">{shown_header}</div>'
+        + body_svg(low, high)
+        + "</div>"
+        for low, high in ranges
+    )
+
+    if columns == COLUMNS_TWO:
+        template = (
+            f"repeat(2,minmax(0,{narrow_cap}px))" if narrow_cap
+            else "repeat(2,minmax(0,1fr))"
+        )
+        rules = ""
+        marker = ""
+
+    else:
+        least = int(total_width * AUTO_SCALE)
+        template = (
+            f"repeat(auto-fit,minmax({least}px,{narrow_cap}px))"
+            if narrow_cap else
+            f"repeat(auto-fit,minmax({least}px,1fr))"
+        )
+        marker = f" melody-cols-{least}"
+
+        # Where only one strip fits, it is the one tall strip it
+        # always was: one header that stays, no gaps.
+        rules = (
+            f"<style>@container melody (max-width:"
+            f"{2 * least + COLUMN_GAP - 1}px)"
+            f"{{.melody-cols-{least} .melody-grid{{gap:0}}"
+            f".melody-cols-{least} .melody-chunk{{display:contents}}"
+            f".melody-cols-{least} .melody-chunk+.melody-chunk "
+            f".melody-head{{display:none}}}}</style>"
+        )
+
     return (
-        f'<div class="melody-lanes" style="{narrow_page}max-height:{"85vh" if header == HEADER_PICTURE else "70vh"};'
-        'overflow-y:auto;border:1px solid var(--border-color-primary,#ccc);'
-        'border-radius:8px">'
-        '<div style="position:sticky;top:0;z-index:2">'
-        + "".join(header_parts)
-        + "</div>"
-        + "".join(body)
-        + "</div>"
+        rules
+        + f'<div class="melody-lanes{marker}" style="{frame};'
+        'container-type:inline-size;container-name:melody">'
+        f'<div class="melody-grid" style="display:grid;'
+        f'grid-template-columns:{template};gap:{COLUMN_GAP}px;'
+        'align-items:start;justify-content:start">'
+        + strips
+        + "</div></div>"
     )
 
 
@@ -1394,7 +1581,8 @@ FULL_SCREEN_JS = """
 
 def melody_view(piece, instrument, show=None, header=HEADER_COMPACT,
                 placement=NEAR_MELODY, fingering=NEAREST_NUT,
-                width=DEFAULT_WIDTH, open_free=True, prefer_low=False):
+                width=DEFAULT_WIDTH, open_free=True, prefer_low=False,
+                columns=COLUMNS_AUTO):
     """
     Everything one instrument tab shows for a piece (a phrase
     or the whole tune), as HTML: the out-of-range line if there
@@ -1452,7 +1640,8 @@ def melody_view(piece, instrument, show=None, header=HEADER_COMPACT,
         warning
         + lanes_html(
             blocks if want_melody else [], instrument, piece.beats(),
-            piece.chart, chords, names, header
+            piece.chart, chords, names, header, columns,
+            row_starts(piece)
         )
         + f'<div style="font-size:0.85em;opacity:0.75;margin-top:4px">'
         f"{html.escape(legend)}</div>"
@@ -1535,7 +1724,8 @@ def melody_page(pitch_text, duration_text, lyric_text, key_text,
                 chart_text, phrase_label, instruments, show=None,
                 header=HEADER_COMPACT, placement=NEAR_MELODY,
                 fingering=NEAREST_NUT, width=DEFAULT_WIDTH,
-                open_free=True, prefer_low=False):
+                open_free=True, prefer_low=False,
+                columns=COLUMNS_AUTO):
     """
     What the Melody section shows for the text of the boxes:
     {"choices", "label", "views", "status"}. Reads the boxes'
@@ -1576,7 +1766,7 @@ def melody_page(pitch_text, duration_text, lyric_text, key_text,
         "views": [
             melody_view(
                 piece, name, show, header, placement, fingering,
-                width, open_free, prefer_low
+                width, open_free, prefer_low, columns
             )
             for name in instruments
         ],
