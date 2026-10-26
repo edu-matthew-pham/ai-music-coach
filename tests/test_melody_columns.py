@@ -233,32 +233,57 @@ def test_every_strip_names_the_chord_playing_at_its_top():
 def test_two_columns_is_two_whatever_the_width():
     html = melody_view(_wellerman(), KALIMBA, columns=COLUMNS_TWO)
 
-    assert "grid-template-columns:repeat(2," in html
+    assert "grid-template-columns:repeat(2,minmax(0,1fr))" in html
     assert "@container" not in html
 
 
-def test_auto_lets_the_page_fit_as_many_as_keep_the_note_names_readable():
-    html = melody_view(_wellerman(), KALIMBA, columns=COLUMNS_AUTO)
-    least = re.search(r"repeat\(auto-fit,minmax\((\d+)px", html)
+def _least(html):
+    """The narrowest a strip may be drawn under Auto, from its class."""
 
-    assert least
+    return int(re.search(r"melody-cols-(\d+)", html).group(1))
+
+
+def test_auto_keeps_every_strip_at_72_percent_of_its_natural_width_or_more():
+    html = melody_view(_wellerman(), KALIMBA, columns=COLUMNS_AUTO)
+
     # The kalimba picture is 878 wide (measured); 72% of it.
-    assert 600 < int(least.group(1)) < 700
-    assert int(least.group(1)) == int(878 * AUTO_SCALE) or (
-        abs(int(least.group(1)) - int(878 * AUTO_SCALE)) <= 2
+    assert abs(_least(html) - int(878 * AUTO_SCALE)) <= 2
+
+
+def test_auto_goes_to_two_then_three_columns_and_never_four():
+    html = melody_view(_wellerman(), KALIMBA, columns=COLUMNS_AUTO)
+    least = _least(html)
+
+    assert f"@container melody (min-width:{2 * least + 14}px)" in html
+    assert f"@container melody (min-width:{3 * least + 28}px)" in html
+    assert "repeat(2,minmax(0,1fr))" in html
+    assert "repeat(3,minmax(0,1fr))" in html
+    assert "repeat(4" not in html
+    assert f"min-width:{4 * least + 42}px" not in html
+
+
+def test_below_two_strips_wide_it_is_one_tall_strip_again():
+    html = melody_view(_wellerman(), KALIMBA, columns=COLUMNS_AUTO)
+    rules = html.split("@container")[0]
+
+    # The starting state (before any wider rule): one track, no gap,
+    # strips dissolved into the grid so the first header stays pinned,
+    # later headers hidden.
+    assert "gap:0" in rules
+    assert "grid-template-columns:minmax(0,1fr)" in rules
+    assert ".melody-chunk{display:contents}" in rules
+    assert ".melody-chunk+.melody-chunk .melody-head{display:none}" in (
+        rules
     )
 
 
-def test_where_only_one_strip_fits_it_is_one_tall_strip_again():
+def test_wide_enough_for_columns_the_strips_and_headers_come_back():
     html = melody_view(_wellerman(), KALIMBA, columns=COLUMNS_AUTO)
-    least = int(re.search(r"minmax\((\d+)px", html).group(1))
+    wider = html.split("@container")[1]
 
-    assert "@container melody (max-width:" in html
-    # Below two strips (and the gap) wide: no gap, one header kept.
-    assert f"max-width:{2 * least + 13}px" in html
-    assert ".melody-chunk{display:contents}" in html
-    assert ".melody-chunk+.melody-chunk .melody-head{display:none}" in (
-        html
+    assert ".melody-chunk{display:block}" in wider
+    assert ".melody-chunk+.melody-chunk .melody-head{display:block}" in (
+        wider
     )
 
 
@@ -267,10 +292,7 @@ def test_a_piano_wants_more_width_than_a_kalimba_for_two_columns():
     kalimba = melody_view(piece, KALIMBA, columns=COLUMNS_AUTO)
     piano = melody_view(piece, "Piano, 3 octaves", columns=COLUMNS_AUTO)
 
-    def least(html):
-        return int(re.search(r"minmax\((\d+)px", html).group(1))
-
-    assert least(piano) > least(kalimba)
+    assert _least(piano) > _least(kalimba)
 
 
 def test_an_empty_song_is_not_cut():

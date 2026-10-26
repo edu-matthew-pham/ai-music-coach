@@ -92,7 +92,23 @@ Checked
   tests/test_interface_runs.py passes (10). New tests (35 in
   test_melody_columns.py); two option_rows mutations caught.
 
+## Auto: at most three columns (2026-10-26, Matthew: "a little too generous")
+
+- Auto used `repeat(auto-fit, minmax(least, 1fr))`, which on a 2560 screen
+  gave four columns. Now it is container-query breakpoints: one strip,
+  two from 2 x least + gap, three from 3 x least + 2 gaps, never four
+  (MAX_AUTO_COLUMNS). Kalimba/harp: 2 columns from ~1280px, 3 from ~1930px;
+  piano 2 from ~1600px, 3 from ~2410px.
+- Tried and dropped: capping how big a strip may be drawn (max width) and
+  capping columns with a percentage inside `minmax(max(...))`. Chrome does
+  not count that percentage when working out how many auto-fit columns fit,
+  so a 1920 screen fell to one column. Breakpoints are plain and testable.
+- Still scale-driven: how many BEATS go in a column is fixed (32), not
+  worked out from the screen's height. See the question below.
+
 Still open
+- How many rows go in a column before it wraps to the next: today 32
+  beats whatever the screen height; Matthew wants it to be about rows.
 - Not in the wind view or the tab (they already read in rows).
 - Beat height ("Dense") and narrower margins: not done; try the columns
   first.

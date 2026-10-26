@@ -1051,6 +1051,9 @@ CHUNK_BEATS = 32
 AUTO_SCALE = 0.72
 COLUMN_GAP = 14
 
+# Auto never goes past this many columns, however wide the screen.
+MAX_AUTO_COLUMNS = 3
+
 
 def chunk_ranges(cuts, total_beats, columns=COLUMNS_AUTO):
     """
@@ -1458,41 +1461,57 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
         for low, high in ranges
     )
 
+    cell = f"{narrow_cap}px" if narrow_cap else "1fr"
+
     if columns == COLUMNS_TWO:
-        template = (
-            f"repeat(2,minmax(0,{narrow_cap}px))" if narrow_cap
-            else "repeat(2,minmax(0,1fr))"
+        style = (
+            f'display:grid;grid-template-columns:'
+            f'repeat(2,minmax(0,{cell}));gap:{COLUMN_GAP}px;'
+            'align-items:start;justify-content:start'
         )
         rules = ""
         marker = ""
 
     else:
         least = int(total_width * AUTO_SCALE)
-        template = (
-            f"repeat(auto-fit,minmax({least}px,{narrow_cap}px))"
-            if narrow_cap else
-            f"repeat(auto-fit,minmax({least}px,1fr))"
-        )
+        mark = f".melody-cols-{least}"
         marker = f" melody-cols-{least}"
+        style = ""
 
-        # Where only one strip fits, it is the one tall strip it
-        # always was: one header that stays, no gaps.
+        # Starts as the one tall strip it always was (no gaps, one
+        # header that stays), and becomes 2, then 3 columns as the
+        # page gets wide enough for each to keep AUTO_SCALE of its
+        # natural width; never more than MAX_AUTO_COLUMNS.
         rules = (
-            f"<style>@container melody (max-width:"
-            f"{2 * least + COLUMN_GAP - 1}px)"
-            f"{{.melody-cols-{least} .melody-grid{{gap:0}}"
-            f".melody-cols-{least} .melody-chunk{{display:contents}}"
-            f".melody-cols-{least} .melody-chunk+.melody-chunk "
-            f".melody-head{{display:none}}}}</style>"
+            f"<style>{mark} .melody-grid{{display:grid;gap:0;"
+            f"grid-template-columns:minmax(0,{cell});"
+            f"align-items:start;justify-content:start}}"
+            f"{mark} .melody-chunk{{display:contents}}"
+            f"{mark} .melody-chunk+.melody-chunk .melody-head"
+            f"{{display:none}}"
         )
+
+        for count in range(2, MAX_AUTO_COLUMNS + 1):
+            wide = count * least + (count - 1) * COLUMN_GAP
+            rules += (
+                f"@container melody (min-width:{wide}px)"
+                f"{{{mark} .melody-grid{{gap:{COLUMN_GAP}px;"
+                f"grid-template-columns:"
+                f"repeat({count},minmax(0,{cell}))}}"
+                f"{mark} .melody-chunk{{display:block}}"
+                f"{mark} .melody-chunk+.melody-chunk .melody-head"
+                f"{{display:block}}}}"
+            )
+
+        rules += "</style>"
+
+    grid_style = f' style="{style}"' if style else ""
 
     return (
         rules
         + f'<div class="melody-lanes{marker}" style="{frame};'
         'container-type:inline-size;container-name:melody">'
-        f'<div class="melody-grid" style="display:grid;'
-        f'grid-template-columns:{template};gap:{COLUMN_GAP}px;'
-        'align-items:start;justify-content:start">'
+        f'<div class="melody-grid"{grid_style}>'
         + strips
         + "</div></div>"
     )
