@@ -106,9 +106,49 @@ Checked
 - Still scale-driven: how many BEATS go in a column is fixed (32), not
   worked out from the screen's height. See the question below.
 
+## Columns fit the screen's height; pages turned with the arrows (2026-10-26)
+
+Matthew: a column should hold as many rows as fit before wrapping to the
+next, counting the other UI above the lanes; then pages, turned with the
+arrows, each starting at a phrase.
+
+- Python (`phrase_ranges`): Auto and Two draw the song as ONE PIECE PER
+  PHRASE (the tab's `row_starts`) under one header, with data-columns,
+  data-least (72% of natural width), data-max (3 Auto, 2 Two) and
+  data-cap (a cropped keyboard's widest). As it stands that is the one
+  tall strip. A piece that is not the last leaves its end beat line to
+  the next and keeps a 4px margin (the last keeps 24), so phrases sit
+  14px apart. `chunk_ranges`/CHUNK_BEATS and the CSS container-query
+  columns are gone. One column and one-phrase songs: byte-identical
+  (240 renders).
+- Browser (`FLOW_JS`, installed once by `demo.load(fn=None, js=...)`):
+  columns from the width (Auto: floor of width / least, at most 3; Two:
+  2). Room for a page: in full screen the section's height less
+  everything above the lanes (controls, tabs, size, warning line) less
+  the pager; in the page, the lanes' box (70vh). Whole phrases are
+  packed into a column until the next would not fit (a phrase taller
+  than a column gets one to itself), columns into pages. One page
+  shows; a pager ("Page 2 of 7", ◀ ▶) and the ← → keys turn it (not
+  while typing in a box). Each column carries its own copy of the
+  header. Re-packs on a redraw, resize, tab change or full screen; the
+  page you are on is kept. In the page, one column stays the scrolling
+  strip (a page per phrase was no help at 1366 wide).
+- Found: Gradio patches a redrawn view into the same element, which
+  threw the packed pages away while the layout thought it was done; it
+  now re-packs whenever the pages are missing.
+- Checked in the real app (Playwright, Wellerman): pages fit the screen
+  in full screen at 1920x1080 (2 columns, 6 pages), 1366x768 (2, 7) and
+  2560x1440 (3, 2), piano 1920 (2, 4); in the page at 1920 the page
+  fits its box; Two / One / Auto switch; → twice gives page 3, Escape
+  keeps it; flute and harp fine; no page errors. 39 tests in
+  test_melody_columns.py (the browser half only by reading FLOW_JS);
+  13 mutations caught; 308 pass across the melody, wind, tab and
+  interface files.
+- Pre-existing, not from this work: sometimes after Load Wellerman a
+  toast "Value: song:0 is not in the list of choices" (the chord sheet's
+  key radio). Seen once on 7c7b564 (before today) and once now; a race.
+
 Still open
-- How many rows go in a column before it wraps to the next: today 32
-  beats whatever the screen height; Matthew wants it to be about rows.
 - Not in the wind view or the tab (they already read in rows).
 - Beat height ("Dense") and narrower margins: not done; try the columns
   first.

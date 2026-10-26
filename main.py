@@ -1410,6 +1410,13 @@ with gr.Blocks(
         outputs=melody_outputs
     )
 
+    # Packs the Melody lanes' phrases into columns that fit the
+    # screen (browser only; reads and writes no box).
+    demo.load(
+        fn=None,
+        js=melody_lanes.FLOW_JS
+    )
+
     def cycle_phrase(step):
         """
         Move the phrase choice on by a step, wrapping.

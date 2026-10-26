@@ -1042,12 +1042,8 @@ COLUMNS_ONE = "One column"
 COLUMNS_TWO = "Two columns"
 COLUMN_CHOICES = [COLUMNS_AUTO, COLUMNS_ONE, COLUMNS_TWO]
 
-# About how many beats one strip holds (a screen's worth at the size
-# the lanes were designed at), cut at a phrase start.
-CHUNK_BEATS = 32
-
-# A strip is never drawn narrower than this share of its natural
-# width: below that the note names get too small to read.
+# A column is never drawn narrower than this share of a strip's
+# natural width: below that the note names get too small to read.
 AUTO_SCALE = 0.72
 COLUMN_GAP = 14
 
@@ -1055,41 +1051,21 @@ COLUMN_GAP = 14
 MAX_AUTO_COLUMNS = 3
 
 
-def chunk_ranges(cuts, total_beats, columns=COLUMNS_AUTO):
+def phrase_ranges(cuts, total_beats, columns=COLUMNS_AUTO):
     """
-    The song cut into strips, as [(from_beat, to_beat), ...]: about
-    CHUNK_BEATS each (at least two for Two columns), every cut at
-    the phrase start nearest an even share of the song, so a phrase
-    is never split. One column, or a song too short to need it, is
-    the whole song as a single strip.
+    The song as one piece per phrase, [(from_beat, to_beat), ...],
+    cut at the phrase starts in cuts: the pieces the page packs into
+    columns, as many whole phrases to a column as the screen has room
+    for (FLOW_JS). One column, or a song of one phrase, is the whole
+    song as a single piece.
     """
 
     if columns == COLUMNS_ONE or total_beats <= 0:
         return [(0, total_beats)]
 
-    count = max(1, round(total_beats / CHUNK_BEATS))
-
-    if columns == COLUMNS_TWO:
-        count = max(2, count)
-
-    candidates = sorted({
+    points = [0] + sorted({
         cut for cut in (cuts or []) if 0 < cut < total_beats
-    })
-
-    points = [0]
-
-    for index in range(1, count):
-        target = total_beats * index / count
-
-        if candidates:
-            cut = min(candidates, key=lambda c: (abs(c - target), c))
-        else:
-            cut = round(target)
-
-        if points[-1] < cut < total_beats:
-            points.append(cut)
-
-    points.append(total_beats)
+    }) + [total_beats]
 
     return list(zip(points, points[1:]))
 
@@ -1225,11 +1201,15 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
     lane_by_index = {lane["index"]: lane for lane in lanes}
     alone = not blocks
 
-    def body_svg(low, high):
-        """The notes of [low, high) as one scrolling picture."""
+    def body_svg(low, high, last=True):
+        """
+        The notes of [low, high) as one scrolling picture. A piece
+        that is not the song's last leaves the beat line at its end
+        to the piece after it, and keeps only a small margin under.
+        """
 
         span = high - low
-        body_height = int(span * BEAT_PX) + 24 + TOP_PAD
+        body_height = int(span * BEAT_PX) + (24 if last else 4) + TOP_PAD
 
         strip_blocks = _note_slice(blocks, low, high)
         strip_chords = _span_slice(chords, low, high) if low or (
@@ -1281,7 +1261,11 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
         # still numbers them from the song's start.
         first_beat = -int(-low // 1)
 
-        for beat in range(first_beat, int(high) + 1):
+        last_beat = (
+            int(high) if last or high != int(high) else int(high) - 1
+        )
+
+        for beat in range(first_beat, last_beat + 1):
             y = (beat - low) * BEAT_PX
             is_bar = float(beat) in strong
             body.append(
@@ -1432,7 +1416,7 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
         'border-radius:8px'
     )
 
-    ranges = chunk_ranges(cuts, total_beats, columns)
+    ranges = phrase_ranges(cuts, total_beats, columns)
 
     if len(ranges) == 1:
         narrow_page = f"max-width:{narrow_cap}px;" if narrow_cap else ""
@@ -1446,74 +1430,34 @@ def lanes_html(blocks, instrument, total_beats, chart_text="",
             + "</div>"
         )
 
-    # Several strips side by side, left to right then down, like a
-    # page of rows. Each has the header over it. Auto lets the page
-    # fit as many as keep every strip at AUTO_SCALE of its natural
-    # width or more (the grid's minimum); Two is two whatever the
-    # width.
-    shown_header = "".join(header_parts)
-    strips = "".join(
-        '<div class="melody-chunk">'
-        '<div class="melody-head" style="position:sticky;top:0;'
-        f'z-index:2">{shown_header}</div>'
-        + body_svg(low, high)
+    # One piece per phrase, stacked under one header: as it stands
+    # that is the one tall strip. In the browser FLOW_JS packs the
+    # pieces into columns, as many whole phrases to a column as fit
+    # the height left on screen under the controls, and the columns
+    # into screens. data-least is the narrowest a column may be
+    # (Auto), data-max the most columns, data-cap a cropped
+    # keyboard's widest.
+    pieces = "".join(
+        f'<div class="melody-cell" data-from="{low}">'
+        + body_svg(low, high, last=index == len(ranges) - 1)
         + "</div>"
-        for low, high in ranges
+        for index, (low, high) in enumerate(ranges)
     )
-
-    cell = f"{narrow_cap}px" if narrow_cap else "1fr"
-
-    if columns == COLUMNS_TWO:
-        style = (
-            f'display:grid;grid-template-columns:'
-            f'repeat(2,minmax(0,{cell}));gap:{COLUMN_GAP}px;'
-            'align-items:start;justify-content:start'
-        )
-        rules = ""
-        marker = ""
-
-    else:
-        least = int(total_width * AUTO_SCALE)
-        mark = f".melody-cols-{least}"
-        marker = f" melody-cols-{least}"
-        style = ""
-
-        # Starts as the one tall strip it always was (no gaps, one
-        # header that stays), and becomes 2, then 3 columns as the
-        # page gets wide enough for each to keep AUTO_SCALE of its
-        # natural width; never more than MAX_AUTO_COLUMNS.
-        rules = (
-            f"<style>{mark} .melody-grid{{display:grid;gap:0;"
-            f"grid-template-columns:minmax(0,{cell});"
-            f"align-items:start;justify-content:start}}"
-            f"{mark} .melody-chunk{{display:contents}}"
-            f"{mark} .melody-chunk+.melody-chunk .melody-head"
-            f"{{display:none}}"
-        )
-
-        for count in range(2, MAX_AUTO_COLUMNS + 1):
-            wide = count * least + (count - 1) * COLUMN_GAP
-            rules += (
-                f"@container melody (min-width:{wide}px)"
-                f"{{{mark} .melody-grid{{gap:{COLUMN_GAP}px;"
-                f"grid-template-columns:"
-                f"repeat({count},minmax(0,{cell}))}}"
-                f"{mark} .melody-chunk{{display:block}}"
-                f"{mark} .melody-chunk+.melody-chunk .melody-head"
-                f"{{display:block}}}}"
-            )
-
-        rules += "</style>"
-
-    grid_style = f' style="{style}"' if style else ""
+    narrow_page = f"max-width:{narrow_cap}px;" if narrow_cap else ""
+    mode = "two" if columns == COLUMNS_TWO else "auto"
+    most = 2 if columns == COLUMNS_TWO else MAX_AUTO_COLUMNS
 
     return (
-        rules
-        + f'<div class="melody-lanes{marker}" style="{frame};'
-        'container-type:inline-size;container-name:melody">'
-        f'<div class="melody-grid"{grid_style}>'
-        + strips
-        + "</div></div>"
+        f'<div class="melody-lanes melody-flow" data-columns="{mode}" '
+        f'data-least="{int(total_width * AUTO_SCALE)}" '
+        f'data-max="{most}" data-cap="{narrow_cap or 0}" '
+        f'style="{narrow_page}{frame}">'
+        '<div class="melody-head" style="position:sticky;top:0;'
+        'z-index:2">'
+        + "".join(header_parts)
+        + "</div>"
+        + f'<div class="melody-cells">{pieces}</div>'
+        + "</div>"
     )
 
 
@@ -1608,6 +1552,225 @@ FULL_SCREEN_JS = """
     set(!section.classList.contains('melody-full'));
 }
 """
+
+
+# --- columns and pages, in the browser ----------------------------
+
+# Packs the phrase pieces of each .melody-flow into columns and the
+# columns into pages: as many whole phrases to a column as fit the
+# height left on screen once the controls, tabs and warning line
+# above the lanes are counted, and as many columns side by side as
+# the width allows (Auto: each at least data-least wide, at most
+# data-max; Two: two). One page shows at a time; the ◀ ▶ buttons or
+# the ← → keys turn it. A column and a page always begin at a phrase.
+# The One column choice never reaches here (Python draws the one tall
+# strip, which scrolls).
+#
+# Only moves the pieces about; it reads and writes none of the
+# song's boxes. Runs once, on page load, and lays out again when a
+# view is redrawn, the window or a tab changes size, or full screen
+# goes on or off.
+FLOW_JS = """
+() => {
+    if (window.__melodyFlow) { return; }
+    window.__melodyFlow = true;
+    const GAP = %(gap)d;
+    const PAGER = 34;
+
+    // The height an element's pictures take at a width: each SVG is
+    // drawn at width 100%%, so its viewBox gives it.
+    const heightAt = (box, width) => {
+        let total = 0;
+        box.querySelectorAll('svg').forEach((svg) => {
+            const view = svg.viewBox && svg.viewBox.baseVal;
+            if (view && view.width) {
+                total += view.height * width / view.width;
+            }
+        });
+        return total;
+    };
+
+    const show = (flow, page) => {
+        const pages = flow.querySelectorAll(':scope > .melody-pages > .melody-page');
+        if (!pages.length) { return; }
+        page = Math.max(0, Math.min(pages.length - 1, page));
+        flow.__page = page;
+        pages.forEach((row, index) => {
+            row.style.display = index === page ? 'grid' : 'none';
+        });
+        const pager = flow.querySelector(':scope > .melody-pager');
+        if (pager) {
+            pager.querySelector('.melody-page-count').textContent =
+                'Page ' + (page + 1) + ' of ' + pages.length;
+            pager.querySelector('.melody-back').disabled = page === 0;
+            pager.querySelector('.melody-next').disabled = page === pages.length - 1;
+        }
+    };
+
+    const layout = (flow) => {
+        const host = flow.parentElement;
+        const width = host ? host.clientWidth : 0;
+        if (!width) { return; }  // a hidden tab: wait until shown
+
+        const section = flow.closest('#melody');
+        const full = !!(section && section.classList.contains('melody-full'));
+        const least = Number(flow.dataset.least) || 1;
+        const most = Number(flow.dataset.max) || 1;
+        const cap = Number(flow.dataset.cap) || 0;
+        const columns = flow.dataset.columns === 'two' ? 2 : Math.max(
+            1, Math.min(most, Math.floor((width + GAP) / (least + GAP)))
+        );
+
+        // Height for a page. Full screen: what is left of the screen
+        // under everything above the lanes (the controls stay put,
+        // pages turn instead of scrolling). In the page: the lanes'
+        // own box.
+        let room;
+        if (full) {
+            const above = flow.getBoundingClientRect().top
+                - section.getBoundingClientRect().top + section.scrollTop;
+            room = section.clientHeight - above - 16;
+        } else {
+            room = (parseFloat(getComputedStyle(flow).maxHeight)
+                || window.innerHeight * 0.7) - 6;
+        }
+        room -= PAGER;
+
+        // In the page, one column stays the one tall strip, which
+        // scrolls in its box (a page per phrase would be no help).
+        const strip = columns === 1 && !full;
+        const key = [width, columns, Math.round(room), strip].join(' ');
+        const packed = flow.querySelector(':scope > .melody-pages');
+
+        // Gradio patches a redrawn view into the same element, which
+        // throws the pages away: then pack again from what is there.
+        if (!packed) { flow.__cells = null; }
+        if (flow.__key === key && (packed || strip)) { return; }
+        flow.__key = key;
+
+        const pool = flow.querySelector(':scope > .melody-cells');
+        const head = flow.querySelector(':scope > .melody-head');
+        if (!pool || !head) { return; }
+        const cells = flow.__cells
+            || (flow.__cells = [...pool.querySelectorAll('.melody-cell')]);
+
+        // Back to the one tall strip, then re-pack.
+        flow.querySelectorAll(':scope > .melody-pages, :scope > .melody-pager')
+            .forEach((n) => n.remove());
+        cells.forEach((cell) => pool.appendChild(cell));
+        head.style.display = '';
+        pool.style.display = '';
+        flow.style.overflowY = '';
+
+        if (strip) {
+            flow.style.maxWidth = cap ? cap + 'px' : '';
+            return;
+        }
+
+        flow.style.maxWidth = '';
+        let column = (flow.clientWidth - 2 - GAP * (columns - 1)) / columns;
+        if (cap) { column = Math.min(column, cap); }
+        const space = room - heightAt(head, column);
+
+        const screens = [];
+        let screen = [];
+        let stack = [];
+        let used = 0;
+
+        cells.forEach((cell) => {
+            const tall = heightAt(cell, column);
+            if (stack.length && used + tall > space) {
+                screen.push(stack);
+                stack = [];
+                used = 0;
+                if (screen.length === columns) {
+                    screens.push(screen);
+                    screen = [];
+                }
+            }
+            stack.push(cell);
+            used += tall;
+        });
+        if (stack.length) { screen.push(stack); }
+        if (screen.length) { screens.push(screen); }
+
+        const pages = document.createElement('div');
+        pages.className = 'melody-pages';
+        screens.forEach((stacks) => {
+            const row = document.createElement('div');
+            row.className = 'melody-page';
+            row.style.cssText = 'gap:' + GAP + 'px;'
+                + 'grid-template-columns:repeat(' + columns + ',' + column + 'px);'
+                + 'align-items:start';
+            stacks.forEach((pieces) => {
+                const col = document.createElement('div');
+                col.className = 'melody-col';
+                const top = head.cloneNode(true);
+                top.style.position = 'static';
+                top.style.display = '';
+                col.appendChild(top);
+                pieces.forEach((cell) => col.appendChild(cell));
+                row.appendChild(col);
+            });
+            pages.appendChild(row);
+        });
+
+        const pager = document.createElement('div');
+        pager.className = 'melody-pager';
+        pager.style.cssText = 'display:flex;align-items:center;gap:8px;'
+            + 'justify-content:flex-end;height:' + (PAGER - 6) + 'px;'
+            + 'margin-bottom:6px;font-size:13px';
+        pager.innerHTML =
+            '<span style="opacity:.6;margin-right:auto">← → turn the page</span>'
+            + '<button type="button" class="melody-back">◀</button>'
+            + '<span class="melody-page-count"></span>'
+            + '<button type="button" class="melody-next">▶</button>';
+        pager.querySelector('.melody-back').onclick = () => show(flow, flow.__page - 1);
+        pager.querySelector('.melody-next').onclick = () => show(flow, flow.__page + 1);
+        if (screens.length < 2) { pager.style.visibility = 'hidden'; }
+
+        head.style.display = 'none';
+        pool.style.display = 'none';
+        flow.style.overflowY = 'hidden';
+        flow.insertBefore(pager, head);
+        flow.appendChild(pages);
+        show(flow, flow.__page || 0);
+    };
+
+    let pending = false;
+    const all = () => {
+        if (pending) { return; }
+        pending = true;
+        requestAnimationFrame(() => {
+            pending = false;
+            document.querySelectorAll('.melody-flow').forEach(layout);
+        });
+    };
+
+    // ← → turn the page of the lanes on show (not while typing, or
+    // while a choice that uses the arrows itself has the focus).
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') { return; }
+        const target = event.target;
+        if (target && (target.closest('input, textarea, select, [contenteditable]')
+            || target.isContentEditable)) { return; }
+        const shown = [...document.querySelectorAll('.melody-flow')]
+            .filter((flow) => flow.offsetParent && flow.__key);
+        if (!shown.length) { return; }
+        shown.forEach((flow) => show(
+            flow, (flow.__page || 0) + (event.key === 'ArrowRight' ? 1 : -1)
+        ));
+        event.preventDefault();
+    });
+
+    new MutationObserver(all).observe(document.body, {
+        childList: true, subtree: true,
+        attributes: true, attributeFilter: ['class', 'style'],
+    });
+    window.addEventListener('resize', all);
+    all();
+}
+""" % {"gap": COLUMN_GAP}
 
 
 # --- one view of the song ---------------------------------------
