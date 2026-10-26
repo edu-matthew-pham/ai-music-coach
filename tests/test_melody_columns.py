@@ -336,3 +336,51 @@ def test_the_top_of_the_lanes_choice_is_gone_and_compact_is_what_is_drawn():
 def test_the_cuts_come_from_the_same_phrase_starts_as_the_tab_rows():
     # One list of phrase starts for the guitar tab and the lanes.
     assert row_starts(_wellerman())[0] == 0
+
+
+# --- the controls: one slim bar, options on their own tabs --------
+
+def test_only_the_guitar_and_ukulele_tabs_show_the_fretted_options():
+    from melody_lanes import option_rows
+
+    assert option_rows("Guitar") == (True, False)
+    assert option_rows("Ukulele") == (True, False)
+
+
+def test_only_the_flute_and_sax_tabs_show_the_wind_option():
+    from melody_lanes import option_rows
+
+    assert option_rows("Flute") == (False, True)
+    assert option_rows("Alto sax") == (False, True)
+
+
+def test_the_other_tabs_show_neither_row():
+    from melody_lanes import option_rows
+
+    for family in ("Piano", "Kalimba", "Lever harp"):
+        assert option_rows(family) == (False, False)
+
+
+def test_the_option_rows_start_hidden_and_follow_the_tab_chosen():
+    text = _main_text()
+
+    assert "gr.Row(visible=False) as melody_fretted_row" in text
+    assert "gr.Row(visible=False) as melody_wind_row" in text
+    assert "melody_tab.select(" in text
+    assert "melody_lanes.option_rows(family)" in text
+    assert "outputs=[melody_fretted_row, melody_wind_row]" in text
+
+
+def test_the_chords_go_choice_is_a_dropdown_in_the_slim_bar():
+    text = _main_text()
+
+    assert "melody_placement = gr.Dropdown(" in text
+
+
+def test_full_screen_hides_the_page_heading_and_sentence():
+    from melody_lanes import MELODY_CSS
+
+    assert "#melody.melody-full .melody-intro { display: none; }" in (
+        MELODY_CSS
+    )
+    assert _main_text().count('elem_classes="melody-intro"') == 2

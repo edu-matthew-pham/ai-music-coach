@@ -621,11 +621,15 @@ with gr.Blocks(
 
         with gr.Column(elem_id="melody"):
 
-            gr.Markdown("## Melody on the instrument")
+            gr.Markdown(
+                "## Melody on the instrument",
+                elem_classes="melody-intro"
+            )
 
             gr.Markdown(
                 "The tune in the boxes above, note by note, on an "
-                "instrument - to look over before you play."
+                "instrument - to look over before you play.",
+                elem_classes="melody-intro"
             )
 
             melody_phrase = gr.Dropdown(
@@ -638,6 +642,10 @@ with gr.Blocks(
                 allow_custom_value=True
             )
 
+            # One slim bar for what applies to every instrument; the
+            # options that only matter to some instruments sit in
+            # rows that appear on their own tabs (shown and hidden
+            # from the tab chosen, below).
             with gr.Row():
 
                 melody_show = gr.CheckboxGroup(
@@ -647,11 +655,11 @@ with gr.Blocks(
                     scale=1
                 )
 
-                melody_placement = gr.Radio(
+                melody_placement = gr.Dropdown(
                     melody_lanes.PLACEMENTS,
                     value=melody_lanes.NEAR_MELODY,
                     label="Chords go",
-                    scale=2
+                    scale=1
                 )
 
                 melody_columns = gr.Radio(
@@ -668,8 +676,8 @@ with gr.Blocks(
                     scale=1
                 )
 
-            # Guitar and ukulele tab only (PLAN-fretted-tab.md).
-            with gr.Row():
+            # Guitar and ukulele tabs only (PLAN-fretted-tab.md).
+            with gr.Row(visible=False) as melody_fretted_row:
 
                 melody_fingering = gr.Radio(
                     fretted_tab.FINGERINGS,
@@ -697,13 +705,12 @@ with gr.Blocks(
                     scale=1
                 )
 
-            # Flute and alto sax only (PLAN-wind-melody.md).
-            with gr.Row():
+            # Flute and alto sax tabs only (PLAN-wind-melody.md).
+            with gr.Row(visible=False) as melody_wind_row:
 
                 melody_fold = gr.Checkbox(
                     value=True,
-                    label="Flute and sax: fold a repeated phrase "
-                          "into one row (x2)",
+                    label="Fold a repeated phrase into one row (x2)",
                     scale=1
                 )
 
@@ -712,13 +719,17 @@ with gr.Blocks(
             melody_variants = []
             melody_views = []
 
+            melody_tabs = []
+
             with gr.Tabs():
 
                 for family, variants in (
                     melody_lanes.supported_families().items()
                 ):
 
-                    with gr.Tab(family):
+                    with gr.Tab(family) as melody_tab:
+
+                        melody_tabs.append((family, melody_tab))
 
                         melody_variants.append(gr.Radio(
                             [
@@ -735,6 +746,17 @@ with gr.Blocks(
                         ))
 
                         melody_views.append(gr.HTML())
+
+            # Which option rows the chosen tab needs. Only the
+            # rows' visibility changes; their values stay put.
+            for family, melody_tab in melody_tabs:
+                melody_tab.select(
+                    fn=lambda family=family: tuple(
+                        gr.update(visible=shown)
+                        for shown in melody_lanes.option_rows(family)
+                    ),
+                    outputs=[melody_fretted_row, melody_wind_row]
+                )
 
         # -------------------------------------------------
         # PRACTICE: sing it and see how it went

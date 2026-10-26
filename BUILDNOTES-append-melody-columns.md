@@ -66,6 +66,24 @@ Checked
   full screen two columns (first row's headers pinned, second row's
   below). Not run: the real Gradio app, the full pytest suite.
 
+## Controls cleanup (2026-10-26, Matthew: "the UI takes too much space")
+
+- The three rows of controls over the pictures are now ONE slim bar:
+  Show, Chords go, Columns, Full screen. "Chords go" became a dropdown
+  (same values), the bar went from ~210px to ~85px.
+- The guitar/ukulele options (fingering, width, open strings, lower
+  positions) show only on the Guitar and Ukulele tabs; the flute/sax
+  "fold a repeated phrase" checkbox only on Flute and Alto sax
+  (`melody_lanes.option_rows(family)`, wired to each tab's select). The
+  rows start hidden; their values still reach the redraw.
+- Full screen hides the "Melody on the instrument" heading and its
+  sentence (`.melody-intro`).
+- Checked in the real app (gradio 6.30 installed in the container,
+  Playwright): rows appear and vanish with the tab, Columns and the
+  guitar fingering still redraw, flute still draws, no page errors;
+  tests/test_interface_runs.py passes (10). New tests (35 in
+  test_melody_columns.py); two option_rows mutations caught.
+
 Still open
 - Not in the wind view or the tab (they already read in rows).
 - Beat height ("Dense") and narrower margins: not done; try the columns

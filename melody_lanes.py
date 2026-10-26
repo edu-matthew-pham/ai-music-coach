@@ -1553,6 +1553,9 @@ MELODY_CSS = """
     overflow: visible !important;
 }
 #melody.melody-full .melody-lanes { max-width: none !important; }
+/* The heading and the sentence under it are for the page, not for
+   a screen given over to the notes. */
+#melody.melody-full .melody-intro { display: none; }
 """
 
 FULL_SCREEN_JS = """
@@ -1666,6 +1669,16 @@ def melody_view(piece, instrument, show=None, header=HEADER_COMPACT,
 FRETTED = ("Guitar", "Ukulele")
 
 SUPPORTED = ("Kalimba", "Lever harp", "Piano") + FRETTED
+
+
+def option_rows(family):
+    """
+    Which option rows a tab needs: (guitar and ukulele options, flute
+    and sax options). Every other tab shows neither, so the controls
+    over the pictures stay one slim bar.
+    """
+
+    return (family in FRETTED, family in WINDS)
 
 
 def supported_families():
