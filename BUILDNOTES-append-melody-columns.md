@@ -81,6 +81,11 @@ Checked
 - Fixed after: in full screen the phrase list and status line were
   squeezed to slivers (the section is a fixed-height column);
   `#melody.melody-full > * { flex-shrink: 0 }` makes it scroll instead.
+- Fewer lines (Matthew: "no need to take too many lines"): the phrase
+  list joined the slim bar, the status line ("The whole tune.") is
+  hidden in full screen, and the size choice (34/41 keys, 8/13 frets)
+  sits at the right of the tab names' line. In full screen the notes
+  now start ~175px down, from ~375px.
 - Checked in the real app (gradio 6.30 installed in the container,
   Playwright): rows appear and vanish with the tab, Columns and the
   guitar fingering still redraw, flute still draws, no page errors;

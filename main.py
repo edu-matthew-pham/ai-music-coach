@@ -632,21 +632,22 @@ with gr.Blocks(
                 elem_classes="melody-intro"
             )
 
-            melody_phrase = gr.Dropdown(
-                [WHOLE_PART],
-                value=WHOLE_PART,
-                label="Which part of the tune",
-                # Five boxes change at once when a song loads; a
-                # stale label in between must not raise an error -
-                # keep_phrase falls back to the whole part.
-                allow_custom_value=True
-            )
-
             # One slim bar for what applies to every instrument; the
             # options that only matter to some instruments sit in
             # rows that appear on their own tabs (shown and hidden
             # from the tab chosen, below).
             with gr.Row():
+
+                melody_phrase = gr.Dropdown(
+                    [WHOLE_PART],
+                    value=WHOLE_PART,
+                    label="Which part of the tune",
+                    # Five boxes change at once when a song loads; a
+                    # stale label in between must not raise an error -
+                    # keep_phrase falls back to the whole part.
+                    allow_custom_value=True,
+                    scale=2
+                )
 
                 melody_show = gr.CheckboxGroup(
                     melody_lanes.SHOW_CHOICES,
@@ -714,7 +715,7 @@ with gr.Blocks(
                     scale=1
                 )
 
-            melody_status = gr.Markdown()
+            melody_status = gr.Markdown(elem_classes="melody-intro")
 
             melody_variants = []
             melody_views = []

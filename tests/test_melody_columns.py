@@ -383,7 +383,8 @@ def test_full_screen_hides_the_page_heading_and_sentence():
     assert "#melody.melody-full .melody-intro { display: none; }" in (
         MELODY_CSS
     )
-    assert _main_text().count('elem_classes="melody-intro"') == 2
+    # The heading, the sentence and the status line.
+    assert _main_text().count('elem_classes="melody-intro"') == 3
 
 
 def test_full_screen_does_not_squeeze_the_sections_blocks():
@@ -392,3 +393,22 @@ def test_full_screen_does_not_squeeze_the_sections_blocks():
     # A fixed-height column shrinks its children unless told not to;
     # the phrase list and status line were drawn as slivers.
     assert "#melody.melody-full > * { flex-shrink: 0; }" in MELODY_CSS
+
+
+def test_the_phrase_list_is_in_the_slim_bar_with_the_other_controls():
+    text = _main_text()
+    bar = text.index("            with gr.Row():\n\n                melody_phrase")
+
+    assert bar < text.index("melody_show = gr.CheckboxGroup(")
+    assert text.index("melody_phrase = gr.Dropdown(") < text.index(
+        "melody_show = gr.CheckboxGroup("
+    )
+    # And it is no longer a line of its own above the bar.
+    assert text.count("melody_phrase = gr.Dropdown(") == 1
+
+
+def test_the_size_choice_sits_on_the_tab_names_line():
+    from melody_lanes import MELODY_CSS
+
+    assert "#melody .tabitem .sheet-size {" in MELODY_CSS
+    assert "position: absolute; top: 0; right: 0;" in MELODY_CSS

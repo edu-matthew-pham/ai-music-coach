@@ -1553,6 +1553,12 @@ MELODY_CSS = """
     overflow: visible !important;
 }
 #melody.melody-full .melody-lanes { max-width: none !important; }
+/* The size choice (34 or 41 keys...) sits on the tab names' line,
+   at the right, instead of a line of its own. */
+#melody .tabitem, #melody .tabitem > .column { position: static; }
+#melody .tabitem .sheet-size {
+    position: absolute; top: 0; right: 0; width: auto !important;
+}
 /* The section is a column with a fixed height here; without this
    its blocks (the phrase list, the status line) are squeezed to fit
    it instead of the section scrolling. */
